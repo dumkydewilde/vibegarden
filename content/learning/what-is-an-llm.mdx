@@ -1,0 +1,32 @@
+---
+title: What is an LLM, really?
+description: The thing behind ChatGPT and Claude, explained without math. What it is good at, where it fails, and why that matters for what you build.
+category: Foundations
+level: starter
+order: 1
+---
+
+You have probably used ChatGPT, Claude, or Gemini by now. The thing doing the work behind those chat windows is a large language model, an LLM. Understanding roughly what it is will save you a lot of confusion later, because most surprises with AI tools trace back to one of a handful of properties.
+
+## A very good guesser
+
+An LLM is a program trained on enormous amounts of text: books, websites, code, conversations. Out of all that text it learned one skill extremely well: given some text, predict what plausibly comes next. That sounds too simple to be useful, but it turns out that predicting text well requires absorbing a lot about language, facts, reasoning patterns, and style.
+
+When you type a question, the model is not looking up an answer in a database. It is generating a continuation, word by word, that fits your question the way answers fit questions in everything it has read. Most of the time this produces something correct and useful. Sometimes it produces something that merely looks correct. That second case has a name: hallucination.
+
+## What this means in practice
+
+A few properties follow directly from how LLMs work, and they explain most of what you will run into:
+
+- **It has no memory of you.** Each conversation starts fresh. Anything the model appears to remember was either sent along with your message or stored by the app around the model. This is why "context" matters so much, and we will come back to it often.
+- **It knows what it read, up to a point in time.** Training ends at some date. Ask about last week's news and it either says it does not know, or guesses. Tools that search the web fix this by fetching fresh text and handing it to the model.
+- **Confidence is not accuracy.** The model writes fluently whether it is right or wrong. For anything that matters, verify: ask for sources, cross-check, or build your tool so mistakes are cheap to catch.
+- **It is genuinely good at transformation.** Summarizing, rewriting, translating, extracting structure from messy text, explaining code: tasks where the input contains the answer are the sweet spot. It struggles most when it must produce facts from nothing.
+
+## The one mental model to keep
+
+Think of an LLM as a brilliant, widely read intern with no memory and no access to your files unless you hand them over. You would not let that intern send an email unchecked on day one, but you would absolutely let them draft it. Nearly every good AI product is built around that division of labor: the model drafts, transforms, and suggests; the product and the person stay in charge of what is true and what actually happens.
+
+## Where to go next
+
+If this clicked, read [What is an agent?](/learning/what-is-an-agent) next: it explains what happens when you give the intern tools and let it take actions. Or jump straight into the Idea Garden and start something; you can always come back here when a word does not make sense.

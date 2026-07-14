@@ -1,0 +1,38 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "vibe-garden",
+	"compatibility_date": "2026-07-14",
+	"main": "./workers/app.ts",
+	"vars": {
+		// Bootstrap admin: this email can always log in and gets the admin role.
+		"ADMIN_EMAIL": "dumky@motherduck.com"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "vibe-garden",
+			// Placeholder until `wrangler d1 create vibe-garden`; local dev
+			// (miniflare) works regardless of this id.
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "drizzle"
+		}
+	],
+	"observability": {
+		"enabled": true
+	},
+	"upload_source_maps": true,
+	"compatibility_flags": [
+		"nodejs_compat"
+	]
+	/**
+	 * Secrets (via `wrangler secret put` in production, .dev.vars locally):
+	 * - SESSION_SECRET: HMAC key for session cookies
+	 * - RESEND_API_KEY: optional, enables OTP email sending
+	 * - GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET: optional, enables Google login
+	 * - OPENROUTER_API_KEY: phase 3, the Gardener's LLM access
+	 */
+}

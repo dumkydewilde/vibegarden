@@ -1,0 +1,1 @@
+ALTER TABLE `chat_threads` ADD `updated_at` integer DEFAULT 0 NOT NULL;
