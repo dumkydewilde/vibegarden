@@ -59,12 +59,14 @@ npm run db:migrate   # apply locally
 
 ## Deploy
 
+First time (creates the D1 database, applies migrations, sets secrets from
+`.dev.vars`, deploys):
+
 ```sh
-wrangler d1 create vibe-garden        # once; put the id in wrangler.jsonc
-npm run db:migrate:prod               # apply migrations remotely
-wrangler secret put SESSION_SECRET    # long random string
-wrangler secret put RESEND_API_KEY    # optional, real OTP emails
-npm run deploy
+wrangler login
+./scripts/first-deploy.sh
 ```
 
-Local secrets go in `.dev.vars` (see `.dev.vars.example`).
+After that, `npm run deploy` for code changes and `npm run db:migrate:prod`
+after schema changes. Local secrets go in `.dev.vars` (see
+`.dev.vars.example`).
