@@ -1,6 +1,7 @@
-import { Link, useLocation } from "react-router";
-import { PanelLeftClose, PanelLeftOpen, Sprout } from "lucide-react";
+import { Form, Link, useLocation } from "react-router";
+import { LogOut, PanelLeftClose, PanelLeftOpen, Sprout } from "lucide-react";
 import { useState } from "react";
+import { useAppUser } from "~/hooks/use-app-user";
 import { navItems } from "~/lib/nav";
 import { ThemeToggle } from "~/components/theme-toggle";
 import { Button } from "~/components/ui/button";
@@ -15,6 +16,10 @@ import { cn } from "~/lib/utils";
 export function LeftNav() {
   const [collapsed, setCollapsed] = useState(false);
   const { pathname } = useLocation();
+  const user = useAppUser();
+  const items = navItems.filter(
+    (item) => !item.adminOnly || user?.role === "admin",
+  );
 
   return (
     <nav
@@ -34,7 +39,7 @@ export function LeftNav() {
 
       <TooltipProvider>
         <ul className="flex flex-1 flex-col gap-1 p-2">
-          {navItems.map((item) => {
+          {items.map((item) => {
             const isActive =
               item.to === "/"
                 ? pathname === "/"
@@ -67,6 +72,27 @@ export function LeftNav() {
         </ul>
       </TooltipProvider>
 
+      {user && !collapsed && (
+        <div className="flex items-center justify-between gap-2 border-t px-4 py-2.5">
+          <span
+            className="truncate text-xs text-muted-foreground"
+            title={user.email}
+          >
+            {user.name ?? user.email}
+          </span>
+          <Form method="post" action="/logout">
+            <Button
+              type="submit"
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              aria-label="Sign out"
+            >
+              <LogOut className="size-3.5" />
+            </Button>
+          </Form>
+        </div>
+      )}
       <div
         className={cn(
           "flex items-center gap-1 border-t p-2",

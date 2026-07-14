@@ -8,8 +8,19 @@
 	"compatibility_date": "2026-07-14",
 	"main": "./workers/app.ts",
 	"vars": {
-		"VALUE_FROM_CLOUDFLARE": "Hello from Cloudflare"
+		// Bootstrap admin: this email can always log in and gets the admin role.
+		"ADMIN_EMAIL": "dumky@motherduck.com"
 	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "vibe-garden",
+			// Placeholder until `wrangler d1 create vibe-garden`; local dev
+			// (miniflare) works regardless of this id.
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "drizzle"
+		}
+	],
 	"observability": {
 		"enabled": true
 	},
@@ -18,24 +29,10 @@
 		"nodejs_compat"
 	]
 	/**
-	 * Smart Placement
-	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
+	 * Secrets (via `wrangler secret put` in production, .dev.vars locally):
+	 * - SESSION_SECRET: HMAC key for session cookies
+	 * - RESEND_API_KEY: optional, enables OTP email sending
+	 * - GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET: optional, enables Google login
+	 * - OPENROUTER_API_KEY: phase 3, the Gardener's LLM access
 	 */
-	// "placement": {  "mode": "smart" }
-	/**
-	 * Bindings
-	 * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
-	 * databases, object storage, AI inference, real-time communication and more.
-	 * https://developers.cloudflare.com/workers/runtime-apis/bindings/
-	 */
-	/**
-	 * Static Assets
-	 * https://developers.cloudflare.com/workers/static-assets/binding/
-	 */
-	// "assets": {  "directory": "./public/",  "binding": "ASSETS" }
-	/**
-	 * Service Bindings (communicate between multiple Workers)
-	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
-	 */
-	// "services": [  {   "binding": "MY_SERVICE",   "service": "my-service"  } ]
 }

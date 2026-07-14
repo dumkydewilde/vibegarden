@@ -14,12 +14,20 @@ Check items off as they land. One section per building block. Details live in
 - [x] Section pages: home, garden, artifacts, gallery, inspiration, admin, join
 - [x] Build, typecheck, tests green; browser pass mobile + desktop, light + dark
 
-## Phase 2: Auth, invites, admin
+## Phase 2: Auth, invites, admin (done, 2026-07-14)
 
-- [ ] D1 schema (Drizzle): users, invites, sessions, otp_codes
-- [ ] Email OTP login for invited addresses (dev mode: log code)
-- [ ] Google OAuth alternative
-- [ ] Admin: invite management, participant overview
+- [x] D1 schema (Drizzle): users, invites, sessions, otp_codes
+- [x] Email OTP login for invited addresses (dev mode: code shown in UI)
+- [x] Google OAuth alternative (code complete; activates when
+      GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET secrets are set, untested against
+      real Google credentials)
+- [x] Admin: invite management, participant overview
+- [x] Route guards: everything requires login except /login and /join;
+      admin routes 404 for non-admins
+- [ ] Production email: set RESEND_API_KEY (until then the login screen
+      shows the code inline)
+- [ ] Production D1: `wrangler d1 create vibe-garden`, put the id in
+      wrangler.jsonc, `npm run db:migrate:prod`, `wrangler secret put SESSION_SECRET`
 
 ## Phase 3: The Gardener (agent)
 

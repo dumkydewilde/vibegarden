@@ -17,4 +17,8 @@ export default [
     route("admin", "routes/admin.tsx"),
   ]),
   route("join", "routes/join.tsx"),
+  route("login", "routes/login.tsx"),
+  route("logout", "routes/logout.tsx"),
+  route("auth/google", "routes/auth.google.tsx"),
+  route("auth/google/callback", "routes/auth.google.callback.tsx"),
 ] satisfies RouteConfig;

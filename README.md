@@ -40,11 +40,31 @@ order: 3
 Body in markdown...
 ```
 
+## Auth model
+
+Invite-only. Participants sign in at `/login` with an email code (OTP), or
+Google when configured. `ADMIN_EMAIL` in wrangler.jsonc can always sign in
+and gets the admin role; everyone else needs an invite created in `/admin`.
+Without `RESEND_API_KEY` the login screen shows the code inline instead of
+emailing it.
+
+## Database
+
+Local D1 runs automatically in dev. Schema lives in `app/db/schema.ts`.
+
+```sh
+npm run db:generate  # new migration after schema changes
+npm run db:migrate   # apply locally
+```
+
 ## Deploy
 
 ```sh
-npm run deploy     # build + wrangler deploy
+wrangler d1 create vibe-garden        # once; put the id in wrangler.jsonc
+npm run db:migrate:prod               # apply migrations remotely
+wrangler secret put SESSION_SECRET    # long random string
+wrangler secret put RESEND_API_KEY    # optional, real OTP emails
+npm run deploy
 ```
 
-Secrets (later phases): copy `.dev.vars.example` to `.dev.vars` for local dev;
-`wrangler secret put` for production.
+Local secrets go in `.dev.vars` (see `.dev.vars.example`).
