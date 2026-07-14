@@ -82,6 +82,17 @@ const welcome: ChatMessage = {
   text: "Hi, I am The Gardener. I know every article in the learning section and I am happy to help you find or grow a project idea. What are you curious about?",
 };
 
+const OPEN_KEY = "vg-gardener-open";
+
+function readOpenPreference() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(OPEN_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 let nextId = 0;
 const uid = () => `m${Date.now()}-${++nextId}`;
 
@@ -94,7 +105,7 @@ export function GardenerProvider({
   initialMessages?: ChatMessage[];
   initialModelId?: string | null;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(readOpenPreference);
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     initialMessages && initialMessages.length > 0
@@ -122,6 +133,15 @@ export function GardenerProvider({
   pathnameRef.current = pathname;
   const webSearchRef = useRef(webSearch);
   webSearchRef.current = webSearch;
+
+  const setOpen = useCallback((nextOpen: boolean) => {
+    setOpenState(nextOpen);
+    try {
+      window.localStorage.setItem(OPEN_KEY, String(nextOpen));
+    } catch {
+      // Storage may be unavailable; preserve the in-memory panel state.
+    }
+  }, []);
 
   const addContext = useCallback((item: Omit<ContextItem, "id">) => {
     setContextItems((items) => {

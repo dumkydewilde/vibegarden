@@ -1,3 +1,4 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
   fireEvent,
@@ -5,7 +6,6 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import { ChatMessageBubble } from "../chat-message";
 import {
@@ -13,6 +13,8 @@ import {
   useGardener,
   type ContextItem,
 } from "../gardener-provider";
+
+const OPEN_KEY = "vg-gardener-open";
 
 function GardenerHarness({
   context,
@@ -33,11 +35,33 @@ function GardenerHarness({
   );
 }
 
+function Probe() {
+  const { open, setOpen } = useGardener();
+  return (
+    <>
+      <span>{open ? "open" : "closed"}</span>
+      <button type="button" onClick={() => setOpen(false)}>
+        close
+      </button>
+    </>
+  );
+}
+
 function renderHarness(context?: Omit<ContextItem, "id">[]) {
   return render(
     <MemoryRouter>
       <GardenerProvider>
         <GardenerHarness context={context} />
+      </GardenerProvider>
+    </MemoryRouter>,
+  );
+}
+
+function renderProvider() {
+  return render(
+    <MemoryRouter>
+      <GardenerProvider>
+        <Probe />
       </GardenerProvider>
     </MemoryRouter>,
   );
@@ -65,6 +89,26 @@ function postedChatBody(fetchMock: ReturnType<typeof mockFreshConversation>) {
     context: Omit<ContextItem, "id">[];
   };
 }
+
+function createStorage() {
+  const values = new Map<string, string>();
+  return {
+    getItem: vi.fn((key: string) => values.get(key) ?? null),
+    setItem: vi.fn((key: string, value: string) => values.set(key, value)),
+    removeItem: vi.fn((key: string) => values.delete(key)),
+    clear: vi.fn(() => values.clear()),
+  };
+}
+
+let storage = createStorage();
+
+beforeEach(() => {
+  storage = createStorage();
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+});
 
 afterEach(() => {
   cleanup();
@@ -100,5 +144,26 @@ describe("GardenerProvider askFresh", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(postedChatBody(fetchMock).context).toEqual([]);
     expect(await screen.findByText("Help me start.")).toBeTruthy();
+  });
+});
+
+describe("GardenerProvider panel preference", () => {
+  it("restores the open preference and persists later changes", () => {
+    storage.setItem(OPEN_KEY, "true");
+    renderProvider();
+
+    expect(screen.getByText("open")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
+    expect(storage.getItem(OPEN_KEY)).toBe("false");
+  });
+
+  it("defaults closed when browser storage cannot be read", () => {
+    storage.getItem.mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    renderProvider();
+
+    expect(screen.getByText("closed")).toBeTruthy();
+    expect(storage.getItem).toHaveBeenCalledWith(OPEN_KEY);
   });
 });
