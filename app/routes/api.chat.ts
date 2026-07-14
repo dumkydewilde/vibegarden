@@ -109,7 +109,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       content: buildSystemPrompt(
         contextItems,
         typeof body.page === "string" ? body.page : undefined,
-        { tools: model.tools },
+        { tools: model.tools, freshReads: !!env.MOTHERDUCK_TOKEN },
       ),
     },
     ...trimHistory(body.messages),
@@ -127,7 +127,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         model: model.id,
         stream: true,
         messages: upstreamMessages,
-        ...(withTools ? { tools: toolDefinitions } : {}),
+        ...(withTools ? { tools: toolDefinitions(env) } : {}),
         ...(webSearch ? { plugins: [{ id: "web", max_results: 3 }] } : {}),
       }),
     });
@@ -175,7 +175,7 @@ export async function action({ request, context }: Route.ActionArgs) {
             upstreamMessages.push({
               role: "tool",
               tool_call_id: call.id,
-              content: await executeTool(call),
+              content: await executeTool(call, env),
             });
           }
 

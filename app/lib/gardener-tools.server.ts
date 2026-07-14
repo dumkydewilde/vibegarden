@@ -1,5 +1,10 @@
 import { getArticle, getArticleRaw, getArticles } from "./content";
 import { getModule, getModuleRaw, getModules } from "./modules";
+import {
+  formatFreshReads,
+  FRESH_READ_TYPES,
+  queryFreshReads,
+} from "./motherduck.server";
 import { toolNote } from "./tool-notes";
 
 /**
@@ -17,7 +22,31 @@ export type ToolCall = {
   arguments: string;
 };
 
-export const toolDefinitions = [
+const freshReadsDefinition = {
+  type: "function" as const,
+  function: {
+    name: "fresh_reads",
+    description:
+      "Recent worthwhile reads from Dumky's curated RSS feed: news, opinion pieces, and tutorials about AI and building things, scored for interestingness. Use it to point at something current, or when the person asks what is happening in AI right now.",
+    parameters: {
+      type: "object",
+      properties: {
+        topic: {
+          type: "string",
+          description:
+            "Optional free-text filter matched against title, summary, and key insight.",
+        },
+        content_type: {
+          type: "string",
+          enum: [...FRESH_READ_TYPES],
+          description: "Optional: limit to one kind. Omit for all three.",
+        },
+      },
+    },
+  },
+};
+
+const baseDefinitions = [
   {
     type: "function" as const,
     function: {
@@ -73,6 +102,13 @@ export const toolDefinitions = [
     },
   },
 ];
+
+/** fresh_reads only exists when a MotherDuck token is configured. */
+export function toolDefinitions(env: Env) {
+  return env.MOTHERDUCK_TOKEN
+    ? [...baseDefinitions, freshReadsDefinition]
+    : baseDefinitions;
+}
 
 /** Strip MDX frontmatter; the model gets the prose, not the metadata. */
 function stripFrontmatter(raw: string) {
@@ -138,11 +174,25 @@ function parseArgs(raw: string): Record<string, unknown> | null {
   }
 }
 
-export async function executeTool(call: ToolCall): Promise<string> {
+export async function executeTool(call: ToolCall, env: Env): Promise<string> {
   const args = parseArgs(call.arguments);
   if (!args) return "Error: tool arguments were not valid JSON.";
 
   switch (call.name) {
+    case "fresh_reads": {
+      try {
+        const reads = await queryFreshReads(env, {
+          topic: args.topic ? String(args.topic) : undefined,
+          contentType: args.content_type
+            ? String(args.content_type)
+            : undefined,
+        });
+        return formatFreshReads(reads);
+      } catch (e) {
+        console.error("fresh_reads failed", e);
+        return "Error: the reading feed is not reachable right now.";
+      }
+    }
     case "read_article": {
       const slug = String(args.slug ?? "");
       const raw = getArticleRaw(slug);
@@ -197,6 +247,15 @@ export function toolNoteFor(call: ToolCall): string {
       } catch {
         return toolNote("note", "fetching a page");
       }
+    }
+    case "fresh_reads": {
+      const topic = args.topic ? String(args.topic).slice(0, 60) : "";
+      return toolNote(
+        "note",
+        topic
+          ? `looking for fresh reads about ${topic}`
+          : "looking for fresh reads",
+      );
     }
     default:
       return toolNote("note", `using ${call.name}`);

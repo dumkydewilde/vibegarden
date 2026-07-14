@@ -2,7 +2,10 @@ import { Link } from "react-router";
 import { ArrowLeft, Blocks } from "lucide-react";
 import type { Route } from "./+types/garden.modules.$slug";
 import { useGardener } from "~/components/gardener/gardener-provider";
-import { ParagraphWithAsk } from "~/components/learning/paragraph-with-ask";
+import {
+  ListItemWithAsk,
+  ParagraphWithAsk,
+} from "~/components/learning/paragraph-with-ask";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { getModule, getModuleRaw } from "~/lib/modules";
@@ -23,6 +26,7 @@ export function meta({ params }: Route.MetaArgs) {
 }
 
 const mdxComponents = {
+  li: ListItemWithAsk,
   p: ParagraphWithAsk,
 };
 
@@ -53,9 +57,7 @@ export default function ModulePage({ params }: Route.ComponentProps) {
         <h1 className="mt-4 text-3xl leading-tight md:text-4xl">
           {meta.title}
         </h1>
-        <p className="mt-3 text-lg text-muted-foreground">
-          {meta.description}
-        </p>
+        <p className="mt-3 text-lg text-muted-foreground">{meta.description}</p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Badge variant="secondary">Building block</Badge>
           <Button

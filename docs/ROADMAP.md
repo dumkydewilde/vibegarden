@@ -54,6 +54,10 @@ Core landed 2026-07-14, see `docs/plans/2026-07-14-gardener-tools.md`.
 - [x] Module know-how as content: `content/modules/*.mdx` (what it is, when
       to use it, setup steps, options and costs). Feeds the module drill-down
       pages at /garden/modules AND the Gardener's `read_module` tool
+- [x] `fresh_reads` tool: read-only MotherDuck share (Dumky's RSS feed
+      summaries, score >= 3, news/opinion/tutorial) via the PG endpoint and
+      the `pg` driver. Activates when MOTHERDUCK_TOKEN is set (use a
+      read-scaling token)
 - [ ] Data analysis, workshop-native: DuckDB-WASM in the browser. The
       Gardener writes SQL, the participant's browser runs it against their
       uploaded CSV, results return to the chat. No server compute, data

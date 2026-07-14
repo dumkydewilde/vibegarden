@@ -44,7 +44,7 @@ function describePage(page: string | undefined) {
   return name ? `${name} (${page}).` : `${page}.`;
 }
 
-function buildToolsRule(toolsEnabled: boolean) {
+function buildToolsRule(toolsEnabled: boolean, freshReads: boolean) {
   if (!toolsEnabled) {
     return "You cannot read files or fetch pages in this conversation (the selected model does not support tools). Point at links instead.";
   }
@@ -58,6 +58,11 @@ function buildToolsRule(toolsEnabled: boolean) {
       moduleSlugs +
       ".",
     "- fetch_page(url): the text of a public web page. Use it when the person shares a link.",
+    ...(freshReads
+      ? [
+          "- fresh_reads(topic?, content_type?): recent well-scored news, opinion pieces, and tutorials about AI and building things, from a curated reading feed. Use it when something current would enrich the answer, and share the best one or two as markdown links.",
+        ]
+      : []),
     "Prefer one well-chosen tool call over none when facts matter; never call more than needed. Do not mention tool names to the person.",
   ].join("\n");
 }
@@ -65,7 +70,7 @@ function buildToolsRule(toolsEnabled: boolean) {
 export function buildSystemPrompt(
   contextItems: WireContextItem[],
   currentPage?: string,
-  opts: { tools?: boolean } = {},
+  opts: { tools?: boolean; freshReads?: boolean } = {},
 ) {
   const articleIndex = getArticles()
     .map(
@@ -83,7 +88,10 @@ export function buildSystemPrompt(
     .replace("{{MODULES}}", modules.join(", "))
     .replace("{{ARTICLE_INDEX}}", articleIndex)
     .replace("{{CURRENT_PAGE_RULE}}", currentPageRule)
-    .replace("{{TOOLS_RULE}}", buildToolsRule(opts.tools ?? false));
+    .replace(
+      "{{TOOLS_RULE}}",
+      buildToolsRule(opts.tools ?? false, opts.freshReads ?? false),
+    );
 
   if (contextItems.length > 0) {
     const blocks = contextItems

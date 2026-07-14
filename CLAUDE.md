@@ -41,6 +41,9 @@ A workshop environment for friends learning to build with AI/LLMs. See
   `.dev.vars` into new workspaces via `.worktreeinclude`, sourced from the
   root checkout at `~/code/vibegarden`, so keep the real values (incl.
   `OPENROUTER_API_KEY`) in that root copy.
+- `MOTHERDUCK_TOKEN` (read-scaling token preferred) enables the Gardener's
+  `fresh_reads` tool; without it the tool simply is not offered. Queries go
+  to MotherDuck's Postgres-compatible endpoint with DuckDB SQL via `pg`.
 
 ## Machine notes
 

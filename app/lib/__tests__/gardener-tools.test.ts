@@ -11,17 +11,20 @@ const call = (name: string, args: object) => ({
   arguments: JSON.stringify(args),
 });
 
+const env = {} as Env;
+
 describe("executeTool", () => {
   it("reads an article without its frontmatter", async () => {
     const result = await executeTool(
       call("read_article", { slug: "what-is-an-llm" }),
+      env,
     );
     expect(result).toContain("A very good guesser");
     expect(result).not.toMatch(/^---/);
   });
 
   it("lists valid slugs when the article is unknown", async () => {
-    const result = await executeTool(call("read_article", { slug: "nope" }));
+    const result = await executeTool(call("read_article", { slug: "nope" }), env);
     expect(result).toContain("Error");
     expect(result).toContain("what-is-an-llm");
   });
@@ -29,28 +32,37 @@ describe("executeTool", () => {
   it("reads a building block", async () => {
     const result = await executeTool(
       call("read_module", { slug: "google-sheet" }),
+      env,
     );
     expect(result).toContain("Setup steps");
   });
 
   it("lists valid slugs when the block is unknown", async () => {
-    const result = await executeTool(call("read_module", { slug: "nope" }));
+    const result = await executeTool(call("read_module", { slug: "nope" }), env);
     expect(result).toContain("Error");
     expect(result).toContain("csv-file");
   });
 
   it("rejects non-http URLs and invalid JSON args", async () => {
-    expect(await executeTool(call("fetch_page", { url: "file:///etc/passwd" })))
-      .toContain("only http(s)");
-    expect(await executeTool(call("fetch_page", { url: "not a url" })))
-      .toContain("not a valid URL");
     expect(
-      await executeTool({ id: "x", name: "fetch_page", arguments: "{oops" }),
+      await executeTool(call("fetch_page", { url: "file:///etc/passwd" }), env),
+    ).toContain("only http(s)");
+    expect(
+      await executeTool(call("fetch_page", { url: "not a url" }), env),
+    ).toContain("not a valid URL");
+    expect(
+      await executeTool({ id: "x", name: "fetch_page", arguments: "{oops" }, env),
     ).toContain("not valid JSON");
   });
 
+  it("fails softly when fresh_reads has no token", async () => {
+    expect(await executeTool(call("fresh_reads", {}), env)).toContain(
+      "not reachable",
+    );
+  });
+
   it("rejects unknown tools", async () => {
-    expect(await executeTool(call("rm_rf", {}))).toContain("unknown tool");
+    expect(await executeTool(call("rm_rf", {}), env)).toContain("unknown tool");
   });
 });
 

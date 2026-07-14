@@ -34,5 +34,8 @@
 	 * - RESEND_API_KEY: optional, enables OTP email sending
 	 * - GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET: optional, enables Google login
 	 * - OPENROUTER_API_KEY: phase 3, the Gardener's LLM access
+	 * - MOTHERDUCK_TOKEN: optional, enables the Gardener's fresh_reads tool
+	 *   (use a read-scaling token; MOTHERDUCK_PG_HOST/MOTHERDUCK_DATABASE
+	 *   override the pg endpoint host and initial database)
 	 */
 }
