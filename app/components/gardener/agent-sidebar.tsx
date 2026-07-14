@@ -1,5 +1,5 @@
 import { MessageCircle, Send, Sprout, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChatMessageBubble } from "./chat-message";
 import { ContextChips } from "./context-chips";
 import { useGardener } from "./gardener-provider";
@@ -9,6 +9,7 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTitle } from "~/components/ui/sheet";
 import { Textarea } from "~/components/ui/textarea";
 import { useIsMobile } from "~/hooks/use-mobile";
+import { cn } from "~/lib/utils";
 
 function Composer() {
   const { ask } = useGardener();
@@ -133,12 +134,66 @@ export function AgentSidebar() {
     );
   }
 
+  return <DesktopRail onClose={() => setOpen(false)} />;
+}
+
+const MIN_WIDTH = 320;
+const MAX_WIDTH = 640;
+const DEFAULT_WIDTH = 400;
+const WIDTH_KEY = "vg-gardener-width";
+
+const clampWidth = (w: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, w));
+
+function DesktopRail({ onClose }: { onClose: () => void }) {
+  const [width, setWidth] = useState(DEFAULT_WIDTH);
+  const [dragging, setDragging] = useState(false);
+
+  useEffect(() => {
+    const saved = Number(localStorage.getItem(WIDTH_KEY));
+    if (saved) setWidth(clampWidth(saved));
+  }, []);
+
+  const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragging(true);
+  };
+
+  const onDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging) return;
+    setWidth(clampWidth(window.innerWidth - e.clientX));
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging) return;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    setDragging(false);
+    setWidth((w) => {
+      localStorage.setItem(WIDTH_KEY, String(w));
+      return w;
+    });
+  };
+
   return (
     <aside
       aria-label="The Gardener"
-      className="sticky top-0 hidden h-dvh w-80 shrink-0 flex-col border-l bg-sidebar md:flex lg:w-96"
+      style={{ width }}
+      className="relative sticky top-0 hidden h-dvh shrink-0 flex-col border-l bg-sidebar md:flex"
     >
-      <PanelHeader onClose={() => setOpen(false)} />
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize The Gardener panel"
+        onPointerDown={startDrag}
+        onPointerMove={onDrag}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        className={cn(
+          "absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize touch-none transition-colors hover:bg-primary/25",
+          dragging && "bg-primary/40",
+        )}
+      />
+      <PanelHeader onClose={onClose} />
       <PanelBody />
     </aside>
   );
