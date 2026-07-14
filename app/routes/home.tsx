@@ -44,12 +44,13 @@ const starterPaths = [
 ] as const;
 
 export default function Home() {
-  const { ask, busy, setOpen } = useGardener();
+  const { askFresh, busy } = useGardener();
 
   const talkToTheManager = () => {
-    setOpen(true);
     if (!busy) {
-      ask("What the hell is this garden thing? Can I talk to the manager?");
+      askFresh(
+        "What the hell is this garden thing? Can I talk to the manager?",
+      );
     }
   };
 
