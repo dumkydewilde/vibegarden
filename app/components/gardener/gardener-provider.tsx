@@ -35,6 +35,11 @@ type GardenerState = {
   removeContext: (id: string) => void;
   ask: (question: string) => void;
   clearConversation: () => void;
+  /**
+   * Swap the sidebar over to an existing conversation and open it,
+   * optionally asking a question right away.
+   */
+  resumeConversation: (messages: ChatMessage[], question?: string) => void;
   model: Model;
   setModel: (model: Model) => void;
   /** Attach to the composer textarea so addContext can focus it. */
@@ -181,6 +186,23 @@ export function GardenerProvider({
     }
   }, []);
 
+  const resumeConversation = useCallback(
+    (msgs: ChatMessage[], question?: string) => {
+      // Sync the ref immediately so an instant ask() sees the right history.
+      messagesRef.current = msgs;
+      setMessages(msgs);
+      setContextItems([]);
+      setOpen(true);
+      const trimmed = question?.trim();
+      if (trimmed) {
+        ask(trimmed);
+      } else {
+        setTimeout(() => composerRef.current?.focus(), 250);
+      }
+    },
+    [ask],
+  );
+
   const clearConversation = useCallback(() => {
     setMessages([welcome]);
     setContextItems([]);
@@ -199,6 +221,7 @@ export function GardenerProvider({
       removeContext,
       ask,
       clearConversation,
+      resumeConversation,
       model,
       setModel,
       composerRef,
@@ -212,6 +235,7 @@ export function GardenerProvider({
       removeContext,
       ask,
       clearConversation,
+      resumeConversation,
       model,
     ],
   );
