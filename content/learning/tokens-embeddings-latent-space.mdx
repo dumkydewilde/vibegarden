@@ -1,0 +1,36 @@
+---
+title: Tokens, embeddings, and latent space
+description: How a model actually reads your words, why meaning becomes coordinates, and why a Dutch sentence and its English twin end up neighbors on the same map.
+category: Foundations
+level: starter
+order: 3
+---
+
+You do not need this article to build something. But if you have ever wondered what is actually happening inside the machine, this is the shortest useful answer, and it makes several other things (pricing, search, "similar items") suddenly make sense.
+
+## Tokens: the model does not see words
+
+Before your message reaches the model, it gets chopped into tokens: chunks of roughly four characters, sometimes a whole word, sometimes a piece of one. "Amsterdam" might be one token; "gezelligheid" might be four. The model never sees letters or words, only a sequence of these chunks.
+
+Two practical consequences:
+
+- **Pricing and limits are in tokens.** When a model costs "$3 per million tokens" or has a "200k context window", this is the unit. A rule of thumb: 1,000 tokens is about 750 English words.
+- **Some silly failures are token failures.** Models historically struggled to count the r's in "strawberry" because they never saw the letters, just the chunks. Weird behavior around spelling, rhymes, and character counts usually traces back to tokens.
+
+## Embeddings: meaning as coordinates
+
+Inside the model, every token is turned into an embedding: a long list of numbers, like coordinates, but in hundreds of dimensions instead of two. The magic is in how those coordinates get arranged during training: things that mean similar things end up close together. "Dog" sits near "puppy", far from "invoice". Directions carry meaning too, in the classic example the path from "king" to "queen" points the same way as from "man" to "woman".
+
+## Latent space: the map all of this lives on
+
+That giant map of meaning is called latent space. And here is the part that surprises most people: it is organized by meaning, not by surface form. "The cat sat on the mat" and "de kat zat op de mat" land in nearly the same spot, because they mean the same thing. Multilingual models learn one shared map, with languages as different roads to the same locations.
+
+It goes further than language. Models trained on speech and text together place the sound of someone saying "good morning" near the written words. Image models place a photo of a bike near the word "fiets". One space, many entrances.
+
+## Why you should care
+
+Embeddings are not just theory, they are a tool you can use directly. Take every recipe, note, or support ticket you have, compute an embedding for each, and store those. Now "find things similar to this one" is just "find the nearest points on the map". That is how semantic search works, how "related articles" features work, and how an LLM can be pointed at the right ten documents out of your ten thousand. When you get there, [Storing your data](/learning/store-data-sheets-vs-database) covers where those numbers live.
+
+## Where to go next
+
+Simon Willison's [Stuff we figured out about AI in 2023](https://simonwillison.net/2023/Dec/31/ai-in-2023/) is a wonderful plain-language tour of how these models behave and why. And if you have not read [What is an LLM, really?](/learning/what-is-an-llm), that covers what the model does with all these coordinates: predict what comes next.

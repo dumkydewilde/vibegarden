@@ -1,0 +1,40 @@
+---
+title: Generating images
+description: How a picture emerges from pure noise, when to reach for Midjourney versus Nano Banana, and how to keep a character looking like themselves.
+category: Building
+level: hands-on
+order: 2
+---
+
+Image generation feels like the most magical corner of AI, and it is also the most practical one for projects: illustrations, game sprites, logos, photos of things that do not exist. A little understanding of how it works goes a long way toward getting what you actually asked for.
+
+## It starts from noise
+
+Most image models are diffusion models, and the process is delightfully backwards. During training, the model watched millions of images get gradually destroyed by static, and learned to reverse the damage. When you generate, it starts from a canvas of pure random noise and removes the noise step by step, twenty to fifty rounds, steering each step toward your text prompt. The image is not retrieved or collaged from anywhere; it condenses out of static, guided by the same map of meaning from [Tokens, embeddings, and latent space](/learning/tokens-embeddings-latent-space), where your words and possible images live close together.
+
+Knowing this explains the quirks: why every generation is different (different starting noise), and why the model handles "the vibe of a rainy Amsterdam evening" better than "exactly seven tulips" (steering is holistic, not arithmetic).
+
+## Picking a model: the two poles
+
+There are many models, but two poles cover most decisions:
+
+- **Midjourney** is the artist. Its images are consistently beautiful, opinionated, and atmospheric. It shines for mood, posters, concept art, and style exploration. It is less interested in obeying you precisely.
+- **Nano Banana** (Google's image model, inside Gemini) is the editor. Its superpowers are following instructions, rendering readable text, and conversational editing: "same image, but make it night and add a cat" actually works, because it can start from your existing image instead of fresh noise.
+
+The rule of thumb: **making something beautiful from scratch, lean Midjourney. Editing, iterating, or needing precision and text, lean Nano Banana.** When in doubt, run the same prompt through both, taste develops fast.
+
+## Keeping a character consistent
+
+The classic frustration: you generate the perfect fox mascot, then every next image is a slightly different fox. Because each image condenses from fresh noise, consistency does not come free. What works:
+
+- **Reference images.** Modern models accept an image alongside the prompt: "this character, now riding a bike."
+- **A written character sheet.** Nail down the details once, including exact colors ("fur #E8743B"), and paste it into every prompt. Designer Luke Wroblewski built a whole character tool this way and documents the tricks in [his write-up on character consistency](https://www.lukew.com/ff/entry.asp?2146).
+- **Generate a grid first.** Ask for "the same character in 6 poses, character sheet style" and reuse that image as your reference forever.
+
+## Making it move
+
+Animation is one more step, not a new skill: image-to-video models (Google's Veo, Kling, Runway) take a still image plus a motion prompt ("gentle breeze, she turns and smiles") and produce a few seconds of video. The workflow that works is: perfect the still image first, then animate it. Short clips are the honest unit; whole scenes still take patience and many attempts.
+
+## Where to go next
+
+If your images are for a game, [Building a game](/learning/building-a-game) covers sprites and style. And the same "condense from noise" idea powers voice models too: [Working with voice](/learning/working-with-voice) is the audio version of this article.

@@ -1,0 +1,38 @@
+---
+title: Agent frameworks
+description: When your agent needs to survive a laptop reboot, live in Slack, or run every morning at seven, you have outgrown the chat window. Frameworks are the next step.
+category: Building
+level: hands-on
+order: 5
+---
+
+[What is an agent?](/learning/what-is-an-agent) covered the idea: a model in a loop with tools. Inside a chat window, that loop is managed for you. But the moment you want an agent that works while you sleep, the questions change: where does it run? What happens if it crashes halfway? How does it remember yesterday? Agent frameworks exist to answer those questions so you do not have to.
+
+## What a framework actually does for you
+
+Writing the loop itself is easy; a framework earns its keep on everything around the loop:
+
+- **Durability.** A real task might take twenty steps over ten minutes. If step fourteen fails, you want it to resume, not start over. Frameworks checkpoint progress.
+- **Scheduling and triggers.** "Every morning at 7:00" or "whenever an email arrives": agents are most useful when something other than you starts them.
+- **A place to live.** Your agent needs to run somewhere that is not your laptop, and show up somewhere people already are: Slack, email, a web page.
+- **Safety rails.** Sandboxes for running code, permission checks before real actions, logs of what the agent did and why. Boring, until the day it matters.
+
+## One to look at: Eve
+
+A good example of the current generation is [Eve](https://vercel.com/eve), Vercel's agent framework. The pitch is charming: you define an agent's behavior in plain markdown instructions, give it tools written in TypeScript, and deploy the same agent to Slack, Discord, Teams, or the web from one codebase. Instructions as markdown is worth pausing on: the "programming language" for agent behavior is turning out to be well-organized prose, which means writing clearly is becoming a superpower. The moat around programmers is draining fast.
+
+It is far from alone: Cloudflare has an Agents SDK, OpenAI and Anthropic ship their own, and new frameworks appear monthly. The concepts above transfer across all of them, so learning one is learning the category.
+
+## The honest advice: you probably do not need one yet
+
+Frameworks solve problems of scale and reliability. If you do not have those problems yet, they are pure overhead. The progression that works:
+
+1. **A chat and good prompts.** Most "I need an agent" ideas are actually one good prompt used repeatedly.
+2. **A chat with tools.** Claude, ChatGPT and friends can already search the web, run code, and connect to your apps. This ceiling is much higher than it looks.
+3. **A framework.** When you catch yourself wishing your agent ran on a schedule, survived restarts, or answered your whole family in a group chat, now the features on the box match problems you actually have.
+
+Reaching step three is a milestone, not a failure of steps one and two.
+
+## Where to go next
+
+Not sure your idea even needs an agent? The table at the end of [What is an agent?](/learning/what-is-an-agent) is the decision in miniature. And whichever model powers your agent, [Choosing a model](/learning/choosing-a-model) matters double when it runs unsupervised.

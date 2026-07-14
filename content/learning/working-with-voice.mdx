@@ -1,0 +1,36 @@
+---
+title: Working with voice
+description: Talking is faster than typing and listening beats reading on a bike. How to get speech into your project, and a voice out of it.
+category: Building
+level: hands-on
+order: 3
+---
+
+Voice is underused in hobby projects, which is a shame: it is often the difference between a tool people try once and a tool they actually use. Grandma will not type into a form; she will absolutely talk to one. Voice work splits into three parts: getting speech in, producing speech out, and the newer trick of skipping text entirely.
+
+## Voice in: transcription
+
+Speech-to-text is a solved problem, and that sentence would have been false five years ago. Models like OpenAI's Whisper transcribe messy, accented, multilingual audio, including Dutch, including your uncle's Brabants, nearly perfectly and nearly for free.
+
+This unlocks a pattern worth memorizing: **voice notes are an input format.** Record a rambling two-minute note, transcribe it, then hand the text to an LLM to structure: shopping list, diary entry, meeting minutes, ideas sorted by topic. Talking is three times faster than typing, and the LLM cleans up the rambling. Half the "I wish I had a tool for..." ideas in this workshop can be built as: record, transcribe, extract (see [Extracting meaning from text](/learning/extracting-meaning-from-text)).
+
+## Voice out: text-to-speech
+
+The other direction has crossed the uncanny valley too. Two names to know:
+
+- **[ElevenLabs](https://elevenlabs.io)**: the best-known, with rich expressive voices, many languages, and voice cloning: a minute of someone's speech is enough to make a voice that reads anything in their tone. (Clone only voices you have permission to clone.)
+- **[Cartesia](https://cartesia.ai)**: built for speed. Its voices answer fast enough for live conversation, which matters the moment you build anything interactive: an assistant that pauses four seconds before answering feels broken, one that answers instantly feels alive.
+
+Project-shaped ideas: a bedtime-story machine that reads your kids' own adventures aloud, a recipe reader for floury hands, your newsletter as a private podcast.
+
+## Voices live in latent space too
+
+Here is the connecting idea: just as words become coordinates on a map of meaning ([Tokens, embeddings, and latent space](/learning/tokens-embeddings-latent-space)), a voice can be reduced to coordinates that capture how it sounds: pitch, timbre, accent, pace. Voice cloning is finding your voice's spot on that map and speaking new sentences from there. And because speech and text can share one map, the newest "speech-native" models skip transcription entirely: they hear and speak directly, which is how they can whisper, laugh, or respond to your tone rather than just your words.
+
+## Where to start
+
+Simplest first project: pick one direction. Input-only (voice notes to structured text) needs just a transcription step bolted onto ideas you already have. Output-only (read my thing aloud) is one API call to ElevenLabs or Cartesia. Full conversations, both directions live, are a real step up: save those for project two.
+
+## Where to go next
+
+Voice input pairs naturally with [Extracting meaning from text](/learning/extracting-meaning-from-text): transcribe, then structure. And if you want the voice attached to a character, [Generating images](/learning/generating-images) covers giving it a face.

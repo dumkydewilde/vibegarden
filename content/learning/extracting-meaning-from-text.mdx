@@ -1,0 +1,37 @@
+---
+title: Extracting meaning from text
+description: Names, topics, and feelings hide inside messy text. Pulling them out turns a pile of words into a table you can count, chart, and search.
+category: Working with data
+level: hands-on
+order: 2
+---
+
+A lot of the most interesting data is not in a spreadsheet. It is in survey answers, reviews, emails, meeting notes, WhatsApp exports: text. The move that unlocks all of it is the same every time: extract structure from the words, then treat the result as data.
+
+## The three classic extractions
+
+These have academic names, but the ideas are homely:
+
+- **Named entity recognition (NER)**: find the names in the text. People, places, organizations, dates, amounts. "Maria from the Rotterdam office signed on March 3rd" contains a person, a place, and a date.
+- **Topic extraction**: what is this text about? Tag each piece with a few topics ("parking", "opening hours", "pricing") so you can group and count them.
+- **Sentiment analysis**: is the tone positive, negative, or neutral? Blunt, but powerful in aggregate: "complaints about the new schedule are 80% negative, and here are the five angriest quotes."
+
+Each of these used to require a specialized model and someone to wire it up. Now one LLM call does all three at once: hand it the text, describe the columns you want back, and ask for structured output (a table, or JSON). This is exactly the "transformation" sweet spot from [What is an LLM, really?](/learning/what-is-an-llm): the answer is already in the input, the model just reshapes it.
+
+## A concrete example
+
+Say your sports club ran a survey and got 200 free-text answers. The prompt is essentially:
+
+> For each answer, give me: the main topic (one of: training, facilities, fees, social), the sentiment (positive / negative / mixed), any person or place mentioned, and the single most quotable sentence.
+
+Two hundred blobs of text become a 200-row table. Now you can count topics, chart sentiment per topic, and pull real quotes for the newsletter. That last step, from table to insight, is ordinary data work, and it is where projects get fun.
+
+## The honest caveats
+
+- **Spot-check a sample.** Read ten rows against the original text before you trust two hundred. Extraction is usually right, but "usually" deserves a look.
+- **Sentiment is crude.** Sarcasm, Dutch understatement ("niet slecht"), and mixed feelings all get flattened. Use it for trends across many texts, not verdicts on one.
+- **Define your categories first.** If you let the model invent topics per answer you get forty near-duplicates. Give it a short fixed list, plus "other".
+
+## Where to go next
+
+The extracted table needs a home: [Storing your data](/learning/store-data-sheets-vs-database) helps you choose one. For inspiration on how far this idea stretches, look at the film dialogue project on the [Inspiration](/inspiration) page: thousands of screenplays, reduced to who speaks how much, became one of the most shared data stories ever made.
