@@ -19,7 +19,13 @@ export function ParagraphWithAsk(props: React.ComponentProps<"p">) {
   };
 
   return (
-    <p ref={ref} className="group relative" {...props}>
+    <p
+      ref={ref}
+      // The before: strip extends the hover area into the left margin so the
+      // bubble stays visible while the cursor travels to it.
+      className="group relative before:absolute before:top-0 before:-left-12 before:h-full before:w-12 before:content-['']"
+      {...props}
+    >
       {props.children}
       <button
         type="button"

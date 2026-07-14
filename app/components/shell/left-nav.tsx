@@ -1,4 +1,4 @@
-import { NavLink } from "react-router";
+import { Link, useLocation } from "react-router";
 import { PanelLeftClose, PanelLeftOpen, Sprout } from "lucide-react";
 import { useState } from "react";
 import { navItems } from "~/lib/nav";
@@ -7,12 +7,14 @@ import { Button } from "~/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
 
 export function LeftNav() {
   const [collapsed, setCollapsed] = useState(false);
+  const { pathname } = useLocation();
 
   return (
     <nav
@@ -22,42 +24,48 @@ export function LeftNav() {
         collapsed ? "w-14" : "w-52",
       )}
     >
-      <NavLink
+      <Link
         to="/"
         className="flex h-14 items-center gap-2 border-b px-4 font-serif text-lg"
       >
         <Sprout className="size-5 shrink-0 text-primary" />
         {!collapsed && <span>Vibe Garden</span>}
-      </NavLink>
+      </Link>
 
-      <ul className="flex flex-1 flex-col gap-1 p-2">
-        {navItems.map((item) => (
-          <li key={item.to}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <NavLink
-                  to={item.to}
-                  end={item.to === "/"}
-                  className={({ isActive }) =>
-                    cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-                      isActive
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                        : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-                    )
-                  }
-                >
-                  <item.icon className="size-4 shrink-0" />
-                  {!collapsed && <span>{item.label}</span>}
-                </NavLink>
-              </TooltipTrigger>
-              {collapsed && (
-                <TooltipContent side="right">{item.label}</TooltipContent>
-              )}
-            </Tooltip>
-          </li>
-        ))}
-      </ul>
+      <TooltipProvider>
+        <ul className="flex flex-1 flex-col gap-1 p-2">
+          {navItems.map((item) => {
+            const isActive =
+              item.to === "/"
+                ? pathname === "/"
+                : pathname.startsWith(item.to);
+            return (
+              <li key={item.to}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link
+                      to={item.to}
+                      aria-current={isActive ? "page" : undefined}
+                      className={cn(
+                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                        isActive
+                          ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                          : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                      )}
+                    >
+                      <item.icon className="size-4 shrink-0" />
+                      {!collapsed && <span>{item.label}</span>}
+                    </Link>
+                  </TooltipTrigger>
+                  {collapsed && (
+                    <TooltipContent side="right">{item.label}</TooltipContent>
+                  )}
+                </Tooltip>
+              </li>
+            );
+          })}
+        </ul>
+      </TooltipProvider>
 
       <div
         className={cn(

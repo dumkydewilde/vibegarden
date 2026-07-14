@@ -4,15 +4,15 @@ Tracking convention: this file is the single source of truth for progress.
 Check items off as they land. One section per building block. Details live in
 `docs/plans/`, decisions in `docs/adr/`, the spec in `docs/specs/`.
 
-## Phase 1: UI framework (in progress)
+## Phase 1: UI framework (done, 2026-07-14)
 
 - [x] Scaffold React Router 7 (framework mode) on Cloudflare Workers
-- [ ] Design system: Tufte-garden theme, Merriweather/Roboto, light + dark
-- [ ] App shell: responsive left nav, page header
-- [ ] Gardener sidebar (static UI): chat shell, context chips, model picker
-- [ ] MDX learning pipeline + 3 sample articles, paragraph-level ask stub
-- [ ] Section pages: home, garden, artifacts, gallery, inspiration, admin, join
-- [ ] Build, typecheck, tests green; browser pass mobile + desktop
+- [x] Design system: Tufte-garden theme, Merriweather/Roboto, light + dark
+- [x] App shell: responsive left nav, page header
+- [x] Gardener sidebar (static UI): chat shell, context chips, model picker
+- [x] MDX learning pipeline + 3 sample articles, paragraph-level ask
+- [x] Section pages: home, garden, artifacts, gallery, inspiration, admin, join
+- [x] Build, typecheck, tests green; browser pass mobile + desktop, light + dark
 
 ## Phase 2: Auth, invites, admin
 

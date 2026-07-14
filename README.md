@@ -1,79 +1,50 @@
-# Welcome to React Router!
+# Vibe Garden
 
-A modern, production-ready template for building full-stack React applications using React Router.
+A friendly workshop environment for learning to build with AI/LLMs, together.
+Learning articles, an agent helper (The Gardener), a project space (Idea
+Garden), artifacts, a gallery, and inspiration. Built for a summer workshop
+with 10-15 friends.
 
-## Features
+- **Spec:** [docs/specs/2026-07-14-vibe-garden-design.md](docs/specs/2026-07-14-vibe-garden-design.md)
+- **Progress:** [docs/ROADMAP.md](docs/ROADMAP.md)
 
-- 🚀 Server-side rendering
-- ⚡️ Hot Module Replacement (HMR)
-- 📦 Asset bundling and optimization
-- 🔄 Data loading and mutations
-- 🔒 TypeScript by default
-- 🎉 TailwindCSS for styling
-- 📖 [React Router docs](https://reactrouter.com/)
+## Stack
 
-## Getting Started
+React Router 7 (framework mode) on Cloudflare Workers, Tailwind v4 +
+shadcn/ui, MDX content, Vitest. Later phases add D1 (auth, projects), R2
+(uploads), and an OpenRouter-backed agent.
 
-### Installation
+## Develop
 
-Install the dependencies:
-
-```bash
+```sh
 npm install
+npm run dev        # dev server on :5173 (workerd runtime)
+npm test           # vitest
+npm run typecheck  # react-router typegen + tsc
 ```
 
-### Development
+## Content
 
-Start the development server with HMR:
+Learning articles are MDX files in `content/learning/`. Drop in a file with
+frontmatter and it appears on the site:
 
-```bash
-npm run dev
-```
-
-Your application will be available at `http://localhost:5173`.
-
-## Previewing the Production Build
-
-Preview the production build locally:
-
-```bash
-npm run preview
-```
-
-## Building for Production
-
-Create a production build:
-
-```bash
-npm run build
-```
-
-## Deployment
-
-Deployment is done using the Wrangler CLI.
-
-To build and deploy directly to production:
-
-```sh
-npm run deploy
-```
-
-To deploy a preview URL:
-
-```sh
-npx wrangler versions upload
-```
-
-You can then promote a version to production after verification or roll it out progressively.
-
-```sh
-npx wrangler versions deploy
-```
-
-## Styling
-
-This template comes with [Tailwind CSS](https://tailwindcss.com/) already configured for a simple default starting experience. You can use whatever CSS framework you prefer.
-
+```mdx
+---
+title: My article
+description: One sentence that sells it.
+category: Foundations
+level: starter
+order: 3
 ---
 
-Built with ❤️ using React Router.
+Body in markdown...
+```
+
+## Deploy
+
+```sh
+npm run deploy     # build + wrangler deploy
+```
+
+Secrets (later phases): copy `.dev.vars.example` to `.dev.vars` for local dev;
+`wrangler secret put` for production.
