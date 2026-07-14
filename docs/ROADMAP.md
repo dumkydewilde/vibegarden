@@ -41,6 +41,28 @@ Check items off as they land. One section per building block. Details live in
 - [ ] Later: markdown-linked article suggestions could auto-load raw article
       content server-side (tool use); Gardener as MCP server
 
+## Gardener tools (decided 2026-07-14, build alongside phases 4-5)
+
+- [ ] Web access toggle: OpenRouter web plugin (`:online` / plugins param),
+      globe toggle in the composer, off by default (costs per search)
+- [ ] Tool-calling loop in api/chat (Kimi/DeepSeek/Qwen support tools;
+      free Gemma does not: degrade gracefully)
+- [ ] First-party tools: `read_article(slug)` (full text on demand),
+      `read_module(slug)` (module know-how, see below), `fetch_page(url)`
+- [ ] Module know-how as content: `content/modules/*.mdx` (what it is, when
+      to use it, setup steps, options and costs). Feeds the module drill-down
+      pages in the Idea Garden AND the Gardener's `read_module` tool
+- [ ] Data analysis, workshop-native: DuckDB-WASM in the browser. The
+      Gardener writes SQL, the participant's browser runs it against their
+      uploaded CSV, results return to the chat. No server compute, data
+      stays on their machine
+- [ ] MotherDuck MCP for shared/persistent datasets across participants.
+      Note: MotherDuck supports agent-created accounts that a user can later
+      claim by POSTing to new.motherduck.com, so the Gardener can provision
+      a database mid-brainstorm and hand it over
+- [ ] Same milestone: expose the Gardener as an MCP server so participants
+      can continue their project in Claude Code/Codex
+
 ## Phase 4: Idea Garden + progressive flow
 
 - [ ] Pre-workshop questionnaire (interactive)
