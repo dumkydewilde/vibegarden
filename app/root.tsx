@@ -10,25 +10,34 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 
-export const links: Route.LinksFunction = () => [
-  { rel: "preconnect", href: "https://fonts.googleapis.com" },
-  {
-    rel: "preconnect",
-    href: "https://fonts.gstatic.com",
-    crossOrigin: "anonymous",
-  },
-  {
-    rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap",
-  },
-];
+export function loader({ request }: Route.LoaderArgs) {
+  const cookie = request.headers.get("Cookie") ?? "";
+  const theme = /vg-theme=dark/.test(cookie)
+    ? "dark"
+    : /vg-theme=light/.test(cookie)
+      ? "light"
+      : null;
+  return { theme };
+}
+
+// Applies the stored or system theme before hydration so there is no flash
+// of the wrong theme. Runs once, inline, in <head>.
+const themeScript = `
+(function () {
+  var m = document.cookie.match(/vg-theme=(dark|light)/);
+  var dark = m ? m[1] === "dark"
+    : window.matchMedia("(prefers-color-scheme: dark)").matches;
+  if (dark) document.documentElement.classList.add("dark");
+})();
+`;
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <Meta />
         <Links />
       </head>
@@ -54,7 +63,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     message = error.status === 404 ? "404" : "Error";
     details =
       error.status === 404
-        ? "The requested page could not be found."
+        ? "This path leads nowhere in the garden."
         : error.statusText || details;
   } else if (import.meta.env.DEV && error && error instanceof Error) {
     details = error.message;
@@ -62,11 +71,14 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   }
 
   return (
-    <main className="pt-16 p-4 container mx-auto">
-      <h1>{message}</h1>
-      <p>{details}</p>
+    <main className="mx-auto max-w-xl px-4 pt-24 text-center">
+      <h1 className="text-4xl">{message}</h1>
+      <p className="mt-4 text-muted-foreground">{details}</p>
+      <a href="/" className="mt-6 inline-block text-primary underline">
+        Back to the garden
+      </a>
       {stack && (
-        <pre className="w-full p-4 overflow-x-auto">
+        <pre className="mt-8 w-full overflow-x-auto p-4 text-left text-xs">
           <code>{stack}</code>
         </pre>
       )}
