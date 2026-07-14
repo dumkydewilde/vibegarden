@@ -59,8 +59,8 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
   };
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <div className="mb-6">
+    <div className="mx-auto max-w-[70ch]">
+      <div className="mb-10">
         <Link
           to="/garden"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
@@ -68,10 +68,12 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
           <ArrowLeft className="size-3.5" />
           Idea Garden
         </Link>
-        <h1 className="mt-2 text-2xl">{loaderData.title}</h1>
+        <h1 className="mt-4 text-3xl leading-tight md:text-4xl">
+          {loaderData.title}
+        </h1>
       </div>
 
-      <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
+      <div className="flex flex-col gap-6">
         {loaderData.messages.map((m) => (
           <ChatMessageBubble key={m.id} message={m} />
         ))}
