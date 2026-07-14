@@ -1,6 +1,7 @@
 import { Link } from "react-router";
-import { ArrowRight, BookOpen, Lightbulb, Sprout } from "lucide-react";
+import { ArrowRight, BookOpen, Lightbulb, MessageCircleQuestion, Sprout } from "lucide-react";
 import type { Route } from "./+types/home";
+import { useGardener } from "~/components/gardener/gardener-provider";
 import {
   Card,
   CardDescription,
@@ -43,6 +44,15 @@ const starterPaths = [
 ] as const;
 
 export default function Home() {
+  const { ask, busy, setOpen } = useGardener();
+
+  const talkToTheManager = () => {
+    setOpen(true);
+    if (!busy) {
+      ask("What the hell is this garden thing? Can I talk to the manager?");
+    }
+  };
+
   return (
     <div className="mx-auto max-w-3xl">
       <section className="pt-6 md:pt-16">
@@ -77,13 +87,28 @@ export default function Home() {
             </Card>
           </Link>
         ))}
+        <button type="button" onClick={talkToTheManager} className="group text-left">
+          <Card className="border-primary/30 bg-accent/60 transition-colors group-hover:border-primary/60">
+            <CardHeader>
+              <div className="flex items-start gap-4">
+                <MessageCircleQuestion className="mt-1 size-5 shrink-0 text-primary" />
+                <div className="flex-1">
+                  <CardTitle className="flex items-center gap-2 font-serif text-lg font-normal">
+                    What the hell is this garden thing? Can I talk to the
+                    manager?
+                    <ArrowRight className="size-4 opacity-0 transition-opacity group-hover:opacity-100" />
+                  </CardTitle>
+                  <CardDescription className="mt-1.5 leading-relaxed">
+                    You can. The manager is The Gardener, the friendly AI in
+                    the side panel. It knows every corner of this place, so go
+                    ahead and ask it exactly that.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+        </button>
       </section>
-
-      <p className="mt-12 border-t pt-6 text-sm text-muted-foreground">
-        The Gardener lives in the panel on the right and knows everything in
-        the learning section. Whatever page you are on, you can bring what you
-        are reading into the conversation.
-      </p>
     </div>
   );
 }
