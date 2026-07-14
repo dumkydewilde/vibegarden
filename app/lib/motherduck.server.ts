@@ -88,7 +88,14 @@ export async function queryFreshReads(
   });
   await client.connect();
   try {
-    await client.query(`ATTACH IF NOT EXISTS '${SHARE_URL}' AS dumky_share`);
+    try {
+      await client.query(`ATTACH IF NOT EXISTS '${SHARE_URL}' AS dumky_share`);
+    } catch {
+      // Shares are region-scoped, so an eu-central-1 account cannot attach
+      // this us-east-1 share. There the account holds a synced copy under
+      // the same qualified name (scripts/sync-fresh-reads.sh); the query
+      // below finds it, or fails with the real error.
+    }
     const { rows } = await client.query(buildFreshReadsSql(query));
     return rows.map((row: Record<string, string | null>) => ({
       title: row.title ?? "",

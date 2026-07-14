@@ -1,0 +1,95 @@
+- generic [ref=e2]:
+  - navigation "Main" [ref=e3]:
+    - link "Vibe Garden" [ref=e4] [cursor=pointer]:
+      - /url: /
+      - img [ref=e5]
+      - generic [ref=e8]: Vibe Garden
+    - list [ref=e9]:
+      - listitem [ref=e10]:
+        - link "Home" [ref=e11] [cursor=pointer]:
+          - /url: /
+          - img [ref=e12]
+          - generic [ref=e15]: Home
+      - listitem [ref=e16]:
+        - link "Idea Garden" [ref=e17] [cursor=pointer]:
+          - /url: /garden
+          - img [ref=e18]
+          - generic [ref=e21]: Idea Garden
+      - listitem [ref=e22]:
+        - link "Learning" [ref=e23] [cursor=pointer]:
+          - /url: /learning
+          - img [ref=e24]
+          - generic [ref=e26]: Learning
+      - listitem [ref=e27]:
+        - link "Artifacts" [ref=e28] [cursor=pointer]:
+          - /url: /artifacts
+          - img [ref=e29]
+          - generic [ref=e32]: Artifacts
+      - listitem [ref=e33]:
+        - link "Gallery" [ref=e34] [cursor=pointer]:
+          - /url: /gallery
+          - img [ref=e35]
+          - generic [ref=e40]: Gallery
+      - listitem [ref=e41]:
+        - link "Inspiration" [ref=e42] [cursor=pointer]:
+          - /url: /inspiration
+          - img [ref=e43]
+          - generic [ref=e45]: Inspiration
+      - listitem [ref=e46]:
+        - link "Admin" [ref=e47] [cursor=pointer]:
+          - /url: /admin
+          - img [ref=e48]
+          - generic [ref=e60]: Admin
+    - generic [ref=e61]:
+      - generic "dumky@motherduck.com" [ref=e62]: Dumky de Wilde
+      - button "Sign out" [ref=e64]:
+        - img
+    - generic [ref=e65]:
+      - button "Toggle theme" [ref=e66]:
+        - img
+      - button "Collapse navigation" [ref=e67]:
+        - img
+  - main [ref=e68]:
+    - generic [ref=e69]:
+      - generic [ref=e70]:
+        - heading "Welcome to the Vibe Garden" [level=1] [ref=e71]
+        - paragraph [ref=e72]: "A friendly place to learn what AI can do and build something real with it. There is no fixed path here: read a little, try a little, and ask The Gardener whenever you get stuck."
+      - generic [ref=e73]:
+        - link "Start with the basics Short reads on LLMs, agents, and how digital products come together. Pick what sounds interesting, skip what does not." [ref=e74] [cursor=pointer]:
+          - /url: /learning
+          - generic [ref=e77]:
+            - img [ref=e78]
+            - generic [ref=e80]:
+              - generic [ref=e81]:
+                - text: Start with the basics
+                - img [ref=e82]
+              - generic [ref=e84]: Short reads on LLMs, agents, and how digital products come together. Pick what sounds interesting, skip what does not.
+        - link "Plant your first idea Brainstorm a project with The Gardener. It asks questions, suggests building blocks, and helps you find something worth making." [ref=e85] [cursor=pointer]:
+          - /url: /garden
+          - generic [ref=e88]:
+            - img [ref=e89]
+            - generic [ref=e92]:
+              - generic [ref=e93]:
+                - text: Plant your first idea
+                - img [ref=e94]
+              - generic [ref=e96]: Brainstorm a project with The Gardener. It asks questions, suggests building blocks, and helps you find something worth making.
+        - link "Browse inspiration Public datasets to play with, problems that could use a tool, and stories of what others have built with AI." [ref=e97] [cursor=pointer]:
+          - /url: /inspiration
+          - generic [ref=e100]:
+            - img [ref=e101]
+            - generic [ref=e103]:
+              - generic [ref=e104]:
+                - text: Browse inspiration
+                - img [ref=e105]
+              - generic [ref=e107]: Public datasets to play with, problems that could use a tool, and stories of what others have built with AI.
+        - button "What the hell is this garden thing? Can I talk to the manager? You can. The manager is The Gardener, the friendly AI in the side panel. It knows every corner of this place, so go ahead and ask it exactly that." [ref=e108]:
+          - generic [ref=e111]:
+            - img [ref=e112]
+            - generic [ref=e115]:
+              - generic [ref=e116]:
+                - text: What the hell is this garden thing? Can I talk to the manager?
+                - img [ref=e117]
+              - generic [ref=e119]: You can. The manager is The Gardener, the friendly AI in the side panel. It knows every corner of this place, so go ahead and ask it exactly that.
+  - button "Ask the Gardener" [ref=e120]:
+    - img
+    - text: Ask the Gardener
