@@ -9,7 +9,11 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { requireUser } from "~/lib/auth.server";
 import { createProject } from "~/lib/projects.server";
-import { getThread, parseContext } from "~/lib/threads.server";
+import {
+  getThread,
+  parseContext,
+  tagThreadWithProject,
+} from "~/lib/threads.server";
 
 export function meta({ data }: Route.MetaArgs) {
   return [
@@ -46,6 +50,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     title: thread.thread.title ?? "A budding idea",
     threadId: thread.thread.id,
   });
+  await tagThreadWithProject(env, user.id, thread.thread.id, project.id);
   return redirect(`/garden/projects/${project.id}`);
 }
 

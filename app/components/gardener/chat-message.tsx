@@ -1,15 +1,32 @@
-import { Sprout } from "lucide-react";
+import { BookOpen, Sprout } from "lucide-react";
 import Markdown from "react-markdown";
 import { Link } from "react-router";
 import { ContextQuote } from "./context-quote";
 import type { ChatMessage } from "./gardener-provider";
+import { getArticle } from "~/lib/content";
 import { cn } from "~/lib/utils";
 
-// Internal links go through the router; external ones open a new tab.
+/**
+ * Links in replies: learning articles become little cards so they stand
+ * apart from web URLs; other internal links go through the router.
+ */
 function MdLink({
   href,
   children,
 }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+  const articleSlug = href?.match(/^\/learning\/([\w-]+)$/)?.[1];
+  const article = articleSlug ? getArticle(articleSlug) : undefined;
+  if (article) {
+    return (
+      <Link
+        to={href!}
+        className="my-0.5 inline-flex max-w-full items-center gap-1.5 rounded-md border bg-card px-2 py-1 align-middle text-xs font-medium text-foreground no-underline shadow-xs transition-colors hover:border-primary/50"
+      >
+        <BookOpen className="size-3.5 shrink-0 text-primary" />
+        <span className="truncate">{article.meta.title}</span>
+      </Link>
+    );
+  }
   if (href?.startsWith("/")) {
     return (
       <Link to={href} className="text-primary underline underline-offset-2">

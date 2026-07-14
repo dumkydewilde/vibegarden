@@ -11,7 +11,11 @@ import {
   type WireMessage,
 } from "~/lib/gardener.server";
 import { findModel, defaultModel } from "~/lib/models";
-import { ensureThread, saveMessage } from "~/lib/threads.server";
+import {
+  ensureThread,
+  saveMessage,
+  tagThreadWithProject,
+} from "~/lib/threads.server";
 import { users } from "~/db/schema";
 
 type ChatRequest = {
@@ -20,6 +24,8 @@ type ChatRequest = {
   context?: WireContextItem[];
   /** Pathname the user is currently viewing, e.g. /learning/what-is-an-llm */
   page?: string;
+  /** When project context is attached, ties this conversation to it. */
+  projectId?: string;
 };
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -55,6 +61,9 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   const db = getDb(env);
   const thread = await ensureThread(db, user.id);
+  if (typeof body.projectId === "string") {
+    await tagThreadWithProject(env, user.id, thread.id, body.projectId);
+  }
   await saveMessage(
     db,
     thread,

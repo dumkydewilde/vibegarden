@@ -16,6 +16,8 @@ export type ContextItem = {
   /** What gets sent to the model: page content, a paragraph, etc. */
   content: string;
   kind: "page" | "article" | "paragraph" | "project";
+  /** For project context: ties the conversation to that project. */
+  projectId?: string;
 };
 
 /** Context that was attached to a sent message, for display. */
@@ -129,6 +131,7 @@ export function GardenerProvider({
     const sentContext = contextRef.current.map(
       ({ kind, label, content }) => ({ kind, label, content }),
     );
+    const projectId = contextRef.current.find((i) => i.projectId)?.projectId;
     const userMsg: ChatMessage = {
       id: uid(),
       role: "user",
@@ -166,6 +169,7 @@ export function GardenerProvider({
           model: modelRef.current.id,
           page: pathnameRef.current,
           context: sentContext,
+          projectId,
         }),
       });
       if (!res.ok || !res.body) {

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { getDb, type Db } from "./db.server";
 import { chatMessages, chatThreads } from "~/db/schema";
 
@@ -31,12 +31,13 @@ export async function latestThread(db: Db, userId: string) {
   return rows[0];
 }
 
-async function createThread(db: Db, userId: string) {
+async function createThread(db: Db, userId: string, projectId?: string) {
   const now = Date.now();
   const thread = {
     id: crypto.randomUUID(),
     userId,
     title: null,
+    projectId: projectId ?? null,
     createdAt: now,
     updatedAt: now,
   };
@@ -48,8 +49,59 @@ export async function ensureThread(db: Db, userId: string) {
   return (await latestThread(db, userId)) ?? createThread(db, userId);
 }
 
-export async function newThread(env: Env, userId: string) {
-  return createThread(getDb(env), userId);
+export async function newThread(env: Env, userId: string, projectId?: string) {
+  return createThread(getDb(env), userId, projectId);
+}
+
+/** Marks a thread as belonging to a project (first project wins). */
+export async function tagThreadWithProject(
+  env: Env,
+  userId: string,
+  threadId: string,
+  projectId: string,
+) {
+  await getDb(env)
+    .update(chatThreads)
+    .set({ projectId })
+    .where(
+      and(
+        eq(chatThreads.id, threadId),
+        eq(chatThreads.userId, userId),
+        isNull(chatThreads.projectId),
+      ),
+    );
+}
+
+/** Non-empty conversations that belong to a project, newest first. */
+export async function listProjectThreads(
+  env: Env,
+  userId: string,
+  projectId: string,
+  primaryThreadId?: string | null,
+) {
+  const db = getDb(env);
+  return db
+    .select({
+      id: chatThreads.id,
+      title: chatThreads.title,
+      updatedAt: chatThreads.updatedAt,
+      messageCount: sql<number>`count(${chatMessages.id})`,
+    })
+    .from(chatThreads)
+    .innerJoin(chatMessages, eq(chatMessages.threadId, chatThreads.id))
+    .where(
+      and(
+        eq(chatThreads.userId, userId),
+        primaryThreadId
+          ? or(
+              eq(chatThreads.projectId, projectId),
+              eq(chatThreads.id, primaryThreadId),
+            )
+          : eq(chatThreads.projectId, projectId),
+      ),
+    )
+    .groupBy(chatThreads.id)
+    .orderBy(desc(chatThreads.updatedAt));
 }
 
 /** The active (latest) thread and its messages, for the sidebar. */

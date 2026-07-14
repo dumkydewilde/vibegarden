@@ -46,6 +46,8 @@ export const chatThreads = sqliteTable("chat_threads", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   title: text("title"),
+  /** Set when the conversation belongs to a project in the Idea Garden. */
+  projectId: text("project_id"),
   createdAt: integer("created_at").notNull(),
   /** Bumped on every message and on "continue"; newest thread is active. */
   updatedAt: integer("updated_at").notNull().default(0),

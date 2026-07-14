@@ -34,7 +34,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     return Response.json({ ok: true, threadId });
   }
 
-  const thread = await newThread(env, user.id);
+  const thread = await newThread(env, user.id, projectId);
   if (projectId) {
     await getDb(env)
       .update(projects)

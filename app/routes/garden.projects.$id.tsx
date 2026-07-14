@@ -5,7 +5,7 @@ import {
   useNavigation,
   useSearchParams,
 } from "react-router";
-import { ArrowLeft, MessageCircle, Trash2 } from "lucide-react";
+import { ArrowLeft, MessageCircle, Sprout, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Route } from "./+types/garden.projects.$id";
 import { cloudflareContext } from "~/lib/context";
@@ -37,7 +37,7 @@ import {
   updateProject,
 } from "~/lib/projects.server";
 import { statusLabel } from "~/lib/project-status";
-import { getThread } from "~/lib/threads.server";
+import { listProjectThreads } from "~/lib/threads.server";
 import { cn } from "~/lib/utils";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -49,15 +49,13 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   const user = await requireUser(env, request);
   const project = await getProject(env, user.id, params.id);
   if (!project) throw new Response("Project not found", { status: 404 });
-  const thread = project.threadId
-    ? await getThread(env, user.id, project.threadId)
-    : null;
-  return {
-    project,
-    conversation: thread
-      ? { id: thread.thread.id, title: thread.thread.title }
-      : null,
-  };
+  const conversations = await listProjectThreads(
+    env,
+    user.id,
+    project.id,
+    project.threadId,
+  );
+  return { project, conversations };
 }
 
 export async function action({ request, context, params }: Route.ActionArgs) {
@@ -90,9 +88,9 @@ export default function ProjectDetail({
   loaderData,
   actionData,
 }: Route.ComponentProps) {
-  const { project, conversation } = loaderData;
+  const { project, conversations } = loaderData;
   const navigation = useNavigation();
-  const { plantProject } = useGardener();
+  const { plantProject, addContext } = useGardener();
   const [searchParams, setSearchParams] = useSearchParams();
   const kickoffStarted = useRef(false);
   const busy = navigation.state === "submitting";
@@ -136,7 +134,32 @@ export default function ProjectDetail({
         Idea Garden
       </Link>
 
-      <PageHeader title={project.title} description={project.oneLiner ?? undefined} />
+      <PageHeader title={project.title} description={project.oneLiner ?? undefined}>
+        <Button
+          variant="outline"
+          className="gap-1.5"
+          onClick={() =>
+            addContext({
+              kind: "project",
+              label: project.title,
+              projectId: project.id,
+              content: [
+                `Project: ${project.title}`,
+                project.oneLiner ? `Idea: ${project.oneLiner}` : null,
+                project.moduleList.length > 0
+                  ? `Building blocks: ${project.moduleList.join(", ")}`
+                  : null,
+                `Stage: ${project.status}`,
+              ]
+                .filter(Boolean)
+                .join("\n"),
+            })
+          }
+        >
+          <Sprout className="size-4" />
+          Discuss with The Gardener
+        </Button>
+      </PageHeader>
 
       <Card>
         <CardHeader>
@@ -224,17 +247,30 @@ export default function ProjectDetail({
         </CardContent>
       </Card>
 
-      {conversation && (
-        <p className="mt-6 text-sm text-muted-foreground">
-          <MessageCircle className="mr-1.5 inline size-3.5" />
-          Grown from{" "}
-          <Link
-            to={`/garden/conversations/${conversation.id}`}
-            className="text-primary underline underline-offset-2"
-          >
-            {conversation.title ?? "a conversation with The Gardener"}
-          </Link>
-        </p>
+      {conversations.length > 0 && (
+        <section className="mt-8">
+          <h2 className="flex items-center gap-2 text-lg">
+            <MessageCircle className="size-4 text-primary" />
+            Conversations about this project
+          </h2>
+          <ul className="mt-3 divide-y rounded-lg border">
+            {conversations.map((c) => (
+              <li key={c.id}>
+                <Link
+                  to={`/garden/conversations/${c.id}`}
+                  className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-accent/40"
+                >
+                  <span className="min-w-0 truncate text-sm">
+                    {c.title ?? "Untitled conversation"}
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {c.messageCount} messages
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       <div className="mt-10 border-t pt-6">
