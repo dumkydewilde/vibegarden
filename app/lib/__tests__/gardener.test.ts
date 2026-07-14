@@ -57,6 +57,18 @@ describe("trimHistory", () => {
     expect(trimmed.length).toBe(HISTORY_LIMIT);
     expect(trimmed[trimmed.length - 1].content).toBe("msg 99");
   });
+
+  it("strips tool notes from assistant turns, not user turns", () => {
+    const trimmed = trimHistory([
+      {
+        role: "assistant",
+        content: "Sure.\n\n[[tool:article:what-is-an-llm]]\n\nHere it is.",
+      },
+      { role: "user", content: "[[tool:article:keep-me]]" },
+    ]);
+    expect(trimmed[0].content).toBe("Sure.\n\nHere it is.");
+    expect(trimmed[1].content).toBe("[[tool:article:keep-me]]");
+  });
 });
 
 /** Byte stream from string chunks, to exercise buffering across boundaries. */

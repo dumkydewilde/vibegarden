@@ -11,9 +11,9 @@ import {
   type WireMessage,
 } from "~/lib/gardener.server";
 import {
-  describeToolCall,
   executeTool,
   toolDefinitions,
+  toolNoteFor,
 } from "~/lib/gardener-tools.server";
 import { findModel, defaultModel } from "~/lib/models";
 import {
@@ -168,9 +168,9 @@ export async function action({ request, context }: Route.ActionArgs) {
             })),
           });
           for (const call of result.toolCalls) {
-            // Tool activity shows up in the transcript as a small aside.
+            // Tool activity renders as its own little bubble client-side.
             emit(
-              `${full && !full.endsWith("\n\n") ? "\n\n" : ""}*${describeToolCall(call)}*\n\n`,
+              `${full && !full.endsWith("\n\n") ? "\n\n" : ""}${toolNoteFor(call)}\n\n`,
             );
             upstreamMessages.push({
               role: "tool",

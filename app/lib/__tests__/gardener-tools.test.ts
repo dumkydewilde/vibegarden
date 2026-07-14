@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  describeToolCall,
   executeTool,
   htmlToText,
+  toolNoteFor,
 } from "~/lib/gardener-tools.server";
 
 const call = (name: string, args: object) => ({
@@ -64,16 +64,25 @@ describe("htmlToText", () => {
   });
 });
 
-describe("describeToolCall", () => {
-  it("names the article being read", () => {
-    expect(
-      describeToolCall(call("read_article", { slug: "what-is-an-llm" })),
-    ).toBe('reading "What is an LLM, really?"');
+describe("toolNoteFor", () => {
+  it("emits a card note for a known article or module", () => {
+    expect(toolNoteFor(call("read_article", { slug: "what-is-an-llm" }))).toBe(
+      "[[tool:article:what-is-an-llm]]",
+    );
+    expect(toolNoteFor(call("read_module", { slug: "google-sheet" }))).toBe(
+      "[[tool:module:google-sheet]]",
+    );
   });
 
-  it("names the host being fetched", () => {
+  it("falls back to a plain note for unknown slugs and pages", () => {
+    expect(toolNoteFor(call("read_article", { slug: "nope" }))).toBe(
+      "[[tool:note:looking for an article]]",
+    );
     expect(
-      describeToolCall(call("fetch_page", { url: "https://example.com/x" })),
-    ).toBe("reading example.com");
+      toolNoteFor(call("fetch_page", { url: "https://example.com/x" })),
+    ).toBe("[[tool:web:example.com]]");
+    expect(toolNoteFor(call("fetch_page", { url: "not a url" }))).toBe(
+      "[[tool:note:fetching a page]]",
+    );
   });
 });

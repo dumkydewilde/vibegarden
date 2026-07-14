@@ -1,5 +1,6 @@
 import { getArticle, getArticleRaw, getArticles } from "./content";
 import { getModule, getModuleRaw, getModules } from "./modules";
+import { toolNote } from "./tool-notes";
 
 /**
  * First-party tools the Gardener can call mid-conversation. Definitions are
@@ -171,30 +172,33 @@ export async function executeTool(call: ToolCall): Promise<string> {
   }
 }
 
-/** A short human-readable line shown in the chat while a tool runs. */
-export function describeToolCall(call: ToolCall): string {
+/**
+ * The tool-note marker streamed into the chat while a tool runs; the UI
+ * turns it into its own little bubble (see app/lib/tool-notes.ts).
+ */
+export function toolNoteFor(call: ToolCall): string {
   const args = parseArgs(call.arguments) ?? {};
   switch (call.name) {
     case "read_article": {
-      const article = getArticle(String(args.slug ?? ""));
-      return article
-        ? `reading "${article.meta.title}"`
-        : "looking for an article";
+      const slug = String(args.slug ?? "");
+      return getArticle(slug)
+        ? toolNote("article", slug)
+        : toolNote("note", "looking for an article");
     }
     case "read_module": {
-      const module = getModule(String(args.slug ?? ""));
-      return module
-        ? `reading up on the ${module.meta.title} building block`
-        : "looking for a building block";
+      const slug = String(args.slug ?? "");
+      return getModule(slug)
+        ? toolNote("module", slug)
+        : toolNote("note", "looking for a building block");
     }
     case "fetch_page": {
       try {
-        return `reading ${new URL(String(args.url ?? "")).hostname}`;
+        return toolNote("web", new URL(String(args.url ?? "")).hostname);
       } catch {
-        return "fetching a page";
+        return toolNote("note", "fetching a page");
       }
     }
     default:
-      return `using ${call.name}`;
+      return toolNote("note", `using ${call.name}`);
   }
 }

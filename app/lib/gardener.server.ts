@@ -1,5 +1,6 @@
 import { getArticle, getArticles } from "./content";
 import { getModule, getModules, modules } from "./modules";
+import { stripToolNotes } from "./tool-notes";
 import type { ToolCall } from "./gardener-tools.server";
 import promptTemplate from "../../content/gardener/system-prompt.md?raw";
 
@@ -97,11 +98,14 @@ export function buildSystemPrompt(
   return prompt;
 }
 
-/** Keep the tail of the conversation within budget. */
+/** Keep the tail of the conversation within budget, minus tool notes. */
 export function trimHistory(messages: WireMessage[]): WireMessage[] {
   return messages.slice(-HISTORY_LIMIT).map((m) => ({
     role: m.role,
-    content: m.content.slice(0, MESSAGE_MAX_CHARS),
+    content: (m.role === "assistant"
+      ? stripToolNotes(m.content)
+      : m.content
+    ).slice(0, MESSAGE_MAX_CHARS),
   }));
 }
 

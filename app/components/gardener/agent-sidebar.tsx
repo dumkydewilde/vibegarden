@@ -1,4 +1,4 @@
-import { Globe, MessageCircle, Send, Sprout, SquarePen, X } from "lucide-react";
+import { Globe, Send, Sprout, SquarePen, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ChatMessageBubble } from "./chat-message";
 import { ContextChips } from "./context-chips";
@@ -145,16 +145,7 @@ export function AgentSidebar() {
   if (isMobile) {
     return (
       <>
-        {!open && (
-          <Button
-            size="icon"
-            aria-label="Open The Gardener"
-            onClick={() => setOpen(true)}
-            className="fixed right-4 bottom-4 z-40 size-12 rounded-full shadow-lg"
-          >
-            <MessageCircle className="size-5" />
-          </Button>
-        )}
+        {!open && <LauncherPill onClick={() => setOpen(true)} />}
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetContent
             side="bottom"
@@ -171,19 +162,33 @@ export function AgentSidebar() {
 
   if (!open) {
     return (
-      <Button
-        variant="outline"
-        size="icon"
-        aria-label="Open The Gardener"
-        onClick={() => setOpen(true)}
-        className="fixed right-4 bottom-4 z-40 hidden size-11 rounded-full shadow-md md:flex"
-      >
-        <MessageCircle className="size-5" />
-      </Button>
+      <LauncherPill onClick={() => setOpen(true)} className="hidden md:flex" />
     );
   }
 
   return <DesktopRail onClose={() => setOpen(false)} />;
+}
+
+function LauncherPill({
+  onClick,
+  className,
+}: {
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <Button
+      aria-label="Ask the Gardener"
+      onClick={onClick}
+      className={cn(
+        "fixed right-4 bottom-4 z-40 h-12 gap-2 rounded-full border border-primary/25 bg-accent px-5 font-serif text-sm text-accent-foreground shadow-lg hover:bg-accent/80",
+        className,
+      )}
+    >
+      <Sprout className="size-5 text-primary" />
+      Ask the Gardener
+    </Button>
+  );
 }
 
 const MIN_WIDTH = 320;
