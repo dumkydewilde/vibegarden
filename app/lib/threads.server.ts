@@ -4,6 +4,23 @@ import { chatMessages, chatThreads } from "~/db/schema";
 
 const TITLE_MAX = 64;
 
+export type StoredContext = {
+  kind: "page" | "article" | "paragraph";
+  label: string;
+  content: string;
+};
+
+/** Stored context JSON on a message row, parsed defensively. */
+export function parseContext(raw: string | null): StoredContext[] | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function latestThread(db: Db, userId: string) {
   const rows = await db
     .select()

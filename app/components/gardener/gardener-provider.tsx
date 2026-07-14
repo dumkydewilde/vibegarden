@@ -18,11 +18,19 @@ export type ContextItem = {
   kind: "page" | "article" | "paragraph";
 };
 
+/** Context that was attached to a sent message, for display. */
+export type ContextSnapshot = {
+  kind: ContextItem["kind"];
+  label: string;
+  content: string;
+};
+
 export type ChatMessage = {
   id: string;
   role: "user" | "gardener";
   text: string;
   error?: boolean;
+  context?: ContextSnapshot[];
 };
 
 type GardenerState = {
@@ -108,9 +116,16 @@ export function GardenerProvider({
   }, []);
 
   const ask = useCallback(async (question: string) => {
-    const userMsg: ChatMessage = { id: uid(), role: "user", text: question };
+    const sentContext = contextRef.current.map(
+      ({ kind, label, content }) => ({ kind, label, content }),
+    );
+    const userMsg: ChatMessage = {
+      id: uid(),
+      role: "user",
+      text: question,
+      context: sentContext.length > 0 ? sentContext : undefined,
+    };
     const assistantId = uid();
-    const sentContext = contextRef.current;
 
     const wireMessages = [...messagesRef.current, userMsg]
       .filter((m) => m.id !== "welcome" && !m.error)
@@ -140,11 +155,7 @@ export function GardenerProvider({
           messages: wireMessages,
           model: modelRef.current.id,
           page: pathnameRef.current,
-          context: sentContext.map(({ kind, label, content }) => ({
-            kind,
-            label,
-            content,
-          })),
+          context: sentContext,
         }),
       });
       if (!res.ok || !res.body) {

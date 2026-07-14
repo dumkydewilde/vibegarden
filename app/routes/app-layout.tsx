@@ -8,7 +8,7 @@ import {
 } from "~/components/gardener/gardener-provider";
 import { AppShell } from "~/components/shell/app-shell";
 import { requireUser } from "~/lib/auth.server";
-import { activeThread } from "~/lib/threads.server";
+import { activeThread, parseContext } from "~/lib/threads.server";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
@@ -18,6 +18,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     id: m.id,
     role: m.role === "assistant" ? ("gardener" as const) : ("user" as const),
     text: m.content,
+    context: parseContext(m.context),
   }));
   return {
     user: {

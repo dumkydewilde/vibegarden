@@ -8,7 +8,7 @@ import { useGardener } from "~/components/gardener/gardener-provider";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { requireUser } from "~/lib/auth.server";
-import { getThread } from "~/lib/threads.server";
+import { getThread, parseContext } from "~/lib/threads.server";
 
 export function meta({ data }: Route.MetaArgs) {
   return [
@@ -30,6 +30,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
       id: m.id,
       role: m.role === "assistant" ? ("gardener" as const) : ("user" as const),
       text: m.content,
+      context: parseContext(m.context),
     })),
   };
 }

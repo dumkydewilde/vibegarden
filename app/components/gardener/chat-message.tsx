@@ -1,6 +1,7 @@
 import { Sprout } from "lucide-react";
 import Markdown from "react-markdown";
 import { Link } from "react-router";
+import { ContextQuote } from "./context-quote";
 import type { ChatMessage } from "./gardener-provider";
 import { cn } from "~/lib/utils";
 
@@ -31,7 +32,16 @@ function MdLink({
 export function ChatMessageBubble({ message }: { message: ChatMessage }) {
   const isGardener = message.role === "gardener";
   return (
-    <div className={cn("flex gap-2.5", !isGardener && "justify-end")}>
+    <div
+      className={cn(
+        "flex flex-col gap-1.5",
+        !isGardener && "items-end",
+      )}
+    >
+      {message.context?.map((item, i) => (
+        <ContextQuote key={i} item={item} className="max-w-[85%]" />
+      ))}
+      <div className={cn("flex w-full gap-2.5", !isGardener && "justify-end")}>
       {isGardener && (
         <div className="mt-1 flex size-6 shrink-0 items-center justify-center rounded-full bg-accent">
           <Sprout className="size-3.5 text-accent-foreground" />
@@ -53,6 +63,7 @@ export function ChatMessageBubble({ message }: { message: ChatMessage }) {
         ) : (
           message.text
         )}
+      </div>
       </div>
     </div>
   );
