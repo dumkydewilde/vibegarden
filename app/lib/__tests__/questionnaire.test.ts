@@ -11,10 +11,37 @@ describe("parseAnswers", () => {
     });
     expect(answers).toEqual({
       subscription: "none",
+      subscriptionOther: null,
       budget: 5,
       devices: ["laptop", "phone"],
       expectations: "A recipe scanner",
     });
+  });
+
+  it("keeps the free-text subscription only for 'other'", () => {
+    const other = parseAnswers({
+      subscription: "other",
+      subscriptionOther: "  Gemini ",
+      devices: ["laptop"],
+    });
+    expect(other?.subscriptionOther).toBe("Gemini");
+
+    const chatgpt = parseAnswers({
+      subscription: "chatgpt",
+      subscriptionOther: "Gemini",
+      devices: ["laptop"],
+    });
+    expect(chatgpt?.subscriptionOther).toBeNull();
+
+    expect(
+      summarizeAnswers({
+        subscription: "other",
+        subscriptionOther: "Gemini",
+        budget: null,
+        devices: ["laptop"],
+        expectations: "",
+      }),
+    ).toContain("Gemini");
   });
 
   it("nulls the budget when they already have a subscription", () => {

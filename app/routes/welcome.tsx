@@ -5,6 +5,7 @@ import type { Route } from "./+types/welcome";
 import { cloudflareContext } from "~/lib/context";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
+import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { requireUser } from "~/lib/auth.server";
 import { getDb } from "~/lib/db.server";
@@ -31,6 +32,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   const answers = parseAnswers({
     subscription: String(form.get("subscription") ?? ""),
+    subscriptionOther: String(form.get("subscriptionOther") ?? ""),
     budget: String(form.get("budget") ?? ""),
     devices: form.getAll("devices").map(String),
     expectations: String(form.get("expectations") ?? ""),
@@ -91,6 +93,7 @@ export default function Welcome({ actionData }: Route.ComponentProps) {
   const navigation = useNavigation();
   const [step, setStep] = useState(0);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [subscriptionOther, setSubscriptionOther] = useState("");
   const [budget, setBudget] = useState<0 | 5 | 20 | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [expectations, setExpectations] = useState("");
@@ -166,6 +169,16 @@ export default function Welcome({ actionData }: Route.ComponentProps) {
                   {label}
                 </OptionCard>
               ))}
+              {subscription === "other" && (
+                <Input
+                  autoFocus
+                  value={subscriptionOther}
+                  onChange={(e) => setSubscriptionOther(e.target.value)}
+                  placeholder="Which one? Gemini, Mistral, ..."
+                  aria-label="Which AI subscription do you have?"
+                  className="mt-1"
+                />
+              )}
             </fieldset>
           )}
 
@@ -262,6 +275,11 @@ export default function Welcome({ actionData }: Route.ComponentProps) {
             {isLast ? (
               <Form method="post">
                 <input type="hidden" name="subscription" value={subscription ?? ""} />
+                <input
+                  type="hidden"
+                  name="subscriptionOther"
+                  value={subscriptionOther}
+                />
                 <input type="hidden" name="budget" value={budget ?? ""} />
                 {devices.map((d) => (
                   <input key={d} type="hidden" name="devices" value={d} />

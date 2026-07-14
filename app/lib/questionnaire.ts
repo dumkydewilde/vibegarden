@@ -1,5 +1,7 @@
 export type QuestionnaireAnswers = {
   subscription: "chatgpt" | "claude" | "other" | "none";
+  /** Which one, when subscription is "other". */
+  subscriptionOther: string | null;
   /** Euros per month they would spend; only asked when subscription is none. */
   budget: 0 | 5 | 20 | null;
   devices: ("laptop" | "phone" | "tablet")[];
@@ -13,12 +15,18 @@ const devices = ["laptop", "phone", "tablet"] as const;
 /** Validates raw form values into a well-formed answers object, or null. */
 export function parseAnswers(raw: {
   subscription?: string;
+  subscriptionOther?: string;
   budget?: string;
   devices?: string[];
   expectations?: string;
 }): QuestionnaireAnswers | null {
   const subscription = subscriptions.find((s) => s === raw.subscription);
   if (!subscription) return null;
+
+  const subscriptionOther =
+    subscription === "other"
+      ? (raw.subscriptionOther ?? "").trim().slice(0, 100) || null
+      : null;
 
   let budget: QuestionnaireAnswers["budget"] = null;
   if (subscription === "none") {
@@ -34,6 +42,7 @@ export function parseAnswers(raw: {
 
   return {
     subscription,
+    subscriptionOther,
     budget,
     devices: chosenDevices,
     expectations: (raw.expectations ?? "").trim().slice(0, 2000),
@@ -53,7 +62,9 @@ export const subscriptionLabel: Record<
 /** One-line summary for the admin view. */
 export function summarizeAnswers(answers: QuestionnaireAnswers): string {
   const parts = [
-    subscriptionLabel[answers.subscription],
+    answers.subscription === "other" && answers.subscriptionOther
+      ? answers.subscriptionOther
+      : subscriptionLabel[answers.subscription],
     answers.budget !== null ? `would pay €${answers.budget}/mo` : null,
     answers.devices.join(" + "),
   ].filter(Boolean);
