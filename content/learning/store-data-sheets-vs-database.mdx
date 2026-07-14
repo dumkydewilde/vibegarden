@@ -1,0 +1,39 @@
+---
+title: "Storing your data: Google Sheet or database?"
+description: Almost every project needs to put data somewhere. When a spreadsheet is plenty, when you want a real database, and how to switch later.
+category: Working with data
+level: hands-on
+order: 1
+---
+
+Sooner or later your project needs to remember things: signups, expenses, recipes, scores, scanned receipts. The question "where do I put my data?" sounds technical but the answer is mostly practical, and for workshop-sized projects there are only two serious contenders.
+
+## The honest default: a Google Sheet
+
+A spreadsheet is a fine database for small things, and it comes with superpowers nothing else has: you can see all your data, edit it by hand, share it with a friend, and make a quick chart, all with zero setup. AI tools can read from and write to a Google Sheet, so "my app stores its data in a sheet" is a perfectly respectable architecture.
+
+A sheet is the right call when:
+
+- You have at most a few thousand rows.
+- One person, or one app, writes at a time.
+- Being able to eyeball and hand-edit the data is a feature, not a risk.
+- The data is not sensitive enough that a mis-shared link would be a disaster.
+
+## When you want a real database
+
+A database is a program whose only job is storing and finding data reliably. The kinds you will meet here, like SQLite and Postgres, speak a language called SQL, and every AI assistant speaks fluent SQL, which makes databases far less scary than they used to be. You describe what you want in plain language, the assistant writes the query.
+
+Reach for a database when:
+
+- **Multiple people or programs write at once.** Sheets get messy here; databases are built for it.
+- **The data has structure worth protecting.** A database can refuse a signup without an email address. A sheet will happily accept a birthday in the price column.
+- **You are past tens of thousands of rows.** Sheets slow down; databases do not notice.
+- **You want history and safety.** Proper backups, and no "someone sorted one column and scrambled every row" incidents.
+
+## The good news: switching later is easy
+
+The classic beginner worry is choosing wrong. But moving from a sheet to a database is a well-worn path: export your sheet as a CSV file, import the CSV into the database, done in an afternoon. Going the other way is just as easy. So do not agonize. Start with the sheet unless you already know several people will hammer on your project at once.
+
+## Try it
+
+A concrete exercise, twenty minutes tops: make a Google Sheet with three columns, `date`, `item`, `amount`, and ten made-up expenses. Then ask an AI assistant to write a summary of your spending per item. You now have a data pipeline, and you understand the first half of every data project ever built. When your project takes shape in the Idea Garden, the CSV and Google Sheet building blocks plug straight into this.

@@ -1,0 +1,40 @@
+---
+title: What is an agent?
+description: When a language model gets tools and a goal, it becomes an agent. What that unlocks, and why people are excited about it.
+category: Foundations
+level: starter
+order: 2
+---
+
+If an LLM is a brilliant intern who can only talk, an agent is that same intern with hands. An agent is a language model that can use tools: search the web, read a file, run a bit of code, look something up in your spreadsheet, send a draft somewhere. Instead of answering in one shot, it works in a loop toward a goal.
+
+## The loop
+
+Every agent, from the simplest to the most elaborate, runs roughly the same cycle:
+
+1. **Look** at the goal and everything gathered so far.
+2. **Decide** the next step: answer now, or use a tool first?
+3. **Act**: call the tool, get the result back.
+4. **Repeat** until the goal is reached or it gets stuck.
+
+That is the whole trick. Ask "how warm will it be at the picnic Saturday?" and a plain LLM guesses. An agent checks a weather service, sees your calendar says the picnic is in Amsterdamse Bos at 14:00, and answers with the actual forecast. Same model, different wiring.
+
+## Tools are the interesting part
+
+A tool is anything the agent is allowed to call: a web search, a database query, a calculator, a camera roll, an email drafter. What tools you give an agent defines what it can do, and just as importantly, what it cannot. An agent with read-only access to your recipe collection can never delete a recipe. Good agent design is mostly deciding which tools to hand over and where a person should stay in the loop, especially for anything that is hard to undo.
+
+## Why now
+
+Two things changed recently. Models got much better at deciding when to use a tool and interpreting what comes back, and a standard called MCP made it easy to plug tools into any model, the way USB made every mouse fit every computer. The result: what took a team of engineers two years ago is now a weekend project. That is not hype, that is most of the reason this workshop exists.
+
+## What this means for your project
+
+When you brainstorm with The Gardener, "agent" is on the menu of shapes your project can take. A rough guide for when to reach for one:
+
+| Your idea sounds like | You probably want |
+| --- | --- |
+| "Turn this into that" (summarize, translate, reformat) | A plain LLM call |
+| "Answer questions about my stuff" | An LLM plus your data |
+| "Find things, check things, do multi-step work" | An agent with a tool or two |
+
+Start with the simplest shape that works. A single well-fed LLM call beats a wobbly five-tool agent, and you can always grow it later. If you have not read [What is an LLM, really?](/learning/what-is-an-llm), it explains the intern half of this picture.
