@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { defaultModel, findModel, type Model } from "~/lib/models";
 
 export type ContextItem = {
   id: string;
@@ -13,29 +21,19 @@ export type ChatMessage = {
   id: string;
   role: "user" | "gardener";
   text: string;
+  error?: boolean;
 };
-
-export type Model = {
-  id: string;
-  label: string;
-  note: string;
-};
-
-// Placeholder list; wired to OpenRouter in phase 3.
-export const models: Model[] = [
-  { id: "moonshotai/kimi-k2.6", label: "Kimi K2.6", note: "default" },
-  { id: "deepseek/deepseek-v4", label: "DeepSeek V4", note: "thorough" },
-  { id: "qwen/qwen-3.7", label: "Qwen 3.7", note: "fast" },
-];
 
 type GardenerState = {
   open: boolean;
   setOpen: (open: boolean) => void;
   messages: ChatMessage[];
+  busy: boolean;
   contextItems: ContextItem[];
   addContext: (item: Omit<ContextItem, "id">) => void;
   removeContext: (id: string) => void;
   ask: (question: string) => void;
+  clearConversation: () => void;
   model: Model;
   setModel: (model: Model) => void;
 };
@@ -49,13 +47,37 @@ const welcome: ChatMessage = {
 };
 
 let nextId = 0;
-const uid = () => `m${++nextId}`;
+const uid = () => `m${Date.now()}-${++nextId}`;
 
-export function GardenerProvider({ children }: { children: React.ReactNode }) {
+export function GardenerProvider({
+  children,
+  initialMessages,
+  initialModelId,
+}: {
+  children: React.ReactNode;
+  initialMessages?: ChatMessage[];
+  initialModelId?: string | null;
+}) {
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([welcome]);
+  const [busy, setBusy] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>(() =>
+    initialMessages && initialMessages.length > 0
+      ? initialMessages
+      : [welcome],
+  );
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
-  const [model, setModel] = useState<Model>(models[0]);
+  const [model, setModel] = useState<Model>(
+    () => findModel(initialModelId) ?? defaultModel,
+  );
+
+  // Refs mirror state so ask() always sees the latest values without
+  // re-creating its identity on every keystroke of a stream.
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const contextRef = useRef(contextItems);
+  contextRef.current = contextItems;
+  const modelRef = useRef(model);
+  modelRef.current = model;
 
   const addContext = useCallback((item: Omit<ContextItem, "id">) => {
     setContextItems((items) => {
@@ -70,17 +92,89 @@ export function GardenerProvider({ children }: { children: React.ReactNode }) {
     setContextItems((items) => items.filter((i) => i.id !== id));
   }, []);
 
-  // Stub until the OpenRouter backend lands in phase 3.
-  const ask = useCallback((question: string) => {
+  const ask = useCallback(async (question: string) => {
+    const userMsg: ChatMessage = { id: uid(), role: "user", text: question };
+    const assistantId = uid();
+    const sentContext = contextRef.current;
+
+    const wireMessages = [...messagesRef.current, userMsg]
+      .filter((m) => m.id !== "welcome" && !m.error)
+      .map((m) => ({
+        role: m.role === "gardener" ? ("assistant" as const) : ("user" as const),
+        content: m.text,
+      }));
+
+    setContextItems([]);
     setMessages((m) => [
       ...m,
-      { id: uid(), role: "user", text: question },
-      {
-        id: uid(),
-        role: "gardener",
-        text: "I am still growing my roots: real answers arrive when my connection to the language model lands in phase 3. Your question and context are safe with me in the meantime.",
-      },
+      userMsg,
+      { id: assistantId, role: "gardener", text: "" },
     ]);
+    setBusy(true);
+
+    const patchAssistant = (patch: (msg: ChatMessage) => ChatMessage) =>
+      setMessages((m) =>
+        m.map((msg) => (msg.id === assistantId ? patch(msg) : msg)),
+      );
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: wireMessages,
+          model: modelRef.current.id,
+          context: sentContext.map(({ kind, label, content }) => ({
+            kind,
+            label,
+            content,
+          })),
+        }),
+      });
+      if (!res.ok || !res.body) {
+        const err = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(
+          err?.error ?? "The Gardener could not answer just now.",
+        );
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        if (chunk) patchAssistant((msg) => ({ ...msg, text: msg.text + chunk }));
+      }
+      patchAssistant((msg) =>
+        msg.text
+          ? msg
+          : {
+              ...msg,
+              text: "I came back empty-handed. Ask again, or try another model?",
+              error: true,
+            },
+      );
+    } catch (e) {
+      patchAssistant((msg) => ({
+        ...msg,
+        text:
+          e instanceof Error && e.message
+            ? e.message
+            : "Something went wrong. Try again.",
+        error: true,
+      }));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  const clearConversation = useCallback(() => {
+    setMessages([welcome]);
+    setContextItems([]);
+    // The old thread stays in the database; this just starts a new one.
+    void fetch("/api/thread", { method: "POST" });
   }, []);
 
   const value = useMemo(
@@ -88,14 +182,26 @@ export function GardenerProvider({ children }: { children: React.ReactNode }) {
       open,
       setOpen,
       messages,
+      busy,
       contextItems,
       addContext,
       removeContext,
       ask,
+      clearConversation,
       model,
       setModel,
     }),
-    [open, messages, contextItems, addContext, removeContext, ask, model],
+    [
+      open,
+      messages,
+      busy,
+      contextItems,
+      addContext,
+      removeContext,
+      ask,
+      clearConversation,
+      model,
+    ],
   );
 
   return (

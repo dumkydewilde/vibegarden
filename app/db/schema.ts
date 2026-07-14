@@ -40,5 +40,27 @@ export const otpCodes = sqliteTable("otp_codes", {
   createdAt: integer("created_at").notNull(),
 });
 
+export const chatThreads = sqliteTable("chat_threads", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  title: text("title"),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const chatMessages = sqliteTable("chat_messages", {
+  id: text("id").primaryKey(),
+  threadId: text("thread_id")
+    .notNull()
+    .references(() => chatThreads.id, { onDelete: "cascade" }),
+  role: text("role", { enum: ["user", "assistant"] }).notNull(),
+  content: text("content").notNull(),
+  /** JSON array of context items sent along with a user message. */
+  context: text("context"),
+  createdAt: integer("created_at").notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Invite = typeof invites.$inferSelect;
+export type ChatMessage = typeof chatMessages.$inferSelect;

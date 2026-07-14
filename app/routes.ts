@@ -17,6 +17,8 @@ export default [
     route("admin", "routes/admin.tsx"),
   ]),
   route("join", "routes/join.tsx"),
+  route("api/chat", "routes/api.chat.ts"),
+  route("api/thread", "routes/api.thread.ts"),
   route("login", "routes/login.tsx"),
   route("logout", "routes/logout.tsx"),
   route("auth/google", "routes/auth.google.tsx"),

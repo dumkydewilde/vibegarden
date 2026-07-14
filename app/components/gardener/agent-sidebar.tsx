@@ -1,5 +1,5 @@
-import { MessageCircle, Send, Sprout, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { MessageCircle, Send, Sprout, SquarePen, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { ChatMessageBubble } from "./chat-message";
 import { ContextChips } from "./context-chips";
 import { useGardener } from "./gardener-provider";
@@ -12,12 +12,12 @@ import { useIsMobile } from "~/hooks/use-mobile";
 import { cn } from "~/lib/utils";
 
 function Composer() {
-  const { ask } = useGardener();
+  const { ask, busy } = useGardener();
   const [draft, setDraft] = useState("");
 
   const send = () => {
     const question = draft.trim();
-    if (!question) return;
+    if (!question || busy) return;
     ask(question);
     setDraft("");
   };
@@ -43,7 +43,13 @@ function Composer() {
         rows={1}
         className="min-h-9 resize-none text-sm"
       />
-      <Button type="submit" size="icon" aria-label="Send" className="shrink-0">
+      <Button
+        type="submit"
+        size="icon"
+        aria-label="Send"
+        className="shrink-0"
+        disabled={busy}
+      >
         <Send className="size-4" />
       </Button>
     </form>
@@ -51,7 +57,13 @@ function Composer() {
 }
 
 function PanelBody() {
-  const { messages } = useGardener();
+  const { messages, busy } = useGardener();
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [messages]);
+
   return (
     <>
       <ScrollArea className="min-h-0 flex-1">
@@ -59,6 +71,12 @@ function PanelBody() {
           {messages.map((m) => (
             <ChatMessageBubble key={m.id} message={m} />
           ))}
+          {busy && messages[messages.length - 1]?.text === "" && (
+            <p className="pl-9 text-xs text-muted-foreground">
+              The Gardener is thinking...
+            </p>
+          )}
+          <div ref={bottomRef} />
         </div>
       </ScrollArea>
       <ContextChips />
@@ -68,6 +86,7 @@ function PanelBody() {
 }
 
 function PanelHeader({ onClose }: { onClose: () => void }) {
+  const { clearConversation, busy } = useGardener();
   return (
     <div className="flex h-14 shrink-0 items-center justify-between border-b px-3">
       <div className="flex items-center gap-2 font-serif">
@@ -76,6 +95,16 @@ function PanelHeader({ onClose }: { onClose: () => void }) {
       </div>
       <div className="flex items-center gap-1">
         <ModelPicker />
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="New conversation"
+          title="New conversation"
+          disabled={busy}
+          onClick={clearConversation}
+        >
+          <SquarePen className="size-4" />
+        </Button>
         <Button
           variant="ghost"
           size="icon"

@@ -1,5 +1,6 @@
 import { Check, ChevronDown } from "lucide-react";
-import { models, useGardener } from "./gardener-provider";
+import { useGardener } from "./gardener-provider";
+import { models } from "~/lib/models";
 import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,

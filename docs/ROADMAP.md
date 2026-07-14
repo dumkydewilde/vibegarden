@@ -29,12 +29,17 @@ Check items off as they land. One section per building block. Details live in
 - [ ] Production D1: `wrangler d1 create vibe-garden`, put the id in
       wrangler.jsonc, `npm run db:migrate:prod`, `wrangler secret put SESSION_SECRET`
 
-## Phase 3: The Gardener (agent)
+## Phase 3: The Gardener (agent) (done, 2026-07-14)
 
-- [ ] Streaming chat endpoint via OpenRouter (default Kimi K2.6)
-- [ ] Model picker wired to real models, per-user preference
-- [ ] Context injection: current page, article skills, paragraph-level ask
-- [ ] Chat persistence (threads/messages in D1)
+- [x] Streaming chat endpoint via OpenRouter (default Kimi K2.6; also
+      DeepSeek V4 Flash, Qwen3.7 Plus, Gemma 4 26B free)
+- [x] Model picker wired to real models, per-user preference saved on chat
+- [x] Context injection: article "Discuss" button, paragraph-level ask,
+      article index in system prompt
+- [x] Chat persistence: threads/messages in D1, history loads on sign-in,
+      "new conversation" keeps the old thread
+- [ ] Later: markdown-linked article suggestions could auto-load raw article
+      content server-side (tool use); Gardener as MCP server
 
 ## Phase 4: Idea Garden + progressive flow
 
