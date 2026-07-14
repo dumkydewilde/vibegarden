@@ -1,0 +1,145 @@
+import { MessageCircle, Send, Sprout, X } from "lucide-react";
+import { useState } from "react";
+import { ChatMessageBubble } from "./chat-message";
+import { ContextChips } from "./context-chips";
+import { useGardener } from "./gardener-provider";
+import { ModelPicker } from "./model-picker";
+import { Button } from "~/components/ui/button";
+import { ScrollArea } from "~/components/ui/scroll-area";
+import { Sheet, SheetContent, SheetTitle } from "~/components/ui/sheet";
+import { Textarea } from "~/components/ui/textarea";
+import { useIsMobile } from "~/hooks/use-mobile";
+
+function Composer() {
+  const { ask } = useGardener();
+  const [draft, setDraft] = useState("");
+
+  const send = () => {
+    const question = draft.trim();
+    if (!question) return;
+    ask(question);
+    setDraft("");
+  };
+
+  return (
+    <form
+      className="flex items-end gap-2 border-t p-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        send();
+      }}
+    >
+      <Textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            send();
+          }
+        }}
+        placeholder="Ask The Gardener anything"
+        rows={1}
+        className="min-h-9 resize-none text-sm"
+      />
+      <Button type="submit" size="icon" aria-label="Send" className="shrink-0">
+        <Send className="size-4" />
+      </Button>
+    </form>
+  );
+}
+
+function PanelBody() {
+  const { messages } = useGardener();
+  return (
+    <>
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="flex flex-col gap-3 p-3">
+          {messages.map((m) => (
+            <ChatMessageBubble key={m.id} message={m} />
+          ))}
+        </div>
+      </ScrollArea>
+      <ContextChips />
+      <Composer />
+    </>
+  );
+}
+
+function PanelHeader({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="flex h-14 shrink-0 items-center justify-between border-b px-3">
+      <div className="flex items-center gap-2 font-serif">
+        <Sprout className="size-4 text-primary" />
+        The Gardener
+      </div>
+      <div className="flex items-center gap-1">
+        <ModelPicker />
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Close The Gardener"
+          onClick={onClose}
+        >
+          <X className="size-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function AgentSidebar() {
+  const { open, setOpen } = useGardener();
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    return (
+      <>
+        {!open && (
+          <Button
+            size="icon"
+            aria-label="Open The Gardener"
+            onClick={() => setOpen(true)}
+            className="fixed right-4 bottom-4 z-40 size-12 rounded-full shadow-lg"
+          >
+            <MessageCircle className="size-5" />
+          </Button>
+        )}
+        <Sheet open={open} onOpenChange={setOpen}>
+          <SheetContent
+            side="bottom"
+            className="flex h-[85dvh] flex-col gap-0 p-0"
+          >
+            <SheetTitle className="sr-only">The Gardener</SheetTitle>
+            <PanelHeader onClose={() => setOpen(false)} />
+            <PanelBody />
+          </SheetContent>
+        </Sheet>
+      </>
+    );
+  }
+
+  if (!open) {
+    return (
+      <Button
+        variant="outline"
+        size="icon"
+        aria-label="Open The Gardener"
+        onClick={() => setOpen(true)}
+        className="fixed right-4 bottom-4 z-40 hidden size-11 rounded-full shadow-md md:flex"
+      >
+        <MessageCircle className="size-5" />
+      </Button>
+    );
+  }
+
+  return (
+    <aside
+      aria-label="The Gardener"
+      className="sticky top-0 hidden h-dvh w-80 shrink-0 flex-col border-l bg-sidebar md:flex lg:w-96"
+    >
+      <PanelHeader onClose={() => setOpen(false)} />
+      <PanelBody />
+    </aside>
+  );
+}
