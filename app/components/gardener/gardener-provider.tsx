@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useLocation } from "react-router";
 import { defaultModel, findModel, type Model } from "~/lib/models";
 
 export type ContextItem = {
@@ -36,6 +37,8 @@ type GardenerState = {
   clearConversation: () => void;
   model: Model;
   setModel: (model: Model) => void;
+  /** Attach to the composer textarea so addContext can focus it. */
+  composerRef: React.RefObject<HTMLTextAreaElement | null>;
 };
 
 const GardenerContext = createContext<GardenerState | null>(null);
@@ -70,6 +73,9 @@ export function GardenerProvider({
     () => findModel(initialModelId) ?? defaultModel,
   );
 
+  const { pathname } = useLocation();
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+
   // Refs mirror state so ask() always sees the latest values without
   // re-creating its identity on every keystroke of a stream.
   const messagesRef = useRef(messages);
@@ -78,6 +84,8 @@ export function GardenerProvider({
   contextRef.current = contextItems;
   const modelRef = useRef(model);
   modelRef.current = model;
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
 
   const addContext = useCallback((item: Omit<ContextItem, "id">) => {
     setContextItems((items) => {
@@ -86,6 +94,8 @@ export function GardenerProvider({
       return [...rest, { ...item, id: uid() }];
     });
     setOpen(true);
+    // Wait for the panel (or mobile sheet) to render before focusing.
+    setTimeout(() => composerRef.current?.focus(), 250);
   }, []);
 
   const removeContext = useCallback((id: string) => {
@@ -124,6 +134,7 @@ export function GardenerProvider({
         body: JSON.stringify({
           messages: wireMessages,
           model: modelRef.current.id,
+          page: pathnameRef.current,
           context: sentContext.map(({ kind, label, content }) => ({
             kind,
             label,
@@ -190,6 +201,7 @@ export function GardenerProvider({
       clearConversation,
       model,
       setModel,
+      composerRef,
     }),
     [
       open,

@@ -1,13 +1,24 @@
-import { Sprout } from "lucide-react";
+import { Link } from "react-router";
+import { MessageCircle, Sprout } from "lucide-react";
 import type { Route } from "./+types/garden";
+import { cloudflareContext } from "~/lib/context";
 import { EmptyState } from "~/components/empty-state";
 import { useGardener } from "~/components/gardener/gardener-provider";
 import { PageHeader } from "~/components/shell/page-header";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { requireUser } from "~/lib/auth.server";
+import { listThreads } from "~/lib/threads.server";
 
 export function meta({}: Route.MetaArgs) {
   return [{ title: "Idea Garden · Vibe Garden" }];
+}
+
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const { env } = context.get(cloudflareContext);
+  const user = await requireUser(env, request);
+  const conversations = await listThreads(env, user.id);
+  return { conversations };
 }
 
 const modules = [
@@ -20,8 +31,17 @@ const modules = [
   "Content finder",
 ] as const;
 
-export default function Garden() {
+function conversationDate(ts: number) {
+  return new Date(ts).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
+export default function Garden({ loaderData }: Route.ComponentProps) {
   const { setOpen } = useGardener();
+  const { conversations } = loaderData;
+
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
@@ -38,6 +58,37 @@ export default function Garden() {
           Start brainstorming with The Gardener
         </Button>
       </EmptyState>
+
+      {conversations.length > 0 && (
+        <section className="mt-10">
+          <h2 className="flex items-center gap-2 text-lg">
+            <MessageCircle className="size-4 text-primary" />
+            Conversations with The Gardener
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Everything you talked about, safe and sound. Open one to reread it
+            or pick it back up.
+          </p>
+          <ul className="mt-4 divide-y rounded-lg border">
+            {conversations.map((c) => (
+              <li key={c.id}>
+                <Link
+                  to={`/garden/conversations/${c.id}`}
+                  className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-accent/40"
+                >
+                  <span className="min-w-0 truncate text-sm">
+                    {c.title ?? "Untitled conversation"}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+                    {c.messageCount} messages
+                    <span>{conversationDate(c.updatedAt)}</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="mt-10">
         <h2 className="text-lg">Building blocks you can combine</h2>

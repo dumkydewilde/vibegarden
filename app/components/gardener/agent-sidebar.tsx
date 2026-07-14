@@ -12,7 +12,7 @@ import { useIsMobile } from "~/hooks/use-mobile";
 import { cn } from "~/lib/utils";
 
 function Composer() {
-  const { ask, busy } = useGardener();
+  const { ask, busy, composerRef } = useGardener();
   const [draft, setDraft] = useState("");
 
   const send = () => {
@@ -31,6 +31,7 @@ function Composer() {
       }}
     >
       <Textarea
+        ref={composerRef}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {

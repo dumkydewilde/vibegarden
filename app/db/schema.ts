@@ -47,6 +47,8 @@ export const chatThreads = sqliteTable("chat_threads", {
     .references(() => users.id, { onDelete: "cascade" }),
   title: text("title"),
   createdAt: integer("created_at").notNull(),
+  /** Bumped on every message and on "continue"; newest thread is active. */
+  updatedAt: integer("updated_at").notNull().default(0),
 });
 
 export const chatMessages = sqliteTable("chat_messages", {

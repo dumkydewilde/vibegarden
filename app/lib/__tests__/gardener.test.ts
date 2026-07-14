@@ -13,6 +13,14 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("The Gardener");
   });
 
+  it("tells the model which page the user is on and not to suggest it", () => {
+    const prompt = buildSystemPrompt([], "/learning/what-is-an-llm");
+    expect(prompt).toContain('the article "What is an LLM, really?"');
+    expect(prompt).toContain("Do not suggest reading this article");
+    const home = buildSystemPrompt([], "/garden");
+    expect(home).toContain("the Idea Garden (/garden)");
+  });
+
   it("appends context blocks", () => {
     const prompt = buildSystemPrompt([
       { kind: "paragraph", label: "a quote", content: "LLMs are guessers." },

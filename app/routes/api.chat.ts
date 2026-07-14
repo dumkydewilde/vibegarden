@@ -18,6 +18,8 @@ type ChatRequest = {
   messages: WireMessage[];
   model?: string;
   context?: WireContextItem[];
+  /** Pathname the user is currently viewing, e.g. /learning/what-is-an-llm */
+  page?: string;
 };
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -55,7 +57,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const thread = await ensureThread(db, user.id);
   await saveMessage(
     db,
-    thread.id,
+    thread,
     "user",
     lastMessage.content,
     contextItems.length > 0 ? JSON.stringify(contextItems) : undefined,
@@ -80,7 +82,13 @@ export async function action({ request, context }: Route.ActionArgs) {
         model: model.id,
         stream: true,
         messages: [
-          { role: "system", content: buildSystemPrompt(contextItems) },
+          {
+            role: "system",
+            content: buildSystemPrompt(
+              contextItems,
+              typeof body.page === "string" ? body.page : undefined,
+            ),
+          },
           ...trimHistory(body.messages),
         ],
       }),
@@ -100,7 +108,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     .pipeThrough(new TextDecoderStream())
     .pipeThrough(
       sseToTextStream(async (fullText) => {
-        if (fullText) await saveMessage(db, thread.id, "assistant", fullText);
+        if (fullText) await saveMessage(db, thread, "assistant", fullText);
       }),
     )
     .pipeThrough(new TextEncoderStream());

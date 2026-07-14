@@ -11,6 +11,10 @@ A workshop environment for friends learning to build with AI/LLMs. See
   Tailwind v4 + shadcn/ui, Lucide icons, MDX content, Vitest.
 - **Content:** learning articles are `.mdx` files with frontmatter in
   `content/learning/`. Drop a file in, it appears on the site.
+- **Gardener system prompt:** `content/gardener/system-prompt.md`, plain
+  markdown with `{{ARTICLE_INDEX}}`, `{{MODULES}}`, `{{CURRENT_PAGE_RULE}}`
+  placeholders filled in by `app/lib/gardener.server.ts`. Edit the file,
+  reload, done.
 - **Path alias:** `~/*` maps to `app/*`.
 - **Design:** modern Tufte with garden hints. Serif headings (Merriweather),
   sans body (Roboto), ~90ch reading measure, minimal chrome, garden palette.

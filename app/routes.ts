@@ -9,6 +9,10 @@ export default [
   layout("routes/app-layout.tsx", [
     index("routes/home.tsx"),
     route("garden", "routes/garden.tsx"),
+    route(
+      "garden/conversations/:id",
+      "routes/garden.conversations.$id.tsx",
+    ),
     route("learning", "routes/learning.tsx"),
     route("learning/:slug", "routes/learning.$slug.tsx"),
     route("artifacts", "routes/artifacts.tsx"),
