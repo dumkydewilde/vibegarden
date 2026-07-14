@@ -17,7 +17,8 @@ import { Input } from "~/components/ui/input";
 import { requireAdmin } from "~/lib/auth.server";
 import { getDb } from "~/lib/db.server";
 import { isValidEmail, normalizeEmail } from "~/lib/otp.server";
-import { invites, users } from "~/db/schema";
+import { summarizeAnswers } from "~/lib/questionnaire";
+import { invites, questionnaireResponses, users } from "~/db/schema";
 
 export function meta({}: Route.MetaArgs) {
   return [{ title: "Admin · Vibe Garden" }];
@@ -27,11 +28,27 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   await requireAdmin(env, request);
   const db = getDb(env);
-  const [allUsers, allInvites] = await Promise.all([
+  const [allUsers, allInvites, responses] = await Promise.all([
     db.select().from(users).orderBy(desc(users.createdAt)),
     db.select().from(invites).orderBy(desc(invites.createdAt)),
+    db.select().from(questionnaireResponses),
   ]);
-  return { users: allUsers, invites: allInvites };
+  const summaries = new Map(
+    responses.map((r) => {
+      try {
+        return [r.userId, summarizeAnswers(JSON.parse(r.answers))] as const;
+      } catch {
+        return [r.userId, undefined] as const;
+      }
+    }),
+  );
+  return {
+    users: allUsers.map((u) => ({
+      ...u,
+      questionnaire: summaries.get(u.id),
+    })),
+    invites: allInvites,
+  };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -149,6 +166,14 @@ export default function Admin({ loaderData, actionData }: Route.ComponentProps) 
                     {u.name && (
                       <p className="truncate text-xs text-muted-foreground">
                         {u.email}
+                      </p>
+                    )}
+                    {u.questionnaire && (
+                      <p
+                        className="mt-0.5 truncate text-xs text-muted-foreground"
+                        title={u.questionnaire}
+                      >
+                        {u.questionnaire}
                       </p>
                     )}
                   </div>

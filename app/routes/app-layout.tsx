@@ -1,4 +1,4 @@
-import { Outlet } from "react-router";
+import { Outlet, redirect } from "react-router";
 import type { Route } from "./+types/app-layout";
 import { cloudflareContext } from "~/lib/context";
 import { AgentSidebar } from "~/components/gardener/agent-sidebar";
@@ -13,6 +13,11 @@ import { activeThread, parseContext } from "~/lib/threads.server";
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
+  // Progressive flow: newcomers answer the questionnaire first.
+  // Admins bypass so the host is never locked out.
+  if (user.stage === "invited" && user.role !== "admin") {
+    throw redirect("/welcome");
+  }
   const { threadId, messages: history } = await activeThread(env, user.id);
   const chatMessages: ChatMessage[] = history.map((m) => ({
     id: m.id,

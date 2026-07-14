@@ -1,5 +1,5 @@
-import { Link } from "react-router";
-import { ArrowLeft, Send } from "lucide-react";
+import { Form, Link, redirect } from "react-router";
+import { ArrowLeft, Send, Sprout } from "lucide-react";
 import { useState } from "react";
 import type { Route } from "./+types/garden.conversations.$id";
 import { cloudflareContext } from "~/lib/context";
@@ -8,6 +8,7 @@ import { useGardener } from "~/components/gardener/gardener-provider";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { requireUser } from "~/lib/auth.server";
+import { createProject } from "~/lib/projects.server";
 import { getThread, parseContext } from "~/lib/threads.server";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -33,6 +34,19 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
       context: parseContext(m.context),
     })),
   };
+}
+
+/** "Plant this as a project": creates a project linked to this thread. */
+export async function action({ request, context, params }: Route.ActionArgs) {
+  const { env } = context.get(cloudflareContext);
+  const user = await requireUser(env, request);
+  const thread = await getThread(env, user.id, params.id);
+  if (!thread) throw new Response("Conversation not found", { status: 404 });
+  const project = await createProject(env, user.id, {
+    title: thread.thread.title ?? "A budding idea",
+    threadId: thread.thread.id,
+  });
+  return redirect(`/garden/projects/${project.id}`);
 }
 
 export default function Conversation({ loaderData }: Route.ComponentProps) {
@@ -68,9 +82,22 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
           <ArrowLeft className="size-3.5" />
           Idea Garden
         </Link>
-        <h1 className="mt-4 text-3xl leading-tight md:text-4xl">
-          {loaderData.title}
-        </h1>
+        <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
+          <h1 className="text-3xl leading-tight md:text-4xl">
+            {loaderData.title}
+          </h1>
+          <Form method="post">
+            <Button
+              type="submit"
+              variant="outline"
+              className="gap-1.5"
+              title="Turn this conversation into a project in your garden"
+            >
+              <Sprout className="size-4" />
+              Plant as a project
+            </Button>
+          </Form>
+        </div>
       </div>
 
       <div className="flex flex-col gap-6">

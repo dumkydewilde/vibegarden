@@ -63,6 +63,35 @@ export const chatMessages = sqliteTable("chat_messages", {
   createdAt: integer("created_at").notNull(),
 });
 
+export const questionnaireResponses = sqliteTable("questionnaire_responses", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** JSON: { subscription, budget, devices, expectations } */
+  answers: text("answers").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const projects = sqliteTable("projects", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  oneLiner: text("one_liner"),
+  /** JSON array of module names from app/lib/modules.ts */
+  modules: text("modules"),
+  status: text("status", { enum: ["seed", "growing", "bloomed"] })
+    .notNull()
+    .default("seed"),
+  threadId: text("thread_id").references(() => chatThreads.id, {
+    onDelete: "set null",
+  }),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Invite = typeof invites.$inferSelect;
 export type ChatMessage = typeof chatMessages.$inferSelect;
+export type Project = typeof projects.$inferSelect;

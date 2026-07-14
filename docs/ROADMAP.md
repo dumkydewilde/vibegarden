@@ -63,12 +63,18 @@ Check items off as they land. One section per building block. Details live in
 - [ ] Same milestone: expose the Gardener as an MCP server so participants
       can continue their project in Claude Code/Codex
 
-## Phase 4: Idea Garden + progressive flow
+## Phase 4: Idea Garden + progressive flow (done, 2026-07-14)
 
-- [ ] Pre-workshop questionnaire (interactive)
-- [ ] Stage gating: invited -> questionnaire -> exploring
-- [ ] Starter cards (curated article sets + brainstorm CTA)
-- [ ] Projects: create via brainstorm, modules, status
+- [x] Pre-workshop questionnaire at /welcome (one question per step,
+      conditional budget step, answers in D1)
+- [x] Stage gating: invited users land on /welcome, completing it unlocks
+      the garden (admins bypass); admin panel shows a one-line answer summary
+- [x] Projects: plant from a conversation transcript or manually, cards
+      with stage (Seed/Growing/Bloomed) and building blocks, detail page
+      with edit and delete, linked back to the source conversation
+- [x] Gardener brainstorms now end by pointing at "Plant as a project"
+- [ ] Later: personalized starter cards on home based on questionnaire
+      answers (e.g. budget-aware model suggestions)
 
 ## Phase 5: Artifacts, gallery, inspiration
 
