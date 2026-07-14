@@ -5,11 +5,16 @@ import { requireUser } from "~/lib/auth.server";
 import { getDb } from "~/lib/db.server";
 import {
   buildSystemPrompt,
-  sseToTextStream,
+  readSseRound,
   trimHistory,
   type WireContextItem,
   type WireMessage,
 } from "~/lib/gardener.server";
+import {
+  describeToolCall,
+  executeTool,
+  toolDefinitions,
+} from "~/lib/gardener-tools.server";
 import { findModel, defaultModel } from "~/lib/models";
 import {
   ensureThread,
@@ -26,7 +31,26 @@ type ChatRequest = {
   page?: string;
   /** When project context is attached, ties this conversation to it. */
   projectId?: string;
+  /** Let the model search the web via the OpenRouter web plugin. */
+  web?: boolean;
 };
+
+/** Messages as sent upstream; assistant turns may carry tool calls. */
+type UpstreamMessage =
+  | { role: "system" | "user"; content: string }
+  | {
+      role: "assistant";
+      content: string | null;
+      tool_calls?: {
+        id: string;
+        type: "function";
+        function: { name: string; arguments: string };
+      }[];
+    }
+  | { role: "tool"; tool_call_id: string; content: string };
+
+/** Tool-execution rounds per answer; after the last, tools are withheld. */
+const MAX_TOOL_ROUNDS = 3;
 
 export async function action({ request, context }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
@@ -58,6 +82,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   const model = findModel(body.model) ?? defaultModel;
   const contextItems = (body.context ?? []).slice(0, 8);
+  const webSearch = body.web === true;
 
   const db = getDb(env);
   const thread = await ensureThread(db, user.id);
@@ -78,9 +103,20 @@ export async function action({ request, context }: Route.ActionArgs) {
       .where(eq(users.id, user.id));
   }
 
-  const upstream = await fetch(
-    "https://openrouter.ai/api/v1/chat/completions",
+  const upstreamMessages: UpstreamMessage[] = [
     {
+      role: "system",
+      content: buildSystemPrompt(
+        contextItems,
+        typeof body.page === "string" ? body.page : undefined,
+        { tools: model.tools },
+      ),
+    },
+    ...trimHistory(body.messages),
+  ];
+
+  const callUpstream = (withTools: boolean) =>
+    fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
@@ -90,37 +126,85 @@ export async function action({ request, context }: Route.ActionArgs) {
       body: JSON.stringify({
         model: model.id,
         stream: true,
-        messages: [
-          {
-            role: "system",
-            content: buildSystemPrompt(
-              contextItems,
-              typeof body.page === "string" ? body.page : undefined,
-            ),
-          },
-          ...trimHistory(body.messages),
-        ],
+        messages: upstreamMessages,
+        ...(withTools ? { tools: toolDefinitions } : {}),
+        ...(webSearch ? { plugins: [{ id: "web", max_results: 3 }] } : {}),
       }),
-    },
-  );
+    });
 
-  if (!upstream.ok || !upstream.body) {
-    const detail = await upstream.text().catch(() => "");
-    console.error("OpenRouter error", upstream.status, detail.slice(0, 500));
+  // The first request happens before the Response exists, so upstream
+  // config errors still surface as a JSON 502 instead of a broken stream.
+  const first = await callUpstream(model.tools);
+  if (!first.ok || !first.body) {
+    const detail = await first.text().catch(() => "");
+    console.error("OpenRouter error", first.status, detail.slice(0, 500));
     return Response.json(
       { error: "The language model is not reachable right now. Try again, or pick another model." },
       { status: 502 },
     );
   }
 
-  const textStream = upstream.body
-    .pipeThrough(new TextDecoderStream())
-    .pipeThrough(
-      sseToTextStream(async (fullText) => {
-        if (fullText) await saveMessage(db, thread, "assistant", fullText);
-      }),
-    )
-    .pipeThrough(new TextEncoderStream());
+  const textStream = new ReadableStream<string>({
+    async start(controller) {
+      let full = "";
+      const emit = (delta: string) => {
+        full += delta;
+        controller.enqueue(delta);
+      };
+
+      try {
+        let response = first;
+        for (let round = 0; ; round++) {
+          const result = await readSseRound(response.body!, emit);
+          if (result.toolCalls.length === 0) break;
+
+          upstreamMessages.push({
+            role: "assistant",
+            content: result.text || null,
+            tool_calls: result.toolCalls.map((call) => ({
+              id: call.id,
+              type: "function",
+              function: { name: call.name, arguments: call.arguments },
+            })),
+          });
+          for (const call of result.toolCalls) {
+            // Tool activity shows up in the transcript as a small aside.
+            emit(
+              `${full && !full.endsWith("\n\n") ? "\n\n" : ""}*${describeToolCall(call)}*\n\n`,
+            );
+            upstreamMessages.push({
+              role: "tool",
+              tool_call_id: call.id,
+              content: await executeTool(call),
+            });
+          }
+
+          // On the last allowed round, withhold tools to force a text answer.
+          response = await callUpstream(round + 1 < MAX_TOOL_ROUNDS);
+          if (!response.ok || !response.body) {
+            const detail = await response.text().catch(() => "");
+            console.error(
+              "OpenRouter error mid-conversation",
+              response.status,
+              detail.slice(0, 500),
+            );
+            emit("\n\nI lost the connection to the model midway. Ask again?");
+            break;
+          }
+        }
+      } catch (e) {
+        console.error("gardener stream failed", e);
+        if (!full) emit("Something went wrong on my end. Try again?");
+      }
+
+      try {
+        if (full) await saveMessage(db, thread, "assistant", full);
+      } catch (e) {
+        console.error("failed to persist assistant message", e);
+      }
+      controller.close();
+    },
+  }).pipeThrough(new TextEncoderStream());
 
   return new Response(textStream, {
     headers: {

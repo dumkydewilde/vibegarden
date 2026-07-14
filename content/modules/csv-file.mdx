@@ -1,0 +1,28 @@
+---
+title: CSV file
+description: The simplest way to get data into a project. A plain text table that every tool, and every AI model, can read.
+order: 1
+---
+
+## What it is
+
+A CSV (comma separated values) file is a table saved as plain text: one line per row, commas between the columns. Every spreadsheet program can export one, every programming language can read one, and an LLM can look at one directly. If your project involves "my data", a CSV is almost always the easiest first form for it.
+
+## When to use it
+
+- You have data in Excel, Numbers, or a bank/app export and want to do something with it.
+- You want to analyze, chart, or summarize something without setting up a database.
+- You are prototyping: start with a CSV, graduate to something fancier only if you outgrow it.
+
+A CSV is a snapshot, not a live source. If the data changes constantly and several people edit it, a [Google Sheet](/garden/modules/google-sheet) is the better block.
+
+## Setup steps
+
+1. Get your data out: most apps and banks have an "export as CSV" button, and spreadsheets have "File, Download, CSV".
+2. Open it in a text editor once, just to see what it really looks like: a header row with column names, then data rows.
+3. Clean the obvious problems: one header row, one type of thing per column, no merged cells, no summary rows at the bottom.
+4. Hand it to your tool or paste a sample into a chat and describe what you want to know.
+
+## Options and costs
+
+Free. CSVs cost nothing to make or store. The only real cost is attention: files with thousands of rows are too big to paste into a chat, so bigger projects load the CSV with code (or a tool like DuckDB) and let the AI write the queries instead of reading every row. The article [Where does your data live?](/learning/store-data-sheets-vs-database) covers when a file stops being enough.

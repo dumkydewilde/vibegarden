@@ -67,6 +67,9 @@ export type GardenerState = {
   }) => void;
   model: Model;
   setModel: (model: Model) => void;
+  /** Web search via the OpenRouter web plugin; off by default (it costs). */
+  webSearch: boolean;
+  setWebSearch: (on: boolean) => void;
   /** Attach to the composer textarea so addContext can focus it. */
   composerRef: React.RefObject<HTMLTextAreaElement | null>;
 };
@@ -102,6 +105,7 @@ export function GardenerProvider({
   const [model, setModel] = useState<Model>(
     () => findModel(initialModelId) ?? defaultModel,
   );
+  const [webSearch, setWebSearch] = useState(false);
 
   const { pathname } = useLocation();
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -116,6 +120,8 @@ export function GardenerProvider({
   modelRef.current = model;
   const pathnameRef = useRef(pathname);
   pathnameRef.current = pathname;
+  const webSearchRef = useRef(webSearch);
+  webSearchRef.current = webSearch;
 
   const addContext = useCallback((item: Omit<ContextItem, "id">) => {
     setContextItems((items) => {
@@ -175,6 +181,7 @@ export function GardenerProvider({
           page: pathnameRef.current,
           context: sentContext,
           projectId,
+          web: webSearchRef.current,
         }),
       });
       if (!res.ok || !res.body) {
@@ -311,6 +318,8 @@ export function GardenerProvider({
       plantProject,
       model,
       setModel,
+      webSearch,
+      setWebSearch,
       composerRef,
     }),
     [
@@ -326,6 +335,7 @@ export function GardenerProvider({
       resumeConversation,
       plantProject,
       model,
+      webSearch,
     ],
   );
 

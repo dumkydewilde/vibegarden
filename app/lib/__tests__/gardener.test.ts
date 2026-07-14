@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSystemPrompt,
   HISTORY_LIMIT,
-  sseToTextStream,
+  readSseRound,
   trimHistory,
 } from "~/lib/gardener.server";
 
@@ -19,6 +19,23 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Do not suggest reading this article");
     const home = buildSystemPrompt([], "/garden");
     expect(home).toContain("the Idea Garden (/garden)");
+  });
+
+  it("knows about building block pages", () => {
+    const prompt = buildSystemPrompt([], "/garden/modules/google-sheet");
+    expect(prompt).toContain('"Google Sheet" building block page');
+  });
+
+  it("describes the tools when the model supports them", () => {
+    const withTools = buildSystemPrompt([], undefined, { tools: true });
+    expect(withTools).toContain("read_article(slug)");
+    expect(withTools).toContain("read_module(slug)");
+    expect(withTools).toContain("fetch_page(url)");
+    expect(withTools).toContain("google-sheet");
+
+    const withoutTools = buildSystemPrompt([], undefined, { tools: false });
+    expect(withoutTools).not.toContain("read_article(slug)");
+    expect(withoutTools).toContain("does not support tools");
   });
 
   it("appends context blocks", () => {
@@ -42,38 +59,82 @@ describe("trimHistory", () => {
   });
 });
 
-describe("sseToTextStream", () => {
-  it("extracts deltas and reports the full text", async () => {
-    let done = "";
-    const stream = sseToTextStream(async (full) => {
-      done = full;
-    });
-    const writer = stream.writable.getWriter();
-    const reader = stream.readable.getReader();
+/** Byte stream from string chunks, to exercise buffering across boundaries. */
+function sseStream(chunks: string[]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+      controller.close();
+    },
+  });
+}
 
+describe("readSseRound", () => {
+  it("extracts text deltas and the finish reason", async () => {
     const sse = [
       'data: {"choices":[{"delta":{"content":"Hel"}}]}',
-      '',
+      "",
       'data: {"choices":[{"delta":{"content":"lo"}}]}',
-      '',
-      ': keep-alive comment',
-      'data: [DONE]',
-      '',
+      "",
+      ": keep-alive comment",
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+      "",
+      "data: [DONE]",
+      "",
     ].join("\n");
 
-    const writing = (async () => {
-      await writer.write(sse);
-      await writer.close();
-    })();
+    let out = "";
+    // Split mid-line to prove buffering works.
+    const round = await readSseRound(
+      sseStream([sse.slice(0, 25), sse.slice(25)]),
+      (t) => {
+        out += t;
+      },
+    );
+    expect(out).toBe("Hello");
+    expect(round.text).toBe("Hello");
+    expect(round.toolCalls).toEqual([]);
+    expect(round.finishReason).toBe("stop");
+  });
+
+  it("accumulates tool calls split across deltas", async () => {
+    const sse = [
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"read_article","arguments":""}}]}}]}',
+      "",
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"slug\\":"}}]}}]}',
+      "",
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"what-is-an-llm\\"}"}}]}}]}',
+      "",
+      'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}',
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
 
     let out = "";
-    for (;;) {
-      const { done: d, value } = await reader.read();
-      if (d) break;
-      out += value;
-    }
-    await writing;
-    expect(out).toBe("Hello");
-    expect(done).toBe("Hello");
+    const round = await readSseRound(sseStream([sse]), (t) => {
+      out += t;
+    });
+    expect(out).toBe("");
+    expect(round.finishReason).toBe("tool_calls");
+    expect(round.toolCalls).toEqual([
+      {
+        id: "call_1",
+        name: "read_article",
+        arguments: '{"slug":"what-is-an-llm"}',
+      },
+    ]);
+  });
+
+  it("drops incomplete tool calls without id or name", async () => {
+    const sse = [
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{}"}}]}}]}',
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    const round = await readSseRound(sseStream([sse]), () => {});
+    expect(round.toolCalls).toEqual([]);
   });
 });

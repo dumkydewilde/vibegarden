@@ -1,5 +1,5 @@
 import { Form, Link, redirect, useNavigation } from "react-router";
-import { MessageCircle, Plus, Sprout } from "lucide-react";
+import { Blocks, MessageCircle, Plus, Sprout } from "lucide-react";
 import { useState } from "react";
 import type { Route } from "./+types/garden";
 import { cloudflareContext } from "~/lib/context";
@@ -25,7 +25,7 @@ import {
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { requireUser } from "~/lib/auth.server";
-import { modules } from "~/lib/modules";
+import { getModules, modules } from "~/lib/modules";
 import { createProject, listProjects } from "~/lib/projects.server";
 import { statusLabel } from "~/lib/project-status";
 import { listThreads } from "~/lib/threads.server";
@@ -257,6 +257,33 @@ export default function Garden({ loaderData, actionData }: Route.ComponentProps)
           </ul>
         </section>
       )}
+
+      <section className="mt-10 pb-16">
+        <h2 className="flex items-center gap-2 text-lg">
+          <Blocks className="size-4 text-primary" />
+          Building blocks
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          The ingredients projects are made of. Each one explains what it is,
+          when to reach for it, and what it costs.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {getModules().map((m) => (
+            <Link key={m.slug} to={`/garden/modules/${m.slug}`} className="group">
+              <Card className="h-full gap-2 py-4 transition-colors group-hover:border-primary/40">
+                <CardHeader className="px-4">
+                  <CardTitle className="font-serif text-base font-normal">
+                    {m.title}
+                  </CardTitle>
+                  <CardDescription className="text-xs leading-relaxed">
+                    {m.description}
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

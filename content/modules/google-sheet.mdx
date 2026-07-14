@@ -1,0 +1,28 @@
+---
+title: Google Sheet
+description: A spreadsheet that lives online, so your project can read and write it while humans keep editing it too.
+order: 2
+---
+
+## What it is
+
+A Google Sheet is a spreadsheet in the cloud. What makes it a great building block is not the spreadsheet part, it is the "in the cloud" part: your project can read from it and write to it through a link or an API, while you and your friends keep editing the same sheet by hand. It doubles as a tiny database with a built-in user interface.
+
+## When to use it
+
+- Several people maintain the data: a club member list, a rota, a shared budget.
+- You want to see and fix the data by hand without building an admin screen.
+- Your tool should append things over time: every day a new row, one line per event.
+
+If nobody ever edits the data by hand, a plain [CSV file](/garden/modules/csv-file) is simpler. If you have tens of thousands of rows or need speed, you have outgrown sheets.
+
+## Setup steps
+
+1. Create the sheet and give it a clean structure: first row is column names, one type of thing per column, one tab per table.
+2. Decide how your project connects. The two common routes: share the sheet as "anyone with the link can view" and read it as CSV, or use the Google Sheets API with a key for reading and writing.
+3. Test with something tiny: have your tool read one row and print it back before building anything bigger.
+4. Agree on the rules with the other humans: which columns the tool owns, which columns people own. Mixed ownership of the same column ends in tears.
+
+## Options and costs
+
+Free for anything workshop-sized. The API has generous free limits (hundreds of reads per minute). The trade-off is reliability, not money: sheets are easy to break by renaming a column or sorting rows, so keep the structure boring and stable once a tool depends on it.

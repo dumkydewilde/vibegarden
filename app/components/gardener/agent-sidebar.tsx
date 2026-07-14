@@ -1,4 +1,4 @@
-import { MessageCircle, Send, Sprout, SquarePen, X } from "lucide-react";
+import { Globe, MessageCircle, Send, Sprout, SquarePen, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ChatMessageBubble } from "./chat-message";
 import { ContextChips } from "./context-chips";
@@ -12,7 +12,7 @@ import { useIsMobile } from "~/hooks/use-mobile";
 import { cn } from "~/lib/utils";
 
 function Composer() {
-  const { ask, busy, composerRef } = useGardener();
+  const { ask, busy, composerRef, webSearch, setWebSearch } = useGardener();
   const [draft, setDraft] = useState("");
 
   const send = () => {
@@ -44,6 +44,25 @@ function Composer() {
         rows={1}
         className="min-h-9 resize-none text-sm"
       />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-label="Web search"
+        aria-pressed={webSearch}
+        title={
+          webSearch
+            ? "Web search is on (each search costs a little)"
+            : "Let The Gardener search the web (each search costs a little)"
+        }
+        onClick={() => setWebSearch(!webSearch)}
+        className={cn(
+          "shrink-0 text-muted-foreground",
+          webSearch && "bg-accent text-primary",
+        )}
+      >
+        <Globe className="size-4" />
+      </Button>
       <Button
         type="submit"
         size="icon"

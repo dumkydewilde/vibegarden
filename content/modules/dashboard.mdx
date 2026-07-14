@@ -1,0 +1,28 @@
+---
+title: Dashboard
+description: A page that shows your data as charts and numbers, updated whenever the data changes. The classic way to make data feel alive.
+order: 4
+---
+
+## What it is
+
+A dashboard is a web page that reads your data and shows it as charts, tables, and a few big numbers. It is the difference between "I have the data somewhere" and actually seeing it: the club's membership trend, this month's spending by category, how often you actually went running.
+
+## When to use it
+
+- You already collect data (a sheet, a CSV, an export) and want to look at it regularly.
+- One question keeps coming back: "how are we doing on X?"
+- You want something shareable: a link you can send to the club or the family.
+
+If you only need the answer once, skip the dashboard and just ask the question in a chat with your data attached. Dashboards earn their keep through repetition.
+
+## Setup steps
+
+1. Decide the three questions the dashboard should answer. Not ten: three. Each becomes one chart or number.
+2. Get the data into a readable place: a [CSV file](/garden/modules/csv-file) or [Google Sheet](/garden/modules/google-sheet) is plenty.
+3. Describe the page to an AI assistant and let it build the first version as a single HTML page with charts. Iterate: wrong chart type, missing label, ugly color, all easy asks.
+4. Put it somewhere: a free static host is enough for a page that reads a public sheet.
+
+## Options and costs
+
+Free to nearly free. A single HTML page with a charting library costs nothing to host on the free tiers of Cloudflare, Netlify, or GitHub Pages. You pay in AI calls only while building it, not while running it. The trap to avoid is scope: a dashboard with three good charts gets looked at, a dashboard with fifteen gets abandoned.

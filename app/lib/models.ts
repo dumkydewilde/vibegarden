@@ -2,6 +2,8 @@ export type Model = {
   id: string;
   label: string;
   note: string;
+  /** Whether the model supports tool calling on OpenRouter. */
+  tools: boolean;
 };
 
 /**
@@ -9,17 +11,29 @@ export type Model = {
  * First entry is the default for new users.
  */
 export const models: Model[] = [
-  { id: "moonshotai/kimi-k2.6", label: "Kimi K2.6", note: "default" },
+  {
+    id: "moonshotai/kimi-k2.6",
+    label: "Kimi K2.6",
+    note: "default",
+    tools: true,
+  },
   {
     id: "deepseek/deepseek-v4-flash",
     label: "DeepSeek V4 Flash",
     note: "fast + cheap",
+    tools: true,
   },
-  { id: "qwen/qwen3.7-plus", label: "Qwen3.7 Plus", note: "huge context" },
+  {
+    id: "qwen/qwen3.7-plus",
+    label: "Qwen3.7 Plus",
+    note: "huge context",
+    tools: true,
+  },
   {
     id: "google/gemma-4-26b-a4b-it:free",
     label: "Gemma 4 26B",
     note: "free",
+    tools: false,
   },
 ];
 
