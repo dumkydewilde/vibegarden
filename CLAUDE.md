@@ -44,6 +44,10 @@ A workshop environment for friends learning to build with AI/LLMs. See
 - `MOTHERDUCK_TOKEN` (read-scaling token preferred) enables the Gardener's
   `fresh_reads` tool; without it the tool simply is not offered. Queries go
   to MotherDuck's Postgres-compatible endpoint with DuckDB SQL via `pg`.
+  Careful: MotherDuck shares are region-scoped, and the dumky_share_public
+  share lives in us-east-1, so the token must come from a us-east-1 account
+  (an eu-central-1 account gets "no database/share named ... found" on
+  ATTACH). `SELECT region FROM md_user_info()` shows an account's region.
 
 ## Machine notes
 
