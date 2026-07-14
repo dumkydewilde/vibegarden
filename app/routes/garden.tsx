@@ -59,7 +59,8 @@ export async function action({ request, context }: Route.ActionArgs) {
     oneLiner: String(form.get("oneLiner") ?? ""),
     modules: form.getAll("modules").map(String),
   });
-  return redirect(`/garden/projects/${project.id}`);
+  // ?planted=1 makes the project page kick off a Gardener conversation.
+  return redirect(`/garden/projects/${project.id}?planted=1`);
 }
 
 function conversationDate(ts: number) {
@@ -75,7 +76,13 @@ const statusVariant = {
   bloomed: "default",
 } as const;
 
-function PlantDialog({ error }: { error?: string }) {
+function PlantDialog({
+  error,
+  size = "default",
+}: {
+  error?: string;
+  size?: "default" | "lg";
+}) {
   const navigation = useNavigation();
   const [chosen, setChosen] = useState<string[]>([]);
   const toggle = (m: string) =>
@@ -84,7 +91,7 @@ function PlantDialog({ error }: { error?: string }) {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="outline" className="gap-1.5">
+        <Button variant="outline" size={size} className="gap-1.5">
           <Plus className="size-4" />
           Plant an idea
         </Button>
@@ -156,18 +163,34 @@ export default function Garden({ loaderData, actionData }: Route.ComponentProps)
         title="Idea Garden"
         description="Your projects grow here. Start with a rough idea, or none at all: The Gardener helps you find one."
       >
-        <PlantDialog error={actionData && "error" in actionData ? actionData.error : undefined} />
+        {projects.length > 0 && (
+          <PlantDialog
+            error={
+              actionData && "error" in actionData ? actionData.error : undefined
+            }
+          />
+        )}
       </PageHeader>
 
       {projects.length === 0 ? (
         <EmptyState
           icon={Sprout}
           title="Nothing growing yet"
-          description="Every project starts as a small idea. Brainstorm with The Gardener to find yours, then plant it here and combine it with ready-made building blocks."
+          description="Every project starts as a small idea. No idea yet? Brainstorm with The Gardener. Already have one? Plant it straight away."
         >
-          <Button size="lg" onClick={() => setOpen(true)}>
-            Start brainstorming with The Gardener
-          </Button>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Button size="lg" onClick={() => setOpen(true)}>
+              Start brainstorming with The Gardener
+            </Button>
+            <PlantDialog
+              size="lg"
+              error={
+                actionData && "error" in actionData
+                  ? actionData.error
+                  : undefined
+              }
+            />
+          </div>
         </EmptyState>
       ) : (
         <section className="grid gap-4 sm:grid-cols-2">

@@ -1,6 +1,12 @@
-import { Form, Link, redirect, useNavigation } from "react-router";
+import {
+  Form,
+  Link,
+  redirect,
+  useNavigation,
+  useSearchParams,
+} from "react-router";
 import { ArrowLeft, MessageCircle, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Route } from "./+types/garden.projects.$id";
 import { cloudflareContext } from "~/lib/context";
 import { PageHeader } from "~/components/shell/page-header";
@@ -22,6 +28,7 @@ import {
 } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
+import { useGardener } from "~/components/gardener/gardener-provider";
 import { requireUser } from "~/lib/auth.server";
 import { modules } from "~/lib/modules";
 import {
@@ -85,11 +92,34 @@ export default function ProjectDetail({
 }: Route.ComponentProps) {
   const { project, conversation } = loaderData;
   const navigation = useNavigation();
+  const { plantProject } = useGardener();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const kickoffStarted = useRef(false);
   const busy = navigation.state === "submitting";
   const [chosenModules, setChosenModules] = useState<string[]>(
     project.moduleList,
   );
   const [status, setStatus] = useState<string>(project.status);
+
+  // Freshly planted (?planted=1): open a linked conversation and let The
+  // Gardener react to the idea. The ref guards against double-fires.
+  useEffect(() => {
+    if (searchParams.get("planted") !== "1" || kickoffStarted.current) return;
+    kickoffStarted.current = true;
+    setSearchParams({}, { replace: true });
+    void (async () => {
+      await fetch("/api/thread", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      plantProject({
+        title: project.title,
+        oneLiner: project.oneLiner,
+        modules: project.moduleList,
+      });
+    })();
+  }, [searchParams, setSearchParams, plantProject, project]);
 
   const toggleModule = (m: string) =>
     setChosenModules((c) =>

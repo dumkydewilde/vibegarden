@@ -15,7 +15,7 @@ export type ContextItem = {
   label: string;
   /** What gets sent to the model: page content, a paragraph, etc. */
   content: string;
-  kind: "page" | "article" | "paragraph";
+  kind: "page" | "article" | "paragraph" | "project";
 };
 
 /** Context that was attached to a sent message, for display. */
@@ -48,6 +48,16 @@ type GardenerState = {
    * optionally asking a question right away.
    */
   resumeConversation: (messages: ChatMessage[], question?: string) => void;
+  /**
+   * A freshly planted project: start a linked conversation and ask the
+   * Gardener to react to it. The caller must have already created the
+   * linked thread via POST /api/thread {projectId}.
+   */
+  plantProject: (project: {
+    title: string;
+    oneLiner?: string | null;
+    modules?: string[];
+  }) => void;
   model: Model;
   setModel: (model: Model) => void;
   /** Attach to the composer textarea so addContext can focus it. */
@@ -214,6 +224,43 @@ export function GardenerProvider({
     [ask],
   );
 
+  const plantProject = useCallback(
+    (project: {
+      title: string;
+      oneLiner?: string | null;
+      modules?: string[];
+    }) => {
+      const description = [
+        `Project: ${project.title}`,
+        project.oneLiner ? `Idea: ${project.oneLiner}` : null,
+        project.modules?.length
+          ? `Building blocks: ${project.modules.join(", ")}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      // Fresh conversation for this project; the linked thread was already
+      // created server-side, so ask() lands on it.
+      messagesRef.current = [welcome];
+      setMessages([welcome]);
+      contextRef.current = [
+        {
+          id: uid(),
+          kind: "project",
+          label: project.title,
+          content: description,
+        },
+      ];
+      setContextItems([]);
+      setOpen(true);
+      ask(
+        "I just planted this idea in my garden. What do you think? Give me a couple of creative directions, a tiny first step, and anything worth reading.",
+      );
+    },
+    [ask],
+  );
+
   const clearConversation = useCallback(() => {
     setMessages([welcome]);
     setContextItems([]);
@@ -233,6 +280,7 @@ export function GardenerProvider({
       ask,
       clearConversation,
       resumeConversation,
+      plantProject,
       model,
       setModel,
       composerRef,
@@ -247,6 +295,7 @@ export function GardenerProvider({
       ask,
       clearConversation,
       resumeConversation,
+      plantProject,
       model,
     ],
   );

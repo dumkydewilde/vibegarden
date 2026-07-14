@@ -1,4 +1,4 @@
-import { BookOpen, FileText, Quote, X } from "lucide-react";
+import { BookOpen, FileText, Quote, Sprout, X } from "lucide-react";
 import type { ContextSnapshot } from "./gardener-provider";
 import { cn } from "~/lib/utils";
 
@@ -6,12 +6,14 @@ const kindIcon = {
   page: FileText,
   article: BookOpen,
   paragraph: Quote,
+  project: Sprout,
 } as const;
 
 const kindLabel = {
   page: "Page",
   article: "Article",
   paragraph: "From the article",
+  project: "Freshly planted",
 } as const;
 
 /**
@@ -29,7 +31,8 @@ export function ContextQuote({
 }) {
   const Icon = kindIcon[item.kind];
   // Article context carries the full raw text; showing the title is enough.
-  const preview = item.kind === "paragraph" ? item.content : null;
+  const preview =
+    item.kind === "paragraph" || item.kind === "project" ? item.content : null;
 
   return (
     <figure
