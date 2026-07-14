@@ -34,6 +34,14 @@ A workshop environment for friends learning to build with AI/LLMs. See
 - `npm run deploy` — build + wrangler deploy
 - `npm run cf-typegen` — regenerate worker-configuration.d.ts after wrangler.jsonc changes
 
+## Local dev
+
+- Login needs `SESSION_SECRET` in `.dev.vars` (any string locally); without it
+  auth fails loudly with a "SESSION_SECRET is not set" error. Conductor copies
+  `.dev.vars` into new workspaces via `.worktreeinclude`, sourced from the
+  root checkout at `~/code/vibegarden`, so keep the real values (incl.
+  `OPENROUTER_API_KEY`) in that root copy.
+
 ## Machine notes
 
 - npm on this machine has `prefer-offline=true` in `~/.npmrc`; if installs fail
