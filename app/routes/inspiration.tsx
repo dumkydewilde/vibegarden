@@ -1,13 +1,29 @@
-import { BarChart3, Database, Newspaper, Wrench } from "lucide-react";
+import {
+  BarChart3,
+  Database,
+  ExternalLink,
+  Newspaper,
+  Sprout,
+  Wrench,
+} from "lucide-react";
 import type { Route } from "./+types/inspiration";
+import { useOptionalGardener } from "~/components/gardener/gardener-provider";
 import { PageHeader } from "~/components/shell/page-header";
 import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
 import {
   Card,
+  CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "~/components/ui/card";
+import {
+  buildDatasetContext,
+  datasets,
+  type DatasetItem,
+} from "~/lib/inspiration-datasets";
 
 export function meta({}: Route.MetaArgs) {
   return [{ title: "Inspiration · Vibe Garden" }];
@@ -19,93 +35,6 @@ type InspirationItem = {
   tag: string;
   href?: string;
 };
-
-const datasets: InspirationItem[] = [
-  {
-    title: "KNMI weather data",
-    description:
-      "Dutch weather observations since 1901. Compare seasons, find the best terrace weather, or build a rain-or-bike advisor.",
-    tag: "Open data",
-    href: "https://dataplatform.knmi.nl/en/dataset/daily-in-situ-meteorological-observations-validated-1-0",
-  },
-  {
-    title: "Amsterdam open geodata",
-    description:
-      "Neighborhoods, trees, parking, playgrounds. Everything in the city has coordinates, which makes for great map projects.",
-    tag: "Open data",
-    href: "https://maps.amsterdam.nl/open_geodata/",
-  },
-  {
-    title: "Open Food Facts",
-    description:
-      "Ingredients and nutrition for millions of products. Compare supermarket shelves, flag allergens, or build a barcode-scanning lunch helper.",
-    tag: "Open data",
-    href: "https://world.openfoodfacts.org/data",
-  },
-  {
-    title: "Your Goodreads export",
-    description:
-      "Your reading life as one CSV: ratings, shelves, and dates read. Build a reading dashboard or a recommender that actually knows your taste.",
-    tag: "Personal data",
-    href: "https://www.goodreads.com/review/import",
-  },
-  {
-    title: "TalkData",
-    description:
-      "A searchable database of data conference talks: speakers, topics, tools, and events. See who talks about what and how themes rise and fall.",
-    tag: "Open data",
-    href: "https://talk-data.com/",
-  },
-  {
-    title: "CBS StatLine",
-    description:
-      "Population, housing, income, health, mobility, and more from Statistics Netherlands. Compare neighborhoods or test claims about how the country is changing.",
-    tag: "Open data",
-    href: "https://www.cbs.nl/en-gb/our-services/open-data/statline-as-open-data",
-  },
-  {
-    title: "Your Spotify history",
-    description:
-      "A JSON record of songs and podcasts from the lifetime of your account. Map eras in your taste, measure skips, or plan a group playlist.",
-    tag: "Personal data",
-    href: "https://support.spotify.com/us/article/data-rights-and-privacy-settings/",
-  },
-  {
-    title: "Your Strava archive",
-    description:
-      "Routes, distances, times, and activity files from your own account. Draw a personal heatmap, find neglected rides, or design a club route.",
-    tag: "Personal data",
-    href: "https://support.strava.com/en-us/articles/15401919-exporting-your-data-and-bulk-export",
-  },
-  {
-    title: "Stack Overflow Developer Survey",
-    description:
-      "Annual survey data from developers around the world. Explore salaries, tools, AI attitudes, or which technologies people admire but avoid using.",
-    tag: "Open data",
-    href: "https://survey.stackoverflow.co/",
-  },
-  {
-    title: "iNaturalist observations",
-    description:
-      "Geotagged wildlife sightings shared by a global community. Map city biodiversity, track the seasons, or make a nature-walk companion.",
-    tag: "Open data",
-    href: "https://www.inaturalist.org/pages/developers",
-  },
-  {
-    title: "Dutch election results",
-    description:
-      "Results from national, local, European, and water-board elections, with history back to 1848. Map turnout or show how places shift over time.",
-    tag: "Open data",
-    href: "https://www.verkiezingsuitslagen.nl/",
-  },
-  {
-    title: "Luchtmeetnet air quality",
-    description:
-      "Hourly readings for particulate matter, nitrogen dioxide, ozone, and more across the Netherlands. Find cleaner times to run, ride, or open the windows.",
-    tag: "Open data",
-    href: "https://api-docs.luchtmeetnet.nl/",
-  },
-];
 
 const stories: InspirationItem[] = [
   {
@@ -208,6 +137,96 @@ function InspirationCard({ item }: { item: InspirationItem }) {
   );
 }
 
+function DatasetCard({
+  item,
+  disabled,
+  onAsk,
+}: {
+  item: DatasetItem;
+  disabled: boolean;
+  onAsk: () => void;
+}) {
+  return (
+    <Card data-testid="dataset-card" className="h-full gap-4">
+      <CardHeader>
+        <Badge variant="outline" className="mb-2 w-fit">
+          {item.tag}
+        </Badge>
+        <CardTitle className="font-serif text-base font-normal">
+          {item.title}
+        </CardTitle>
+        <CardDescription className="leading-relaxed">
+          {item.description}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-wrap gap-1.5">
+        {item.formats.map((format) => (
+          <Badge key={format} variant="outline">
+            {format}
+          </Badge>
+        ))}
+        <Badge variant="secondary">{item.access}</Badge>
+      </CardContent>
+      <CardFooter className="mt-auto flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          disabled={disabled}
+          aria-label={`Ask Gardener about ${item.title}`}
+          onClick={onAsk}
+        >
+          <Sprout />
+          Ask Gardener
+        </Button>
+        <Button asChild variant="outline" size="sm">
+          <a
+            href={item.docsUrl}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`Read the docs for ${item.title}`}
+          >
+            Read the docs
+            <ExternalLink />
+          </a>
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
+
+function DatasetSection() {
+  const gardener = useOptionalGardener();
+
+  const askAbout = (item: DatasetItem) => {
+    gardener?.askFresh(item.starterPrompt, [
+      {
+        kind: "dataset",
+        label: item.title,
+        content: buildDatasetContext(item),
+      },
+    ]);
+  };
+
+  return (
+    <section>
+      <h2 className="flex items-center gap-2 text-lg">
+        <Database className="size-4 text-primary" />
+        Datasets to start from
+      </h2>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {datasets.map((item) => (
+          <DatasetCard
+            key={item.title}
+            item={item}
+            disabled={!gardener || gardener.busy}
+            onAsk={() => askAbout(item)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function InspirationSection({
   icon: Icon,
   title,
@@ -244,11 +263,7 @@ export default function Inspiration() {
         description="Datasets to play with and proof that ordinary people build useful things with AI."
       />
 
-      <InspirationSection
-        icon={Database}
-        title="Datasets to start from"
-        items={datasets}
-      />
+      <DatasetSection />
 
       <InspirationSection
         icon={BarChart3}
