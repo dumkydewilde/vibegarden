@@ -8,6 +8,35 @@ import {
 } from "react";
 import { cn } from "~/lib/utils";
 
+const GARDEN_MERMAID_THEME = {
+  light: {
+    background: "#fffcf5",
+    primaryColor: "#e2f2e5",
+    primaryBorderColor: "#5f8869",
+    primaryTextColor: "#26362b",
+    secondaryColor: "#eef5e8",
+    tertiaryColor: "#f6f0dc",
+    lineColor: "#315c41",
+    arrowheadColor: "#315c41",
+    edgeLabelBackground: "#fffcf5",
+    clusterBkg: "#f3f6ec",
+    clusterBorder: "#87a78d",
+  },
+  dark: {
+    background: "#202823",
+    primaryColor: "#304a38",
+    primaryBorderColor: "#78a985",
+    primaryTextColor: "#f0f5ef",
+    secondaryColor: "#394b37",
+    tertiaryColor: "#4a4431",
+    lineColor: "#9dc3a4",
+    arrowheadColor: "#9dc3a4",
+    edgeLabelBackground: "#202823",
+    clusterBkg: "#26332a",
+    clusterBorder: "#5f8068",
+  },
+} as const;
+
 /** MDX `pre` replacement: renders ```mermaid fences as diagrams, anything else as a plain code block. */
 export function MdxPre(props: ComponentProps<"pre">) {
   const child = props.children;
@@ -51,7 +80,11 @@ export function MermaidDiagram({
   const [state, setState] = useState<MermaidRenderState>({
     status: "loading",
   });
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState(
+    () =>
+      !import.meta.env.SSR &&
+      document.documentElement.classList.contains("dark"),
+  );
   const renderId = useId().replace(/[^a-zA-Z0-9]/g, "");
 
   // Follow the html.dark class so diagrams switch along with the theme toggle.
@@ -75,7 +108,10 @@ export function MermaidDiagram({
         const mermaid = (await import("mermaid")).default;
         mermaid.initialize({
           startOnLoad: false,
-          theme: dark ? "dark" : "neutral",
+          theme: "base",
+          themeVariables: dark
+            ? GARDEN_MERMAID_THEME.dark
+            : GARDEN_MERMAID_THEME.light,
           fontFamily: "var(--font-sans)",
         });
         const rendered = await mermaid.render(`mermaid-${renderId}`, code);
