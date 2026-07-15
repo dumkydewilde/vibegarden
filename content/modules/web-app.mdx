@@ -1,0 +1,29 @@
+---
+title: Web app
+description: "A URL you can send to anyone: your project as a page or small app on the web, hosted for free at hobby scale."
+category: Showing and running
+order: 32
+---
+
+## What it is
+
+A web app is your project with a front door: a URL that works on anyone's phone, no installation, no "it works on my laptop". It can be as small as one page showing this week's summary, or a real little app where club members type things in. The moment someone other than you should see or use your project, this is the block that makes it real.
+
+## When to use it
+
+- Someone else needs to use it: the club, the family, the friend who asked "can I try?"
+- You want the project to feel finished. A URL does that; a script in a folder does not.
+- The output deserves a better home than an email: interactive, always current, nicely laid out.
+
+The key distinction to have in your head first: static pages (the same files for every visitor, free and hard to break) versus dynamic code (something runs per visitor, needed once you save data or check a password). [Hosting your app](/learning/hosting-your-app) makes the whole landscape make sense with that one idea.
+
+## Setup steps
+
+1. Describe the one screen that matters and ask an AI assistant to build it as a single HTML page. Look at it locally first; iterate until it is right.
+2. Put the project in a GitHub repository and turn on [GitHub Pages](https://pages.github.com) in the settings. You now have a public URL, genuinely in twenty minutes.
+3. Outgrowing static? Connect the same repository to [Cloudflare](https://developers.cloudflare.com) or [Vercel](https://vercel.com): every push redeploys automatically, and small dynamic functions can hold secrets and talk to a [Database](/garden/modules/database).
+4. For looks without design skills, component libraries give you polished buttons and forms to assemble: [Using component libraries](/learning/using-component-libraries) shows how.
+
+## Options and costs
+
+Free at hobby scale, and honestly free: static hosting costs nothing, and the function-based dynamic tiers round to zero for workshop traffic. The one hard rule: an API key in a static page's JavaScript is public, full stop. Anything with a paid key needs at least one small dynamic function to hide it. Costs only start when real traffic does, which is a nice problem to have.

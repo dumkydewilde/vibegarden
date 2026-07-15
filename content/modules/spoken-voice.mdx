@@ -1,0 +1,29 @@
+---
+title: Spoken voice
+description: "Give your project a voice: text-to-speech good enough for bedtime stories, recipe readers, and your newsletter as a private podcast."
+category: Making things
+order: 23
+---
+
+## What it is
+
+Spoken voice is the output direction of voice: your project produces audio instead of, or next to, text. Text-to-speech has crossed the uncanny valley; modern voices are expressive, multilingual, and fast enough to feel alive. That turns reading tasks into listening tasks: a bedtime-story machine that reads your kids' own adventures aloud, a recipe reader for floury hands, the long newsletter as a private podcast for the bike ride.
+
+## When to use it
+
+- The moment of use has no hands or no screen: cooking, driving, cycling, falling asleep.
+- The audience prefers listening: kids who cannot read yet, grandparents who will not squint at a screen.
+- The content is already text your project produces, so reading it aloud is one extra step, not a new project.
+
+Listening beats reading in more situations than app-builders assume; this block is the cheap way to find out if yours is one of them.
+
+## Setup steps
+
+1. Take one real piece of text your project produces (or should produce) and paste it into a text-to-speech tool. Judge with your ears: tone, pace, how it handles names and numbers.
+2. Two names cover most needs: [ElevenLabs](https://elevenlabs.io) for the richest, most expressive voices and voice cloning, [Cartesia](https://cartesia.ai) when speed matters, like anything interactive. (Clone only voices you have permission to clone.)
+3. Wire it in: it is one API call, text in, audio file out. Ask your assistant to add it to whatever your project already makes.
+4. Decide where the audio lands: a file in a shared folder, a message in the family group chat, a private podcast feed.
+
+## Options and costs
+
+Free tiers cover experimenting; real use costs a few euros per month for, say, a daily story. Pricing is per character of text, so long texts cost more, which pairs nicely with the [Summarizer](/garden/modules/summarizer) block: summarize first, then speak. The input direction, turning speech into text, is the [Voice notes](/garden/modules/voice-notes) block, and [Working with voice](/learning/working-with-voice) covers both plus the newer speech-native models.

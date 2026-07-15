@@ -54,6 +54,12 @@ Core landed 2026-07-14, see `docs/plans/2026-07-14-gardener-tools.md`.
 - [x] Module know-how as content: `content/modules/*.mdx` (what it is, when
       to use it, setup steps, options and costs). Feeds the module drill-down
       pages at /garden/modules AND the Gardener's `read_module` tool
+- [x] Building blocks expanded from the articles (2026-07-15): 7 new blocks
+      (voice notes, spoken voice, image maker, knowledge assistant, database,
+      web app, scheduled task), 14 total, grouped by `category` frontmatter
+      on /garden and in the plant dialog. Blocks join the Gardener context
+      as a first-class "module" kind: speech-bubble button on each /garden
+      card plus the existing button on drill-down pages
 - [x] `fresh_reads` tool: read-only MotherDuck share (Dumky's RSS feed
       summaries, score >= 3, news/opinion/tutorial) via the PG endpoint and
       the `pg` driver. Activates when MOTHERDUCK_TOKEN is set (use a
