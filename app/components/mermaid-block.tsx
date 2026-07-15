@@ -6,6 +6,7 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
+import { cn } from "~/lib/utils";
 
 /** MDX `pre` replacement: renders ```mermaid fences as diagrams, anything else as a plain code block. */
 export function MdxPre(props: ComponentProps<"pre">) {
@@ -27,14 +28,29 @@ export function MdxPre(props: ComponentProps<"pre">) {
   return <pre {...props} />;
 }
 
-function MermaidDiagram({
-  code,
-  fallback,
-}: {
+type MermaidRenderState =
+  | { status: "loading" }
+  | { status: "rendered"; svg: string }
+  | { status: "error" };
+
+type MermaidDiagramProps = {
   code: string;
   fallback: ReactNode;
-}) {
-  const [svg, setSvg] = useState<string | null>(null);
+  loadingFallback?: ReactNode;
+  ariaLabel?: string;
+  className?: string;
+};
+
+export function MermaidDiagram({
+  code,
+  fallback,
+  loadingFallback = fallback,
+  ariaLabel,
+  className,
+}: MermaidDiagramProps) {
+  const [state, setState] = useState<MermaidRenderState>({
+    status: "loading",
+  });
   const [dark, setDark] = useState(false);
   const renderId = useId().replace(/[^a-zA-Z0-9]/g, "");
 
@@ -53,7 +69,8 @@ function MermaidDiagram({
     // bundle is close to Cloudflare's size limit and mermaid is huge.
     if (import.meta.env.SSR) return;
     let cancelled = false;
-    (async () => {
+    setState({ status: "loading" });
+    void (async () => {
       try {
         const mermaid = (await import("mermaid")).default;
         mermaid.initialize({
@@ -62,10 +79,11 @@ function MermaidDiagram({
           fontFamily: "var(--font-sans)",
         });
         const rendered = await mermaid.render(`mermaid-${renderId}`, code);
-        if (!cancelled) setSvg(rendered.svg);
+        if (!cancelled) {
+          setState({ status: "rendered", svg: rendered.svg });
+        }
       } catch {
-        // Invalid diagram source: keep showing the code fence.
-        if (!cancelled) setSvg(null);
+        if (!cancelled) setState({ status: "error" });
       }
     })();
     return () => {
@@ -73,12 +91,14 @@ function MermaidDiagram({
     };
   }, [code, dark, renderId]);
 
-  if (!svg) return fallback;
+  if (state.status === "loading") return loadingFallback;
+  if (state.status === "error") return fallback;
   return (
     <div
-      className="mermaid-diagram"
+      className={cn("mermaid-diagram", className)}
       role="img"
-      dangerouslySetInnerHTML={{ __html: svg }}
+      aria-label={ariaLabel}
+      dangerouslySetInnerHTML={{ __html: state.svg }}
     />
   );
 }
