@@ -1,0 +1,26 @@
+---
+title: Content finder
+description: "A tool that watches the web for things you care about: new listings, articles on a topic, mentions of your club, price drops."
+order: 7
+---
+
+## What it is
+
+A content finder checks sources on the web for new items, decides which ones you would care about, and brings them to you: new second-hand listings matching your search, articles about your niche interest, events in your town, a price drop on the thing you are stalking. The AI part is the judgment: not "everything new", but "the ones worth your attention, with a one-line reason".
+
+## When to use it
+
+- You check the same sites over and over, looking for the same kind of thing.
+- The filter is fuzzy: "interesting for our newsletter" or "actually a good deal", not just a keyword match.
+- You want a digest, not a firehose: five good finds per week beats fifty notifications.
+
+## Setup steps
+
+1. Name your sources. Two or three sites, feeds, or searches you already check by hand. Fewer, better sources beat many noisy ones.
+2. Write down your taste as rules: what makes something a keeper, what disqualifies it. This becomes the model's instructions.
+3. Check how each source can be read: many sites have RSS feeds (a machine-readable list of new items), which are the easiest and politest way in. Scraping pages is the fallback.
+4. Build the loop: fetch new items on a schedule, let the model score them against your rules, deliver the keepers as a digest (email, chat message, or a row in a [Google Sheet](/garden/modules/google-sheet)).
+
+## Options and costs
+
+Cheap to run, but this block has more moving parts than the others: fetching, filtering, scheduling, delivering. The model calls cost pennies per week at digest scale. Two things to respect: check sites at a friendly pace (once an hour is plenty), and expect scrapers to need occasional repair when sites change. Start with one source and a manual "run it now" button before adding schedules.

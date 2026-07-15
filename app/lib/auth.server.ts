@@ -9,6 +9,11 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const encoder = new TextEncoder();
 
 async function hmacKey(secret: string) {
+  if (!secret) {
+    throw new Error(
+      "SESSION_SECRET is not set. Locally: put SESSION_SECRET=<any string> in .dev.vars and restart the dev server. Production: wrangler secret put SESSION_SECRET.",
+    );
+  }
   return crypto.subtle.importKey(
     "raw",
     encoder.encode(secret),

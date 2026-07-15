@@ -7,6 +7,31 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@keyframes gardener-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@utility shimmer {
+  background-image: linear-gradient(
+    110deg,
+    var(--muted-foreground) 35%,
+    color-mix(in oklch, var(--muted-foreground) 35%, white) 50%,
+    var(--muted-foreground) 65%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: gardener-shimmer 2s linear infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    background-image: none;
+    color: var(--muted-foreground);
+    animation: none;
+  }
+}
+
 /*
  * Vibe Garden theme: modern Tufte with garden hints.
  * Warm paper surfaces, ink text, moss/leaf accents, hairline borders.

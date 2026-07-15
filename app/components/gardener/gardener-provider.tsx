@@ -67,6 +67,9 @@ export type GardenerState = {
   }) => void;
   model: Model;
   setModel: (model: Model) => void;
+  /** Web search via the OpenRouter web plugin; off by default (it costs). */
+  webSearch: boolean;
+  setWebSearch: (on: boolean) => void;
   /** Attach to the composer textarea so addContext can focus it. */
   composerRef: React.RefObject<HTMLTextAreaElement | null>;
 };
@@ -78,6 +81,17 @@ const welcome: ChatMessage = {
   role: "gardener",
   text: "Hi, I am The Gardener. I know every article in the learning section and I am happy to help you find or grow a project idea. What are you curious about?",
 };
+
+const OPEN_KEY = "vg-gardener-open";
+
+function readOpenPreference() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(OPEN_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
 
 let nextId = 0;
 const uid = () => `m${Date.now()}-${++nextId}`;
@@ -91,7 +105,7 @@ export function GardenerProvider({
   initialMessages?: ChatMessage[];
   initialModelId?: string | null;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(readOpenPreference);
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     initialMessages && initialMessages.length > 0
@@ -102,6 +116,7 @@ export function GardenerProvider({
   const [model, setModel] = useState<Model>(
     () => findModel(initialModelId) ?? defaultModel,
   );
+  const [webSearch, setWebSearch] = useState(false);
 
   const { pathname } = useLocation();
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -116,6 +131,17 @@ export function GardenerProvider({
   modelRef.current = model;
   const pathnameRef = useRef(pathname);
   pathnameRef.current = pathname;
+  const webSearchRef = useRef(webSearch);
+  webSearchRef.current = webSearch;
+
+  const setOpen = useCallback((nextOpen: boolean) => {
+    setOpenState(nextOpen);
+    try {
+      window.localStorage.setItem(OPEN_KEY, String(nextOpen));
+    } catch {
+      // Storage may be unavailable; preserve the in-memory panel state.
+    }
+  }, []);
 
   const addContext = useCallback((item: Omit<ContextItem, "id">) => {
     setContextItems((items) => {
@@ -175,6 +201,7 @@ export function GardenerProvider({
           page: pathnameRef.current,
           context: sentContext,
           projectId,
+          web: webSearchRef.current,
         }),
       });
       if (!res.ok || !res.body) {
@@ -311,6 +338,8 @@ export function GardenerProvider({
       plantProject,
       model,
       setModel,
+      webSearch,
+      setWebSearch,
       composerRef,
     }),
     [
@@ -326,6 +355,7 @@ export function GardenerProvider({
       resumeConversation,
       plantProject,
       model,
+      webSearch,
     ],
   );
 

@@ -30,6 +30,15 @@ describe("session cookie signing", () => {
     expect(await verifyValue("no-dot-here", secret)).toBeNull();
     expect(await verifyValue("value.deadbeef", secret)).toBeNull();
   });
+
+  it("explains a missing secret instead of a cryptic crypto error", async () => {
+    await expect(signValue("session-id-123", "")).rejects.toThrow(
+      /SESSION_SECRET is not set/,
+    );
+    await expect(
+      verifyValue(`value.${"ab".repeat(32)}`, ""),
+    ).rejects.toThrow(/SESSION_SECRET is not set/);
+  });
 });
 
 describe("otp helpers", () => {

@@ -38,20 +38,26 @@ Check items off as they land. One section per building block. Details live in
       article index in system prompt
 - [x] Chat persistence: threads/messages in D1, history loads on sign-in,
       "new conversation" keeps the old thread
-- [ ] Later: markdown-linked article suggestions could auto-load raw article
-      content server-side (tool use); Gardener as MCP server
+- [x] Article content loads server-side on demand via the `read_article`
+      tool (see Gardener tools); Gardener as MCP server stays under Later
 
 ## Gardener tools (decided 2026-07-14, build alongside phases 4-5)
 
-- [ ] Web access toggle: OpenRouter web plugin (`:online` / plugins param),
-      globe toggle in the composer, off by default (costs per search)
-- [ ] Tool-calling loop in api/chat (Kimi/DeepSeek/Qwen support tools;
-      free Gemma does not: degrade gracefully)
-- [ ] First-party tools: `read_article(slug)` (full text on demand),
+Core landed 2026-07-14, see `docs/plans/2026-07-14-gardener-tools.md`.
+
+- [x] Web access toggle: OpenRouter web plugin (plugins param), globe toggle
+      in the composer, off by default (costs per search)
+- [x] Tool-calling loop in api/chat (Kimi/DeepSeek/Qwen support tools;
+      free Gemma does not: the tools param is omitted, chat still works)
+- [x] First-party tools: `read_article(slug)` (full text on demand),
       `read_module(slug)` (module know-how, see below), `fetch_page(url)`
-- [ ] Module know-how as content: `content/modules/*.mdx` (what it is, when
+- [x] Module know-how as content: `content/modules/*.mdx` (what it is, when
       to use it, setup steps, options and costs). Feeds the module drill-down
-      pages in the Idea Garden AND the Gardener's `read_module` tool
+      pages at /garden/modules AND the Gardener's `read_module` tool
+- [x] `fresh_reads` tool: read-only MotherDuck share (Dumky's RSS feed
+      summaries, score >= 3, news/opinion/tutorial) via the PG endpoint and
+      the `pg` driver. Activates when MOTHERDUCK_TOKEN is set (use a
+      read-scaling token)
 - [ ] Data analysis, workshop-native: DuckDB-WASM in the browser. The
       Gardener writes SQL, the participant's browser runs it against their
       uploaded CSV, results return to the chat. No server compute, data

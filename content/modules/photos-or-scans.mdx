@@ -1,0 +1,28 @@
+---
+title: Photos or scans
+description: Turn pictures of receipts, handwriting, labels, or documents into text and structured data using a vision model.
+order: 3
+---
+
+## What it is
+
+Modern AI models can look at images, not just text. That turns a phone camera into a data entry device: photograph a receipt, a wine label, a handwritten recipe, a meter reading, or a stack of old letters, and ask the model to pull out the parts you care about as structured data (a date, an amount, a list of ingredients).
+
+## When to use it
+
+- The information you want exists on paper or in the physical world, not in a file.
+- Retyping it would be the boring part that kills the project.
+- Examples that work well: receipts to expense rows, business cards to contacts, book spines to a reading list, plant photos to a garden log.
+
+Accuracy is good but not perfect, especially with handwriting. Design for review: the model proposes, you confirm.
+
+## Setup steps
+
+1. Collect five to ten example photos first. Real ones, bad lighting included. These are your test set.
+2. Decide the output shape: which fields do you want per photo? Write it down as column names, like a [CSV file](/garden/modules/csv-file) header.
+3. Try it in a plain chat before building anything: upload a photo, ask for exactly those fields, see how close it gets.
+4. Once the prompt works, wire it up: a small tool that takes an image, calls a vision model, and appends the result to your sheet or file.
+
+## Options and costs
+
+Vision calls cost more than text calls but are still cheap at hobby scale: typically well under a cent per image with mid-range models. Start with a capable model to prove it works, then test whether a cheaper one holds up on your example photos. The main cost driver is resolution, so resize huge photos down before sending them.

@@ -1,0 +1,28 @@
+---
+title: Summarizer
+description: "A tool that turns long text into short text: meeting notes, newsletters, articles, email threads. The most reliable thing LLMs do."
+order: 6
+---
+
+## What it is
+
+A summarizer takes text that is too long to read and produces the version you actually wanted: the three decisions from the meeting, the one paragraph that matters from the newsletter, the gist of a 40-message email thread. Transformation tasks like this are the sweet spot of language models, because the input already contains the answer.
+
+## When to use it
+
+- A recurring stream of text arrives faster than you read it: newsletters, minutes, group chats, reports.
+- Different readers need different versions: the detailed notes for you, the two-liner for the club members.
+- You want structured output from unstructured text: action items with owners, dates pulled into a list.
+
+The recurring part matters. Summarizing one document is a chat message, not a project. A summarizer becomes a project when the same kind of text arrives weekly and the output should land somewhere automatically.
+
+## Setup steps
+
+1. Collect three real examples of the input text and write, by hand, the summary you wish you had received. Those pairs define the job.
+2. Write the prompt like a brief to a new assistant: what to keep, what to drop, the exact output format, the tone.
+3. Test the prompt on your examples in a plain chat until the output matches what you wrote by hand.
+4. Automate the boring part: a small script or workflow that grabs the new text (from mail, a folder, a feed), runs the prompt, and delivers the result to your inbox or a [Google Sheet](/garden/modules/google-sheet).
+
+## Options and costs
+
+Cheap. Summarization works well on inexpensive models, and even a daily summarizer usually costs a few cents per month. Long inputs cost more than long outputs, so the main lever is not sending more text than needed. Start by paying nothing: prove the prompt in the free chat, automate only once the output is reliably useful.
