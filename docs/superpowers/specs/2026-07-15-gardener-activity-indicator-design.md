@@ -28,9 +28,10 @@ activity record after the work completes.
 
 - The indicator lives in the existing Gardener message row, beside the
   sprout avatar. It replaces the detached "The Gardener is thinking..." text.
-- Use shadcn's text `shimmer` utility on the current status only. The effect
-  uses existing muted and accent colors and does not introduce a spinner,
-  skeleton response, or a new dependency.
+- Add a local text `shimmer` utility modelled on shadcn's current chat
+  utility, then use it on the current status only. The effect uses existing
+  muted and accent colors and does not introduce a spinner, skeleton response,
+  or a new dependency.
 - Add a `prefers-reduced-motion` fallback that leaves the status text visible
   and static.
 - The status is ordinary visible text. Do not add an assertive live region,
