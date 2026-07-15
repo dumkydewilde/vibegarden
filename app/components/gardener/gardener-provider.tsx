@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -105,7 +106,13 @@ export function GardenerProvider({
   initialMessages?: ChatMessage[];
   initialModelId?: string | null;
 }) {
-  const [open, setOpenState] = useState(readOpenPreference);
+  // Start closed on both server and client, then apply the saved
+  // preference after mount: reading localStorage during render makes the
+  // SSR HTML disagree with the first client render (hydration mismatch).
+  const [open, setOpenState] = useState(false);
+  useEffect(() => {
+    if (readOpenPreference()) setOpenState(true);
+  }, []);
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     initialMessages && initialMessages.length > 0

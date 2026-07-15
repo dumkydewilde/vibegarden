@@ -1,71 +1,12 @@
 import { Blocks, BookOpen, Globe, Sprout } from "lucide-react";
 import Markdown from "react-markdown";
-import { Link } from "react-router";
 import { ContextQuote } from "./context-quote";
 import type { ChatMessage } from "./gardener-provider";
+import { ContentCard, ContentLink } from "~/components/content-link";
 import { getArticle } from "~/lib/content";
 import { getModule } from "~/lib/modules";
 import { splitToolNotes, type ToolNoteSegment } from "~/lib/tool-notes";
 import { cn } from "~/lib/utils";
-
-/** The small clickable card for an article or building block. */
-function ContentCard({
-  to,
-  icon: Icon,
-  title,
-}: {
-  to: string;
-  icon: typeof BookOpen;
-  title: string;
-}) {
-  return (
-    <Link
-      to={to}
-      className="my-0.5 inline-flex max-w-full items-center gap-1.5 rounded-md border bg-card px-2 py-1 align-middle text-xs font-medium not-italic text-foreground no-underline shadow-xs transition-colors hover:border-primary/50"
-    >
-      <Icon className="size-3.5 shrink-0 text-primary" />
-      <span className="truncate">{title}</span>
-    </Link>
-  );
-}
-
-/**
- * Links in replies: learning articles and building blocks become little
- * cards so they stand apart from web URLs; other internal links go through
- * the router.
- */
-function MdLink({
-  href,
-  children,
-}: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
-  const articleSlug = href?.match(/^\/learning\/([\w-]+)$/)?.[1];
-  const article = articleSlug ? getArticle(articleSlug) : undefined;
-  if (article) {
-    return <ContentCard to={href!} icon={BookOpen} title={article.meta.title} />;
-  }
-  const moduleSlug = href?.match(/^\/garden\/modules\/([\w-]+)$/)?.[1];
-  const module = moduleSlug ? getModule(moduleSlug) : undefined;
-  if (module) {
-    return <ContentCard to={href!} icon={Blocks} title={module.meta.title} />;
-  }
-  if (href?.startsWith("/")) {
-    return (
-      <Link to={href} className="text-primary underline underline-offset-2">
-        {children}
-      </Link>
-    );
-  }
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="text-primary underline underline-offset-2"
-    >
-      {children}
-    </a>
-  );
-}
 
 function ActivityBubble({ label }: { label: string }) {
   return (
@@ -157,7 +98,7 @@ function GardenerTextBubble({
       )}
     >
       <div className="space-y-2 [&_code]:rounded [&_code]:bg-background/60 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_li]:ml-4 [&_ol]:list-decimal [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-background/60 [&_pre]:p-2 [&_ul]:list-disc">
-        <Markdown components={{ a: MdLink }}>{text}</Markdown>
+        <Markdown components={{ a: ContentLink }}>{text}</Markdown>
       </div>
     </div>
   );

@@ -22,7 +22,7 @@ The catch is honest and physical: cron runs on your machine, so your machine has
 
 ## Option two: GitHub's machines, with Actions
 
-If your project lives in a GitHub repository, GitHub Actions will run it on GitHub's computers, on a schedule, for free at hobby scale. You add one file to your repository at `.github/workflows/daily.yml`:
+If your project lives in a GitHub repository, [GitHub Actions](https://github.com/features/actions) will run it on GitHub's computers, on a schedule, for free at hobby scale. You add one file to your repository at `.github/workflows/daily.yml`:
 
 ```yaml
 on:
@@ -39,7 +39,7 @@ jobs:
 
 Same cron syntax (one quirk: the time is UTC, so 07:00 Amsterdam is `0 5 * * *` in summer), but now it runs whether your laptop is open or in the sea. Actions can do more than schedules: run on every push, on a button press, when an issue is opened. Secrets like API keys go in the repository settings, never in the file itself.
 
-Plenty of other services host scheduled jobs too, Val Town, Cloudflare Workers, Zapier and n8n for the no-code crowd, and they are worth a look once you outgrow these two. But cron and Actions cover most projects and cost nothing to try.
+Plenty of other services host scheduled jobs too, [Val Town](https://www.val.town), [Cloudflare Workers](https://workers.cloudflare.com), [Zapier](https://zapier.com) and [n8n](https://n8n.io) for the no-code crowd, and they are worth a look once you outgrow these two. But cron and Actions cover most projects and cost nothing to try.
 
 ## Which one, when
 

@@ -2,6 +2,8 @@ import { Link } from "react-router";
 import { ArrowLeft, BookOpen } from "lucide-react";
 import type { Route } from "./+types/learning.$slug";
 import { useGardener } from "~/components/gardener/gardener-provider";
+import { ContentLink } from "~/components/content-link";
+import { MdxPre } from "~/components/mermaid-block";
 import {
   ListItemWithAsk,
   ParagraphWithAsk,
@@ -26,8 +28,10 @@ export function meta({ params }: Route.MetaArgs) {
 }
 
 const mdxComponents = {
+  a: ContentLink,
   li: ListItemWithAsk,
   p: ParagraphWithAsk,
+  pre: MdxPre,
 };
 
 export default function LearningArticle({ params }: Route.ComponentProps) {
