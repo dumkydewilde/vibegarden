@@ -1,0 +1,29 @@
+---
+title: Voice notes
+description: "Speak instead of type: record a rambling note, transcribe it nearly for free, and let an LLM turn the rambling into structure."
+category: Getting things in
+order: 3
+---
+
+## What it is
+
+A voice note is an input format, not just a message to your sister. You record two minutes of unpolished talking, a transcription model like OpenAI's Whisper turns it into text almost perfectly (Dutch included, accents included), and an LLM turns that text into the thing you actually wanted: a shopping list, a diary entry, meeting minutes, ideas sorted by topic. Talking is about three times faster than typing, and the model cleans up the rambling for free.
+
+## When to use it
+
+- The people using your project will not type into a form but will happily talk: kids, grandparents, anyone on a bike or with flour on their hands.
+- You lose ideas because capturing them takes too long. Record now, structure later.
+- The input is naturally spoken: interviews, meetings, "note to self" moments in the car.
+
+The pattern to memorize is record, transcribe, extract. Half the "I wish I had a tool for..." ideas can be built exactly this way, with the extract step covered in [Extracting meaning from text](/learning/extracting-meaning-from-text).
+
+## Setup steps
+
+1. Record three real voice notes the way you naturally talk, no script. These are your test material.
+2. Transcribe them: your phone's built-in dictation, a Whisper-based app, or the voice input in ChatGPT or Claude all work. Read the output; it will be better than you expect.
+3. Write a prompt that turns one transcript into the structured output you want, and test it on all three notes until the format holds.
+4. Only then automate: a shortcut on your phone that records, transcribes, runs the prompt, and drops the result in a note, an email, or a [Google Sheet](/garden/modules/google-sheet).
+
+## Options and costs
+
+Transcription is one of the cheapest things in AI: an hour of audio costs cents, and on-device options cost nothing. The structuring step is a normal LLM call, also cents. Start by paying nothing at all: dictate into a free chat app and paste your structuring prompt after it. [Working with voice](/learning/working-with-voice) has the full story, including the output direction: giving your project a voice of its own is the [Spoken voice](/garden/modules/spoken-voice) block.

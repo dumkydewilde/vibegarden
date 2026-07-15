@@ -16,7 +16,7 @@ export type ContextItem = {
   label: string;
   /** What gets sent to the model: page content, a paragraph, etc. */
   content: string;
-  kind: "page" | "article" | "paragraph" | "project" | "dataset";
+  kind: "page" | "article" | "module" | "paragraph" | "project" | "dataset";
   /** For project context: ties the conversation to that project. */
   projectId?: string;
 };

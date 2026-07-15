@@ -44,12 +44,12 @@ export default function ModulePage({ params }: Route.ComponentProps) {
   const addModuleToContext = () => {
     const raw = getModuleRaw(meta.slug);
     if (raw) {
-      addContext({ kind: "article", label: meta.title, content: raw });
+      addContext({ kind: "module", label: meta.title, content: raw });
     }
   };
 
   return (
-    <div className="mx-auto max-w-[70ch] md:pl-10">
+    <div className="article-page">
       <div className="mb-8">
         <Link
           to="/garden"

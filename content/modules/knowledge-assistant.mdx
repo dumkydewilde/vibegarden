@@ -1,0 +1,29 @@
+---
+title: Knowledge assistant
+description: "A chat that actually knows your stuff: your club's rules, your recipes, your project notes, briefed from a folder of plain text files."
+category: Making things
+order: 21
+---
+
+## What it is
+
+A knowledge assistant is a chat that has been briefed on your situation. Out of the box, a model knows the whole internet and nothing about your volunteer roster, your definition of "active member", or which supplier always invoices twice. Fix the briefing and the same model goes from generic to genuinely useful. The surprising part is how little technology this takes: a folder of plain markdown files gets you most of the way.
+
+## When to use it
+
+- You keep explaining the same background in every conversation: how the club works, what the words mean, who decides what.
+- Someone else should be able to ask the questions: the new volunteer, your co-organizer, future you in six months.
+- The knowledge already exists but is scattered: emails, a binder, three people's heads.
+
+The test: if you have ever written "as I mentioned before" to a chatbot, you want this block.
+
+## Setup steps
+
+1. Write the handbook you would give a new volunteer in their first week: one topic per file, short files, descriptive names. `people.md`, `definitions.md`, `processes/onboarding.md`. [Creating the right context](/learning/creating-the-right-context) shows the layout.
+2. Add a `README.md` that acts as a table of contents, so a model can find the right file instead of reading everything.
+3. Test it the cheap way first: paste the relevant file into a chat and ask real questions. Wrong answers mean the file is unclear; fix the file, not the model.
+4. To make it self-serve, give a model file-reading tools so it loads files as needed. That step is what [What is an agent?](/learning/what-is-an-agent) explains, and tools like Claude or custom GPTs let you attach the folder directly.
+
+## Options and costs
+
+The knowledge part is free: it is writing, not software. The chat part costs whatever your model costs, and because the model reads only the files a question needs, even heavy use stays cheap. Upgrade the briefing before the model: a mid-range model with a good handbook beats a top model that has never heard of you, and [Choosing a model](/learning/choosing-a-model) explains why.

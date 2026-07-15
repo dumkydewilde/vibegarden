@@ -1,0 +1,29 @@
+---
+title: Database
+description: "A program whose only job is remembering things reliably: for when your project outgrows a spreadsheet, or several people write at once."
+category: Storing things
+order: 11
+---
+
+## What it is
+
+A database is a program with one job: storing data and finding it back, reliably, even when several people or programs write at the same time. The kinds you will meet, like SQLite and Postgres, speak a language called SQL, and every AI assistant speaks fluent SQL. That changes everything about how scary databases are: you describe what you want in plain language, the assistant writes the query.
+
+## When to use it
+
+- **Several people or programs write at once.** A shared sheet gets messy here; databases are built for exactly this.
+- **The structure is worth protecting.** A database can refuse a signup without an email address. A sheet happily accepts a birthday in the price column.
+- **You are past tens of thousands of rows**, or you want real backups and no "someone sorted one column and scrambled every row" incidents.
+
+If none of those apply yet, do not use one. A [Google Sheet](/garden/modules/google-sheet) or a [CSV file](/garden/modules/csv-file) is the honest default, and moving to a database later is an afternoon, not a rewrite: export as CSV, import, done. [Storing your data: Google Sheet or database?](/learning/store-data-sheets-vs-database) walks through the decision.
+
+## Setup steps
+
+1. Sketch your data as a table first: column names and one example row per table. If you cannot sketch it, you are not ready to store it.
+2. Pick a hosted option; nobody installs a database on their laptop anymore. [Supabase](https://supabase.com) or [Neon](https://neon.com) are the default choices, with free tiers that comfortably fit a workshop project.
+3. Ask your AI assistant to create the tables from your sketch, and to write the first query: "show me everything, newest first."
+4. Connect your project. This is one setting (a connection string) that you treat like a password: never in the code, always in a secret.
+
+## Options and costs
+
+Free at workshop scale: the free tiers of Supabase and Neon hold far more than a hobby project produces. The real cost is a commitment: options like Supabase bundle login and file storage, which is convenient and also means your project grows roots into that service. Worth noticing, not worth fearing. Start free, and only think about paying when your hobby stops being a hobby.

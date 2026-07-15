@@ -10,6 +10,7 @@ export type ModuleMeta = {
   slug: string;
   title: string;
   description: string;
+  category: string;
   order: number;
 };
 
@@ -45,6 +46,7 @@ const moduleMap = new Map<string, Module>(
       slug,
       title: String(fm.title ?? slug),
       description: String(fm.description ?? ""),
+      category: String(fm.category ?? "Other"),
       order: Number(fm.order ?? 999),
     };
     return [slug, { meta, Component: mod.default }];
@@ -55,6 +57,20 @@ export function getModules(): ModuleMeta[] {
   return [...moduleMap.values()]
     .map((m) => m.meta)
     .sort((a, b) => a.order - b.order || a.title.localeCompare(b.title));
+}
+
+/** Groups in order of first appearance, i.e. driven by frontmatter order. */
+export function getModulesByCategory(): {
+  category: string;
+  modules: ModuleMeta[];
+}[] {
+  const groups: { category: string; modules: ModuleMeta[] }[] = [];
+  for (const meta of getModules()) {
+    const group = groups.find((g) => g.category === meta.category);
+    if (group) group.modules.push(meta);
+    else groups.push({ category: meta.category, modules: [meta] });
+  }
+  return groups;
 }
 
 export function getModule(slug: string): Module | undefined {

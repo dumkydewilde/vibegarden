@@ -25,7 +25,11 @@ import {
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { requireUser } from "~/lib/auth.server";
-import { getModules, modules } from "~/lib/modules";
+import {
+  getModuleRaw,
+  getModulesByCategory,
+  type ModuleMeta,
+} from "~/lib/modules";
 import { createProject, listProjects } from "~/lib/projects.server";
 import { statusLabel } from "~/lib/project-status";
 import { listThreads } from "~/lib/threads.server";
@@ -96,7 +100,7 @@ function PlantDialog({
           Plant an idea
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[85dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-serif font-normal">
             Plant an idea
@@ -117,22 +121,31 @@ function PlantDialog({
             <p className="mb-2 text-sm text-muted-foreground">
               Building blocks (optional):
             </p>
-            <div className="flex flex-wrap gap-1.5">
-              {modules.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => toggle(m)}
-                  aria-pressed={chosen.includes(m)}
-                  className={cn(
-                    "rounded-full border px-3 py-1 text-xs transition-colors",
-                    chosen.includes(m)
-                      ? "border-primary bg-accent text-accent-foreground"
-                      : "text-muted-foreground hover:border-primary/40",
-                  )}
-                >
-                  {m}
-                </button>
+            <div className="space-y-2.5">
+              {getModulesByCategory().map((group) => (
+                <div key={group.category}>
+                  <p className="mb-1 text-xs text-muted-foreground/70">
+                    {group.category}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {group.modules.map(({ title }) => (
+                      <button
+                        key={title}
+                        type="button"
+                        onClick={() => toggle(title)}
+                        aria-pressed={chosen.includes(title)}
+                        className={cn(
+                          "rounded-full border px-3 py-1 text-xs transition-colors",
+                          chosen.includes(title)
+                            ? "border-primary bg-accent text-accent-foreground"
+                            : "text-muted-foreground hover:border-primary/40",
+                        )}
+                      >
+                        {title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
             {chosen.map((m) => (
@@ -153,9 +166,54 @@ function PlantDialog({
   );
 }
 
+/**
+ * A building block card: the card links to the drill-down page, and a
+ * separate "Add to garden" button (a sibling, not a nested control) hands
+ * the block's full know-how to The Gardener as context.
+ */
+function ModuleCard({
+  module: m,
+  onDiscuss,
+}: {
+  module: ModuleMeta;
+  onDiscuss: (module: ModuleMeta) => void;
+}) {
+  return (
+    <div className="group relative h-full">
+      <Link to={`/garden/modules/${m.slug}`} className="block h-full">
+        <Card className="h-full gap-2 py-4 pb-11 transition-colors group-hover:border-primary/40">
+          <CardHeader className="px-4">
+            <CardTitle className="font-serif text-base font-normal">
+              {m.title}
+            </CardTitle>
+            <CardDescription className="text-xs leading-relaxed">
+              {m.description}
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </Link>
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-label={`Add ${m.title} to your garden conversation`}
+        onClick={() => onDiscuss(m)}
+        className="absolute bottom-2 right-2 h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+      >
+        <Plus className="size-3.5" />
+        Add to garden
+      </Button>
+    </div>
+  );
+}
+
 export default function Garden({ loaderData, actionData }: Route.ComponentProps) {
-  const { setOpen } = useGardener();
+  const { setOpen, addContext } = useGardener();
   const { conversations, projects } = loaderData;
+
+  const discussModule = (m: ModuleMeta) => {
+    const raw = getModuleRaw(m.slug);
+    if (raw) addContext({ kind: "module", label: m.title, content: raw });
+  };
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -266,24 +324,21 @@ export default function Garden({ loaderData, actionData }: Route.ComponentProps)
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           The ingredients projects are made of. Each one explains what it is,
-          when to reach for it, and what it costs.
+          when to reach for it, and what it costs. Add one to your garden to
+          talk it through with The Gardener.
         </p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {getModules().map((m) => (
-            <Link key={m.slug} to={`/garden/modules/${m.slug}`} className="group">
-              <Card className="h-full gap-2 py-4 transition-colors group-hover:border-primary/40">
-                <CardHeader className="px-4">
-                  <CardTitle className="font-serif text-base font-normal">
-                    {m.title}
-                  </CardTitle>
-                  <CardDescription className="text-xs leading-relaxed">
-                    {m.description}
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            </Link>
-          ))}
-        </div>
+        {getModulesByCategory().map((group) => (
+          <div key={group.category} className="mt-6">
+            <h3 className="text-sm font-medium text-muted-foreground">
+              {group.category}
+            </h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {group.modules.map((m) => (
+                <ModuleCard key={m.slug} module={m} onDiscuss={discussModule} />
+              ))}
+            </div>
+          </div>
+        ))}
       </section>
     </div>
   );

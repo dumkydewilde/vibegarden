@@ -1,0 +1,29 @@
+---
+title: Scheduled task
+description: "The block that makes a tool a system: your project runs every morning at seven without you, on your machine or on GitHub's."
+category: Showing and running
+order: 33
+---
+
+## What it is
+
+A scheduled task runs your project on a clock instead of on your keystroke. A script you run by hand is a tool; the same script running every morning at seven is a system, and the jump between the two is one file. This is the block that turns "I made a thing" into "the summary is just there every morning", which is where projects start feeling like magic.
+
+## When to use it
+
+- The project's value is recurring: a daily digest, a weekly club email draft, a nightly backup of the [Google Sheet](/garden/modules/google-sheet).
+- You keep forgetting to run it. That is not a discipline problem, it is a missing block.
+- Fresh input arrives on a rhythm: the [Content finder](/garden/modules/content-finder) checking for new listings, the [Summarizer](/garden/modules/summarizer) digesting yesterday's messages.
+
+If you would run it at most once a month by hand, skip this block; scheduling earns its keep at daily or weekly rhythms.
+
+## Setup steps
+
+1. Make the manual version boringly reliable first: one command that does the whole job. Never automate something that does not work by hand.
+2. Choose where it runs. A machine that is always on: cron, the scheduler built into every Mac and Linux machine, one line of configuration. A laptop that lives in a bag: [GitHub Actions](https://github.com/features/actions) runs it on GitHub's computers instead, free at hobby scale.
+3. Ask your AI assistant to write the schedule line; nobody remembers cron's field order, and it knows the traps (full paths, and GitHub's clocks run on UTC).
+4. Decide where the result lands (your inbox, a sheet, a group chat) and, importantly, how you notice failure: a run that silently stops is worse than no automation.
+
+## Options and costs
+
+Free: cron costs nothing, GitHub Actions is free at hobby scale, and the job's own model calls cost the same as running it by hand. [Automate and schedule things](/learning/automate-and-schedule) walks through both options with copy-pasteable examples. When the scheduled thing needs to remember state between runs or make decisions along the way, you are graduating from a script to an agent: [What is an agent?](/learning/what-is-an-agent) is the next read.

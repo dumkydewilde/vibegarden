@@ -1,10 +1,19 @@
-import { BookOpen, Database, FileText, Quote, Sprout, X } from "lucide-react";
+import {
+  Blocks,
+  BookOpen,
+  Database,
+  FileText,
+  Quote,
+  Sprout,
+  X,
+} from "lucide-react";
 import type { ContextSnapshot } from "./gardener-provider";
 import { cn } from "~/lib/utils";
 
 const kindIcon = {
   page: FileText,
   article: BookOpen,
+  module: Blocks,
   paragraph: Quote,
   project: Sprout,
   dataset: Database,
@@ -13,6 +22,7 @@ const kindIcon = {
 const kindLabel = {
   page: "Page",
   article: "Article",
+  module: "Building block",
   paragraph: "From the article",
   project: "Freshly planted",
   dataset: "Dataset",
