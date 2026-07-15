@@ -166,6 +166,11 @@
   }
 }
 
+.article-page {
+  max-width: 78ch;
+  margin-inline: auto;
+}
+
 /*
  * Article typography: Tufte-inspired reading layout, ~90ch measure.
  * Applied to MDX-rendered learning articles.

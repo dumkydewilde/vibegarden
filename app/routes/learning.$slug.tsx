@@ -85,7 +85,7 @@ export default function LearningArticle({
   };
 
   return (
-    <div className="mx-auto max-w-[70ch] md:pl-10">
+    <div className="article-page">
       <div className="mb-8">
         <Link
           to="/learning"
