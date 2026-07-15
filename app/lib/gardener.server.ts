@@ -3,7 +3,7 @@ import promptTemplate from "../../content/gardener/system-prompt.md?raw";
 
 export type WireMessage = { role: "user" | "assistant"; content: string };
 export type WireContextItem = {
-  kind: "page" | "article" | "paragraph" | "project";
+  kind: "page" | "article" | "paragraph" | "project" | "dataset";
   label: string;
   content: string;
 };

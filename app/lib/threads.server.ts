@@ -5,7 +5,7 @@ import { chatMessages, chatThreads } from "~/db/schema";
 const TITLE_MAX = 64;
 
 export type StoredContext = {
-  kind: "page" | "article" | "paragraph" | "project";
+  kind: "page" | "article" | "paragraph" | "project" | "dataset";
   label: string;
   content: string;
 };

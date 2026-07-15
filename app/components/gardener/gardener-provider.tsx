@@ -15,7 +15,7 @@ export type ContextItem = {
   label: string;
   /** What gets sent to the model: page content, a paragraph, etc. */
   content: string;
-  kind: "page" | "article" | "paragraph" | "project";
+  kind: "page" | "article" | "paragraph" | "project" | "dataset";
   /** For project context: ties the conversation to that project. */
   projectId?: string;
 };
@@ -35,7 +35,7 @@ export type ChatMessage = {
   context?: ContextSnapshot[];
 };
 
-type GardenerState = {
+export type GardenerState = {
   open: boolean;
   setOpen: (open: boolean) => void;
   messages: ChatMessage[];
@@ -45,7 +45,10 @@ type GardenerState = {
   removeContext: (id: string) => void;
   ask: (question: string) => void;
   /** Like ask, but in a brand-new conversation (the old one is kept). */
-  askFresh: (question: string) => void;
+  askFresh: (
+    question: string,
+    context?: Omit<ContextItem, "id">[],
+  ) => void;
   clearConversation: () => void;
   /**
    * Swap the sidebar over to an existing conversation and open it,
@@ -214,11 +217,15 @@ export function GardenerProvider({
   }, []);
 
   const askFresh = useCallback(
-    async (question: string) => {
+    async (
+      question: string,
+      context: Omit<ContextItem, "id">[] = [],
+    ) => {
       messagesRef.current = [welcome];
       setMessages([welcome]);
-      contextRef.current = [];
-      setContextItems([]);
+      const seededContext = context.map((item) => ({ ...item, id: uid() }));
+      contextRef.current = seededContext;
+      setContextItems(seededContext);
       setOpen(true);
       // The new thread must exist before the chat request picks a thread.
       await fetch("/api/thread", { method: "POST" });
@@ -329,8 +336,12 @@ export function GardenerProvider({
   );
 }
 
+export function useOptionalGardener() {
+  return useContext(GardenerContext);
+}
+
 export function useGardener() {
-  const ctx = useContext(GardenerContext);
+  const ctx = useOptionalGardener();
   if (!ctx) throw new Error("useGardener must be used inside GardenerProvider");
   return ctx;
 }
