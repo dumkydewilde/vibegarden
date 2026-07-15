@@ -9,15 +9,14 @@
 	"main": "./workers/app.ts",
 	"vars": {
 		// Bootstrap admin: this email can always log in and gets the admin role.
-		"ADMIN_EMAIL": "dumky@motherduck.com"
+		"ADMIN_EMAIL": "dumky@motherduck.com",
+		"MAIL_FROM": "Vibe Garden <no-reply@vibegarden.dumky.net>"
 	},
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "vibe-garden",
-			// Placeholder until `wrangler d1 create vibe-garden`; local dev
-			// (miniflare) works regardless of this id.
-			"database_id": "00000000-0000-0000-0000-000000000000",
+			"database_id": "379af88e-40af-4d06-b754-b33f8413c9aa",
 			"migrations_dir": "drizzle"
 		}
 	],
