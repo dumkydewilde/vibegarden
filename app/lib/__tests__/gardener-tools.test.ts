@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   executeTool,
   htmlToText,
+  toolDefinitions,
   toolNoteFor,
 } from "~/lib/gardener-tools.server";
 
@@ -14,6 +15,26 @@ const call = (name: string, args: object) => ({
 const env = {} as Env;
 
 describe("executeTool", () => {
+  it("offers a required titled Mermaid visualization tool", () => {
+    const definition = toolDefinitions(env).find(
+      (item) => item.function.name === "visualize_flow",
+    );
+    expect(definition).toMatchObject({
+      type: "function",
+      function: {
+        name: "visualize_flow",
+        parameters: {
+          type: "object",
+          required: ["title", "diagram"],
+          properties: {
+            title: { type: "string" },
+            diagram: { type: "string" },
+          },
+        },
+      },
+    });
+  });
+
   it("reads an article without its frontmatter", async () => {
     const result = await executeTool(
       call("read_article", { slug: "what-is-an-llm" }),
@@ -63,6 +84,33 @@ describe("executeTool", () => {
 
   it("rejects unknown tools", async () => {
     expect(await executeTool(call("rm_rf", {}), env)).toContain("unknown tool");
+  });
+
+  it("acknowledges and emits a marker for a valid flow", async () => {
+    const flow = call("visualize_flow", {
+      title: " Request flow ",
+      diagram: " flowchart TD\n  A --> B ",
+    });
+    expect(await executeTool(flow, env)).toBe(
+      'Diagram "Request flow" is ready. Briefly explain what it shows.',
+    );
+    expect(toolNoteFor(flow)).toContain("[[tool:diagram:");
+  });
+
+  it("rejects empty and oversized flows without emitting a marker", async () => {
+    const empty = call("visualize_flow", {
+      title: "",
+      diagram: "flowchart TD",
+    });
+    expect(await executeTool(empty, env)).toContain("title is required");
+    expect(toolNoteFor(empty)).toBeNull();
+
+    const oversized = call("visualize_flow", {
+      title: "Large flow",
+      diagram: "x".repeat(12_001),
+    });
+    expect(await executeTool(oversized, env)).toContain("12,000 characters");
+    expect(toolNoteFor(oversized)).toBeNull();
   });
 });
 

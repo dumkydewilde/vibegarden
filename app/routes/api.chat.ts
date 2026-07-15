@@ -168,10 +168,12 @@ export async function action({ request, context }: Route.ActionArgs) {
             })),
           });
           for (const call of result.toolCalls) {
-            // Tool activity renders as its own little bubble client-side.
-            emit(
-              `${full && !full.endsWith("\n\n") ? "\n\n" : ""}${toolNoteFor(call)}\n\n`,
-            );
+            const note = toolNoteFor(call);
+            if (note) {
+              emit(
+                `${full && !full.endsWith("\n\n") ? "\n\n" : ""}${note}\n\n`,
+              );
+            }
             upstreamMessages.push({
               role: "tool",
               tool_call_id: call.id,

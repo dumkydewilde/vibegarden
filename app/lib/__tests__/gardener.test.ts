@@ -31,6 +31,8 @@ describe("buildSystemPrompt", () => {
     expect(withTools).toContain("read_article(slug)");
     expect(withTools).toContain("read_module(slug)");
     expect(withTools).toContain("fetch_page(url)");
+    expect(withTools).toContain("visualize_flow(title, diagram)");
+    expect(withTools).toContain("directly in the chat");
     expect(withTools).toContain("google-sheet");
 
     const withoutTools = buildSystemPrompt([], undefined, { tools: false });
