@@ -13,3 +13,8 @@
 .dev.vars*
 worker-configuration.d.ts
 .playwright-mcp/
+
+# Local agent and workspace configuration
+/.claude/rules/memex*.md
+/.conductor/
+/.context/
