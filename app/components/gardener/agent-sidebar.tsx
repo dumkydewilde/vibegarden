@@ -89,13 +89,16 @@ function PanelBody() {
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-3 p-3">
           {messages.map((m) => (
-            <ChatMessageBubble key={m.id} message={m} />
+            <ChatMessageBubble
+              key={m.id}
+              message={m}
+              isStreaming={
+                busy &&
+                m.id === messages[messages.length - 1]?.id &&
+                m.role === "gardener"
+              }
+            />
           ))}
-          {busy && messages[messages.length - 1]?.text === "" && (
-            <p className="pl-9 text-xs text-muted-foreground">
-              The Gardener is thinking...
-            </p>
-          )}
           <div ref={bottomRef} />
         </div>
       </ScrollArea>

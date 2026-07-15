@@ -24,6 +24,12 @@ describe("ChatMessageBubble activity", () => {
     expect(status.classList.contains("shimmer")).toBe(true);
   });
 
+  it("renders an empty completed Gardener message without a shimmer", () => {
+    renderMessage(<ChatMessageBubble message={gardener("")} />);
+
+    expect(screen.queryByText("The Gardener is thinking...")).toBeNull();
+  });
+
   it("shimmers the trailing article tool with its article title", () => {
     renderMessage(
       <ChatMessageBubble
