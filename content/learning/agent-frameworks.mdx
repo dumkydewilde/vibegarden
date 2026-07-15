@@ -13,13 +13,13 @@ order: 5
 Writing the loop itself is easy; a framework earns its keep on everything around the loop:
 
 - **Durability.** A real task might take twenty steps over ten minutes. If step fourteen fails, you want it to resume, not start over. Frameworks checkpoint progress.
-- **Scheduling and triggers.** "Every morning at 7:00" or "whenever an email arrives": agents are most useful when something other than you starts them.
+- **Scheduling and triggers.** "Every morning at 7:00" or "whenever an email arrives": agents are most useful when something other than you starts them. For a plain script, cron or GitHub Actions already cover this ([Automate and schedule things](/learning/automate-and-schedule)); frameworks add it for agents.
 - **A place to live.** Your agent needs to run somewhere that is not your laptop, and show up somewhere people already are: Slack, email, a web page.
 - **Safety rails.** Sandboxes for running code, permission checks before real actions, logs of what the agent did and why. Boring, until the day it matters.
 
 ## One to look at: Eve
 
-A good example of the current generation is [Eve](https://vercel.com/eve), Vercel's agent framework. The pitch is charming: you define an agent's behavior in plain markdown instructions, give it tools written in TypeScript, and deploy the same agent to Slack, Discord, Teams, or the web from one codebase. Instructions as markdown is worth pausing on: the "programming language" for agent behavior is turning out to be well-organized prose, which means writing clearly is becoming a superpower. The moat around programmers is draining fast.
+A good example of the current generation is [Eve](https://vercel.com/eve), Vercel's agent framework. The pitch is charming: you define an agent's behavior in plain markdown instructions, give it tools written in TypeScript (each one an API or MCP connection under the hood, see [What is an API? What is MCP?](/learning/what-is-an-api-what-is-mcp)), and deploy the same agent to Slack, Discord, Teams, or the web from one codebase. Instructions as markdown is worth pausing on: the "programming language" for agent behavior is turning out to be well-organized prose, which means writing clearly is becoming a superpower. The moat around programmers is draining fast.
 
 It is far from alone: Cloudflare has an Agents SDK, OpenAI and Anthropic ship their own, and new frameworks appear monthly. The concepts above transfer across all of them, so learning one is learning the category.
 

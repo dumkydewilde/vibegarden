@@ -93,6 +93,13 @@ const tools: InspirationItem[] = [
 
 const examples: InspirationItem[] = [
   {
+    title: "Kids Games",
+    description:
+      "Six small browser games for kids, from spelling and maths to colouring and beginner coding. A playful example of a focused learning tool.",
+    tag: "Example",
+    href: "http://kids-games-50s.pages.dev/",
+  },
+  {
     title: "The spreadsheet that answered back",
     description:
       "How a volunteer group turned a messy signup sheet into a small tool that answers questions in plain language.",

@@ -1,0 +1,37 @@
+---
+title: What is an API? What is MCP?
+description: How software asks other software to do things, and how agents discovered the same trick. Two acronyms that explain most of what your project can reach.
+category: Foundations
+level: starter
+order: 3
+---
+
+When a weather app shows you tomorrow's forecast, your phone did not measure the sky. It asked a weather service, the service answered, and the app drew the result. That asking-and-answering happens through an API, and it is how almost everything on the internet talks to everything else. MCP is the newer sibling: the same idea, redesigned so that AI applications can do the asking.
+
+## An API is a menu
+
+API stands for application programming interface, but the useful picture is a restaurant menu. A service that offers an API is saying: here are the exact things you can ask me for, here is how to phrase each request, and here is what you will get back. Ask "give me the forecast for Amsterdam on Saturday" in the agreed format and you get a tidy, structured answer. Ask for something not on the menu and you get an error, not an improvisation.
+
+That structure is the whole point. Because the requests and answers have a fixed shape, software can talk to software millions of times a day without a human interpreting anything. Nearly every service you use has one: Google Calendar, Spotify, your bank, the Dutch railways. If a website can show it, there is usually an API that can serve it.
+
+## MCP is a universal adapter
+
+An API is built for programmers who read the menu, write code against it, and update that code when the menu changes. An agent works differently: it decides at runtime what it needs. MCP, the Model Context Protocol, is a standard that lets an AI application connect to a service and ask, "what can you do?" The service replies with a list of tools, each with a plain-language description, and the model picks the right one on its own.
+
+The comparison people reach for is USB. Before USB, every device had its own plug; after, everything fit everything. Before MCP, connecting a model to your calendar meant custom glue code for that model and that calendar. Now the calendar exposes one MCP server and every MCP-speaking app, Claude, ChatGPT, your own project, can plug in.
+
+## Side by side
+
+| | API | MCP |
+| --- | --- | --- |
+| Who reads the menu | A programmer, ahead of time | The model, at runtime |
+| Speaks to | One specific service, via custom code | Any MCP-capable AI app, no glue code |
+| Best for | Software talking to software | Agents discovering and using tools |
+
+MCP does not replace APIs. Under the hood, an MCP server usually calls a plain old API; it just translates the menu into something a model can read.
+
+## One request, both ways
+
+Say you want an agent that answers "am I free Saturday afternoon?" With only an API, you would write code that calls the calendar API, parses the response, and feeds it to the model: doable, but you are the plumbing. With MCP, you point your agent at a calendar MCP server. The agent sees a `list_events` tool, calls it with Saturday's date, reads the result, and answers. Same calendar, same data, but the model handled the plumbing.
+
+That is why [What is an agent?](/learning/what-is-an-agent) makes such a fuss about tools: every tool is an API or MCP connection wearing a friendly name. And once your agent can reach things, the next question is usually when it should run, which is what [Automate and schedule things](/learning/automate-and-schedule) is about.

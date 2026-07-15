@@ -93,6 +93,10 @@ Check items off as they land. One section per building block. Details live in
       component libraries, generating images, working with voice, building
       a game, agent frameworks. Working with data: extracting meaning from
       text (NER, topics, sentiment)
+- [x] Batch 2 (2026-07-15): 3 new articles. Foundations: what is an API /
+      what is MCP, key figures in AI (people to follow + foundational
+      names). Building: automate and schedule things (cron, GitHub
+      Actions). Cross-linked from "What is an agent?" and "Agent frameworks"
 - [ ] Later ideas: prompting basics, cost and budgets, publishing/deploying
       your project, privacy and personal data
 
