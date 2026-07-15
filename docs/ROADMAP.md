@@ -80,7 +80,25 @@ Check items off as they land. One section per building block. Details live in
 
 - [ ] Uploads to R2, artifact records in D1
 - [ ] Gallery visibility controls
-- [ ] Inspiration: curated datasets and stories (content-managed)
+- [x] Inspiration: first real curated set (2026-07-14): datasets incl.
+      Goodreads export + TalkData, data stories (Pudding, football analysis),
+      tools people built (Dot Collector, Clay-replacement post, FlickFlock,
+      SelectFrom), cards link out
+- [ ] Inspiration: move curated cards to content files (content-managed)
+
+## Content (ongoing)
+
+- [x] Batch 1 (2026-07-14): 8 new learning articles. Foundations: tokens/
+      embeddings/latent space, choosing a model. Building (new category):
+      component libraries, generating images, working with voice, building
+      a game, agent frameworks. Working with data: extracting meaning from
+      text (NER, topics, sentiment)
+- [x] Batch 2 (2026-07-15): 3 new articles. Foundations: what is an API /
+      what is MCP, key figures in AI (people to follow + foundational
+      names). Building: automate and schedule things (cron, GitHub
+      Actions). Cross-linked from "What is an agent?" and "Agent frameworks"
+- [ ] Later ideas: prompting basics, cost and budgets, publishing/deploying
+      your project, privacy and personal data
 
 ## Phase 6: Polish, deploy, invite
 

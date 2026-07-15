@@ -1,0 +1,36 @@
+---
+title: Using component libraries
+description: Why AI-built apps so often look the same, and how borrowing a professional design vocabulary makes yours look intentional instead.
+category: Building
+level: hands-on
+order: 1
+---
+
+Ask an AI to "build me a dashboard" with no further instruction and you get something that works but feels slightly off: mismatched spacing, seven shades of gray, buttons that look homemade. The fix is not becoming a designer. It is using a component library, and telling your AI tool to use it too.
+
+## What a component library is
+
+A component library is a box of pre-made interface parts: buttons, cards, forms, dialogs, tables, navigation. Someone with taste already made the hundred small decisions (corner radius, spacing, focus states, dark mode) and made them consistently. You assemble; the polish comes free.
+
+Three good ones, all built on the same styling system (Tailwind CSS), all free:
+
+- **[shadcn/ui](https://ui.shadcn.com)**: the current favorite for AI-assisted building, and what this site is made with. Components are copied into your project as code you own, so your AI tool can see and modify them.
+- **[daisyUI](https://daisyui.com)**: the simplest to start with. You add class names like `btn` and `card` to plain HTML and things just look right. Comes with dozens of ready-made themes.
+- **[Flowbite](https://flowbite.com)**: a large catalog of ready-built blocks (pricing sections, login pages, sidebars) you can lift wholesale when you want a whole page fast.
+
+## Why this matters extra when AI writes the code
+
+Here is the non-obvious part: component libraries are a shared vocabulary between you and the model. These libraries are everywhere in the code models trained on, so "use shadcn/ui, add a Card with a Badge and a destructive Button" is a precise instruction where "make it look nicer" is a vague one. You will notice the difference immediately: fewer weird layouts, more consistency between screens, and feedback you can give in words ("make that a Dialog instead of a new page").
+
+Two habits that pay off:
+
+- **Declare the library up front.** Put "this project uses daisyUI" in your first prompt, and every screen after that matches.
+- **Point at examples.** Every library has a demo page per component. "Like the 'card with image' example on the daisyUI site" beats three paragraphs of description.
+
+## Which one should you pick?
+
+If you are vibe-coding with an AI tool: **shadcn/ui**, it is what the tools themselves default to. If you are hand-writing HTML or want themes without decisions: **daisyUI**. If you want to assemble full pages from big prefab blocks: **Flowbite**. Then stay put: mixing libraries in one project is how things get ugly again.
+
+## Where to go next
+
+A good-looking app still needs something to show. [Storing your data](/learning/store-data-sheets-vs-database) covers the other half of most projects. And if your project is more playful than practical, [Building a game](/learning/building-a-game) has its own version of "borrow the hard parts".

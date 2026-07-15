@@ -1,0 +1,52 @@
+---
+title: Automate and schedule things
+description: The best projects keep working while you sleep. How to make something run every morning at seven, on your machine or in the cloud, with the smallest possible setup.
+category: Building
+level: hands-on
+order: 6
+---
+
+A script you run by hand is a tool. The same script running every morning without you is a system, and the jump between the two is smaller than it looks. Whatever your project does, summarize the news, water-check the plants, draft a weekly email, there are really only two questions: where does it run, and what makes it start?
+
+## Option one: your own machine, with cron
+
+Every Mac and Linux machine ships with cron, a scheduler that has been quietly running things since the seventies. You give it a schedule and a command, and it runs the command on the schedule. One line is a complete setup:
+
+```
+0 7 * * * python3 /Users/you/projects/digest/daily_digest.py
+```
+
+Those five fields are minute, hour, day of month, month, and day of week, so this reads "at 07:00 every day." Run `crontab -e` to open your schedule file, paste a line like that, save, done. Ask your AI assistant to write the schedule expression for you; nobody remembers the field order, and it will also warn you about the classic traps (cron runs with a minimal environment, so use full paths).
+
+The catch is honest and physical: cron runs on your machine, so your machine has to be on and awake at 07:00. For a home server or a desktop that never sleeps, perfect. For a laptop that lives in a bag, you want the other option.
+
+## Option two: GitHub's machines, with Actions
+
+If your project lives in a GitHub repository, GitHub Actions will run it on GitHub's computers, on a schedule, for free at hobby scale. You add one file to your repository at `.github/workflows/daily.yml`:
+
+```yaml
+on:
+  schedule:
+    - cron: "0 7 * * *"
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 daily_digest.py
+```
+
+Same cron syntax (one quirk: the time is UTC, so 07:00 Amsterdam is `0 5 * * *` in summer), but now it runs whether your laptop is open or in the sea. Actions can do more than schedules: run on every push, on a button press, when an issue is opened. Secrets like API keys go in the repository settings, never in the file itself.
+
+Plenty of other services host scheduled jobs too, Val Town, Cloudflare Workers, Zapier and n8n for the no-code crowd, and they are worth a look once you outgrow these two. But cron and Actions cover most projects and cost nothing to try.
+
+## Which one, when
+
+| Your situation | Reach for |
+| --- | --- |
+| Machine that is always on, personal scripts | cron |
+| Project already on GitHub, laptop lifestyle | GitHub Actions |
+| Needs to react to events, not just the clock | Actions, or a framework |
+
+Start with the smallest thing that runs without you once. If what you are scheduling is an agent rather than a script, and it needs to remember things between runs or survive failures, that is the moment [Agent frameworks](/learning/agent-frameworks) start earning their keep. And if the scheduled job needs to reach other services, [What is an API? What is MCP?](/learning/what-is-an-api-what-is-mcp) explains the doors it will knock on.

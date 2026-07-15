@@ -1,0 +1,39 @@
+---
+title: Choosing a model
+description: "GPT, Claude, Gemini, Kimi, DeepSeek: there are hundreds of models and new ones every week. How to pick without reading a single benchmark paper."
+category: Foundations
+level: starter
+order: 5
+---
+
+Open any model picker (including the one in The Gardener's sidebar) and you face a wall of names and version numbers. Good news: choosing well is much simpler than the leaderboard drama suggests.
+
+## The three things that actually differ
+
+Every model sits somewhere on three axes:
+
+- **Quality**: how well it handles hard, multi-step, or subtle work.
+- **Speed**: how fast the answer streams back.
+- **Price**: what you pay per million tokens, which ranges from free to a hundred times that.
+
+You rarely get all three. The trick is knowing which one your task needs. Summarizing a newsletter needs none of the top-end quality; planning a tricky database schema might.
+
+## Benchmarks, and why to hold them loosely
+
+Benchmarks are standardized test sets: math problems, coding tasks, exam questions. They are how new models announce themselves ("state of the art on...") and they are genuinely useful for a rough ranking. But hold them loosely, for two reasons. First, models are sometimes accidentally (or not so accidentally) trained on the test questions, like a student who saw the exam beforehand. Second, and more important: a benchmark measures the benchmark's task, not yours. A model that aces competition math can still be mediocre at writing warm Dutch emails.
+
+A more honest signal is revealed preference: what do people actually use when they pay per token? [OpenRouter's rankings](https://openrouter.ai/rankings) show exactly that, live usage across hundreds of models, sliceable by use case. It is one of the most useful pages in AI, because nobody keeps paying for a model that does not work for them.
+
+## A procedure that beats reading reviews
+
+1. **Start with a cheap, fast, popular model.** Anything near the top of the OpenRouter rankings in the low price range is a fine default.
+2. **Keep a tiny personal test.** Save five examples of your real task: your actual emails, your actual data. When you consider a new model, run those five. Ten minutes, and it tells you more than any leaderboard.
+3. **Upgrade only on visible failure.** If the cheap model garbles your task, step up one tier and rerun your five examples. Most tasks plateau early: past a certain point, a pricier model just gives you the same answer more expensively.
+
+## Try it right here
+
+The Gardener's model picker exists precisely for this. Ask the same question to a free model and a top-tier model and compare. For "what should I cook with leftover courgette?" you will struggle to tell them apart. For "design my volunteer-scheduling tool" you will start to see the difference. Building that intuition, this task is easy, that task is hard, is the real skill, and it transfers to every model that comes out next month.
+
+## Where to go next
+
+Prices and limits are all counted in tokens; [Tokens, embeddings, and latent space](/learning/tokens-embeddings-latent-space) explains that unit. And when your project needs a model to do work for it, [What is an agent?](/learning/what-is-an-agent) covers what to look for beyond raw smarts.

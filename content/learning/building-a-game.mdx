@@ -1,0 +1,37 @@
+---
+title: Building a game
+description: A game is the most fun project shape there is, and the easiest to overscope. How to get something playable today, from text adventure to pixel art.
+category: Building
+level: hands-on
+order: 4
+---
+
+Games are wonderful first projects: instantly demoable, naturally scoped ("one level"), and forgiving of rough edges. They are also where ambition goes to die. The whole trick is picking a small enough shape.
+
+## Shape 1: the text-based game (playable in an hour)
+
+Here is a secret: a chat window is already a game engine. An LLM given a system prompt like "You are the narrator of a detective mystery set in 1920s Rotterdam. Track the player's inventory and the suspects' alibis. Never reveal the murderer until the evidence is complete" is a text adventure, with a game master who improvises. No graphics, no engine, no installation. Interactive fiction is a proud genre, not a consolation prize, and it teaches you the real design skills (pacing, choices, fairness) with zero technical overhead.
+
+## Shape 2: the 2D browser game (playable in a day)
+
+One step up: a simple game running on a web page. Snake with vegetables, a memory game with your family's faces, a typing game for your kid's spelling words. AI coding tools are genuinely good at this; ask for "a simple 2D browser game, one HTML file" and you will be tweaking gravity within the hour.
+
+Go 8-bit on purpose. Pixel art is not just nostalgia, it is a scope weapon: a 32x32 sprite is drawable, generatable, and animatable in a way detailed art never will be, and "retro" reads as a style choice rather than a budget.
+
+## Characters: cute and consistent
+
+Players forgive almost anything if the main character is charming, and there is a reason so many beloved games star animals: a round bird with big eyes generates affection that a gritty space marine has to earn. For a taste calibration of just how far "simple but cute" goes, browse [itHappy's animal characters](https://ithappystudios.com/characters/animals/): circles, dots for eyes, one accent color.
+
+The technical challenge is keeping that character identical across sprites and scenes. Image models regenerate from scratch each time, so consistency needs technique: a written character sheet with exact colors, reference images, and a generated pose grid. [Generating images](/learning/generating-images) covers the how, and Luke Wroblewski's [character consistency write-up](https://www.lukew.com/ff/entry.asp?2146) shows how deep the rabbit hole goes.
+
+## Shape 3: a real engine (when you have outgrown the browser)
+
+When you want physics, scenes, sound, and a game that installs on a phone, graduate to [Godot](https://godotengine.org): free, open source, beginner-friendly, and well known to AI assistants, so you can paste errors and get real help. The graduation rule: only move to an engine once you have finished a browser game. An engine amplifies a finished designer and buries an unfinished idea.
+
+## The one rule
+
+Make it playable today, then improve it every day after. "Playable" means: someone else can try it and something happens. One mechanic, one level, one character. Every beloved indie game started embarrassingly small; the difference is they shipped the small version.
+
+## Where to go next
+
+Your character needs a look: [Generating images](/learning/generating-images). Your game explained by a charming narrator, or an NPC that improvises? That is [What is an LLM, really?](/learning/what-is-an-llm) wearing a costume.
