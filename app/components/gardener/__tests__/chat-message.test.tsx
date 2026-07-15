@@ -1,8 +1,28 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import { ChatMessageBubble } from "../chat-message";
-import { toolNote } from "~/lib/tool-notes";
+import { diagramNote, toolNote } from "~/lib/tool-notes";
+
+vi.mock("~/components/mermaid-block", () => ({
+  MermaidDiagram: ({
+    code,
+    ariaLabel,
+  }: {
+    code: string;
+    ariaLabel?: string;
+  }) => (
+    <div role="img" aria-label={ariaLabel} data-code={code}>
+      {code}
+    </div>
+  ),
+}));
 
 const gardener = (text: string, error = false) => ({
   id: "g1",
@@ -87,5 +107,31 @@ describe("ChatMessageBubble activity", () => {
         .getByText("The Gardener could not answer just now.")
         .classList.contains("shimmer"),
     ).toBe(false);
+  });
+
+  it("renders a diagram preview and opens a larger dialog", () => {
+    const title = "How questions become answers";
+    const diagram = "flowchart TD\n  A[Question] --> B[Answer]";
+    renderMessage(
+      <ChatMessageBubble
+        message={gardener(diagramNote({ title, diagram }))}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", {
+      name: `Expand diagram: ${title}`,
+    });
+    expect(
+      within(trigger).getByRole("img", { name: title }),
+    ).toHaveAttribute("data-code", diagram);
+
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole("dialog");
+    expect(
+      within(dialog).getByRole("heading", { name: title }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("img", { name: title }),
+    ).toHaveAttribute("data-code", diagram);
   });
 });

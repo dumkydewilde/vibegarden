@@ -115,6 +115,8 @@ Core landed 2026-07-14, see `docs/plans/2026-07-14-gardener-tools.md`.
       (markdown knowledge folders, progressive loading, Mermaid).
       Mermaid code fences in articles/modules now render as real diagrams
       (client-only lazy chunk, theme-aware; worker bundle untouched)
+- [x] The Gardener can call `visualize_flow` to return a durable Mermaid
+      preview in chat; selecting the preview opens a large accessible dialog
 - [x] Batch 4 (2026-07-15): "Storing your data" got a hosted-database field
       guide table (Supabase, Neon, Convex, PlanetScale, Cloudflare D1,
       MotherDuck, PocketBase) and a "database becomes a backend" (BaaS)

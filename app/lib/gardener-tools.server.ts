@@ -5,7 +5,7 @@ import {
   FRESH_READ_TYPES,
   queryFreshReads,
 } from "./motherduck.server";
-import { toolNote } from "./tool-notes";
+import { diagramNote, toolNote } from "./tool-notes";
 
 /**
  * First-party tools the Gardener can call mid-conversation. Definitions are
@@ -13,6 +13,8 @@ import { toolNote } from "./tool-notes";
  */
 
 export const TOOL_RESULT_MAX_CHARS = 20_000;
+export const DIAGRAM_TITLE_MAX_CHARS = 120;
+export const DIAGRAM_SOURCE_MAX_CHARS = 12_000;
 const FETCH_TIMEOUT_MS = 10_000;
 
 export type ToolCall = {
@@ -42,6 +44,29 @@ const freshReadsDefinition = {
           description: "Optional: limit to one kind. Omit for all three.",
         },
       },
+    },
+  },
+};
+
+const visualizeFlowDefinition = {
+  type: "function" as const,
+  function: {
+    name: "visualize_flow",
+    description:
+      "Render a Mermaid diagram directly in the chat. Use it when a flow, sequence, decision path, or relationship is materially clearer as a visual. Keep the diagram small, readable, and useful to someone who may not program.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          description: "A short human-readable title for the diagram.",
+        },
+        diagram: {
+          type: "string",
+          description: "Valid Mermaid source, including its diagram type.",
+        },
+      },
+      required: ["title", "diagram"],
     },
   },
 };
@@ -101,6 +126,7 @@ const baseDefinitions = [
       },
     },
   },
+  visualizeFlowDefinition,
 ];
 
 /** fresh_reads only exists when a MotherDuck token is configured. */
@@ -174,6 +200,31 @@ function parseArgs(raw: string): Record<string, unknown> | null {
   }
 }
 
+type ValidFlow = { title: string; diagram: string };
+type FlowValidation =
+  | { value: ValidFlow; error?: never }
+  | { value?: never; error: string };
+
+function validateFlow(args: Record<string, unknown>): FlowValidation {
+  if (typeof args.title !== "string" || !args.title.trim()) {
+    return { error: "Error: diagram title is required." };
+  }
+  if (typeof args.diagram !== "string" || !args.diagram.trim()) {
+    return { error: "Error: Mermaid diagram source is required." };
+  }
+  const title = args.title.trim();
+  const diagram = args.diagram.trim();
+  if (title.length > DIAGRAM_TITLE_MAX_CHARS) {
+    return { error: "Error: diagram title must be 120 characters or fewer." };
+  }
+  if (diagram.length > DIAGRAM_SOURCE_MAX_CHARS) {
+    return {
+      error: "Error: Mermaid diagram source must be 12,000 characters or fewer.",
+    };
+  }
+  return { value: { title, diagram } };
+}
+
 export async function executeTool(call: ToolCall, env: Env): Promise<string> {
   const args = parseArgs(call.arguments);
   if (!args) return "Error: tool arguments were not valid JSON.";
@@ -215,6 +266,12 @@ export async function executeTool(call: ToolCall, env: Env): Promise<string> {
       }
       return stripFrontmatter(raw).slice(0, TOOL_RESULT_MAX_CHARS);
     }
+    case "visualize_flow": {
+      const flow = validateFlow(args);
+      return flow.error
+        ? flow.error
+        : `Diagram "${flow.value.title}" is ready. Briefly explain what it shows.`;
+    }
     case "fetch_page":
       return fetchPage(String(args.url ?? ""));
     default:
@@ -226,7 +283,7 @@ export async function executeTool(call: ToolCall, env: Env): Promise<string> {
  * The tool-note marker streamed into the chat while a tool runs; the UI
  * turns it into its own little bubble (see app/lib/tool-notes.ts).
  */
-export function toolNoteFor(call: ToolCall): string {
+export function toolNoteFor(call: ToolCall): string | null {
   const args = parseArgs(call.arguments) ?? {};
   switch (call.name) {
     case "read_article": {
@@ -256,6 +313,10 @@ export function toolNoteFor(call: ToolCall): string {
           ? `looking for fresh reads about ${topic}`
           : "looking for fresh reads",
       );
+    }
+    case "visualize_flow": {
+      const flow = validateFlow(args);
+      return flow.error ? null : diagramNote(flow.value);
     }
     default:
       return toolNote("note", `using ${call.name}`);

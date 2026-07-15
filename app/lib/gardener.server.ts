@@ -58,6 +58,7 @@ function buildToolsRule(toolsEnabled: boolean, freshReads: boolean) {
       moduleSlugs +
       ".",
     "- fetch_page(url): the text of a public web page. Use it when the person shares a link.",
+    "- visualize_flow(title, diagram): render a Mermaid flow, sequence, decision path, or relationship directly in the chat. Use it only when the visual is clearer than prose, keep it small, and follow it with a short explanation.",
     ...(freshReads
       ? [
           "- fresh_reads(topic?, content_type?): recent well-scored news, opinion pieces, and tutorials about AI and building things, from a curated reading feed. Use it when something current would enrich the answer, and share the best one or two as markdown links.",

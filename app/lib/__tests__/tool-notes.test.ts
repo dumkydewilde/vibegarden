@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { splitToolNotes, stripToolNotes, toolNote } from "~/lib/tool-notes";
+import {
+  diagramNote,
+  splitToolNotes,
+  stripToolNotes,
+  toolNote,
+} from "~/lib/tool-notes";
+
+const diagram = {
+  title: "How questions become answers",
+  diagram: "flowchart TD\n  A[Question] --> B[Answer]",
+};
 
 describe("splitToolNotes", () => {
   it("passes plain text through as one segment", () => {
@@ -36,11 +46,39 @@ describe("splitToolNotes", () => {
       { type: "text", text: "see [[tool:article:what-is-an-llm]] inline" },
     ]);
   });
+
+  it("round-trips a titled multiline diagram", () => {
+    const marker = diagramNote(diagram);
+
+    expect(marker).not.toContain("\n");
+    expect(splitToolNotes(marker)).toEqual([{ type: "diagram", ...diagram }]);
+  });
+
+  it("keeps malformed and unknown diagram markers as text", () => {
+    expect(splitToolNotes("[[tool:diagram:not-json]]")).toEqual([
+      { type: "text", text: "[[tool:diagram:not-json]]" },
+    ]);
+    const future = encodeURIComponent(
+      JSON.stringify({
+        version: 2,
+        title: "Future",
+        diagram: "flowchart TD",
+      }),
+    );
+    expect(splitToolNotes(`[[tool:diagram:${future}]]`)).toEqual([
+      { type: "text", text: `[[tool:diagram:${future}]]` },
+    ]);
+  });
 });
 
 describe("stripToolNotes", () => {
   it("removes notes and rejoins the text", () => {
     const text = `Before.\n\n${toolNote("module", "csv-file")}\n\nAfter.`;
+    expect(stripToolNotes(text)).toBe("Before.\n\nAfter.");
+  });
+
+  it("strips a valid diagram marker from model-bound history", () => {
+    const text = `Before.\n\n${diagramNote(diagram)}\n\nAfter.`;
     expect(stripToolNotes(text)).toBe("Before.\n\nAfter.");
   });
 });
