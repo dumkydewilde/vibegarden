@@ -1,4 +1,6 @@
 import { Form, redirect, useNavigation, useSearchParams } from "react-router";
+import { useState } from "react";
+import { REGEXP_ONLY_DIGITS } from "input-otp";
 import { Sprout } from "lucide-react";
 import type { Route } from "./+types/login";
 import { GoogleIcon } from "~/components/icons/google-icon";
@@ -12,6 +14,12 @@ import {
   CardTitle,
 } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSeparator,
+  InputOTPSlot,
+} from "~/components/ui/input-otp";
 import { createSessionCookie, getUser } from "~/lib/auth.server";
 import { googleEnabled } from "~/lib/google.server";
 import { requestLoginCode, verifyLoginCode } from "~/lib/otp.server";
@@ -87,6 +95,7 @@ export default function Login({
 }: Route.ComponentProps) {
   const navigation = useNavigation();
   const [searchParams] = useSearchParams();
+  const [code, setCode] = useState("");
   const busy = navigation.state === "submitting";
   const oauthError = searchParams.get("error");
 
@@ -140,18 +149,38 @@ export default function Login({
           ) : (
             <Form method="post" className="space-y-3">
               <input type="hidden" name="email" value={email} />
-              <Input
-                type="text"
-                name="code"
-                required
-                autoFocus
-                inputMode="numeric"
-                pattern="[0-9]{6}"
-                maxLength={6}
-                placeholder="123456"
-                autoComplete="one-time-code"
-                className="text-center font-mono text-lg tracking-[0.4em]"
-              />
+              <div className="space-y-2">
+                <label htmlFor="login-code" className="text-sm font-medium">
+                  Verification code
+                </label>
+                <InputOTP
+                  id="login-code"
+                  name="code"
+                  value={code}
+                  onChange={setCode}
+                  maxLength={6}
+                  pattern={REGEXP_ONLY_DIGITS}
+                  required
+                  autoFocus
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  aria-invalid={error ? true : undefined}
+                  aria-label="Verification code"
+                  containerClassName="justify-center"
+                >
+                  <InputOTPGroup>
+                    <InputOTPSlot index={0} />
+                    <InputOTPSlot index={1} />
+                    <InputOTPSlot index={2} />
+                  </InputOTPGroup>
+                  <InputOTPSeparator />
+                  <InputOTPGroup>
+                    <InputOTPSlot index={3} />
+                    <InputOTPSlot index={4} />
+                    <InputOTPSlot index={5} />
+                  </InputOTPGroup>
+                </InputOTP>
+              </div>
               {devCode && (
                 <p className="rounded-md bg-accent px-3 py-2 text-sm text-accent-foreground">
                   Email sending is not configured yet, so here is your code:{" "}
