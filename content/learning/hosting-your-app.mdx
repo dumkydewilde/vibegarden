@@ -1,0 +1,55 @@
+---
+title: "Hosting your app: static files, dynamic servers, and where they live"
+description: You built something and want a URL to share. The one distinction that makes hosting make sense, and a field guide to the services you will actually meet.
+category: Building
+level: hands-on
+order: 7
+---
+
+Your project works on your laptop, and now you want to send someone a link. That step, hosting, has a reputation for being the scary "real programmer" part. It is not, but there is one distinction you need before any of the service names make sense: the difference between serving *static* files and running *dynamic* code.
+
+## Static: handing out copies
+
+A static site is a folder of files: HTML pages, images, stylesheets, JavaScript. When someone visits, the host hands them a copy of the files, the same copy for every visitor, like a rack of printed flyers. No code runs on the server; whatever the page does happens in the visitor's browser.
+
+This covers more than you might think. A portfolio, a game built in JavaScript, a data visualization, a landing page: all static. And because handing out copies of files is trivially cheap, static hosting is fast, hard to break, and usually free. The files can even be copied to hundreds of locations worldwide (a CDN, content delivery network) so they load from somewhere near each visitor.
+
+## Dynamic: cooking to order
+
+The moment your app needs to do something different per visitor, show *your* expenses, save a new entry, check a password, someone's computer has to run code when the request comes in. That is dynamic hosting: less flyer rack, more restaurant kitchen. A request arrives, code runs, often a database is consulted (that story is in [Storing your data](/learning/store-data-sheets-vs-database)), and a response is cooked up on the spot.
+
+Dynamic hosting comes in two main shapes:
+
+- **Functions (serverless).** You write small pieces of code that wake up when a request arrives, run for a moment, and vanish. You never see or manage a computer, and you pay per use, which for small projects rounds to free.
+- **A server you rent.** A real (virtual) computer that is always on, running whatever you want. Maximum freedom, and everything, from security updates to backups, is your job.
+
+Here is the useful secret: most modern apps are *both*. The screens and buttons are static files served from a CDN, and only the parts that touch data call a function or an API. Get that split in your head and every hosting product below becomes easy to place.
+
+## The field guide
+
+| Option | What it is | Great for | Watch out for |
+| --- | --- | --- | --- |
+| [GitHub Pages](https://pages.github.com) | Free static hosting straight from your GitHub repository | First projects, portfolios, anything static | Static only: nowhere to run server code or hide a secret key |
+| [Cloudflare](https://developers.cloudflare.com) | Global CDN for static files plus Workers, functions that run near the visitor | Static sites that grow a dynamic edge, absurdly generous free tier | Its Workers runtime is not a full server, so some tools need adapting |
+| [Vercel](https://vercel.com) | Push to git, get a deployed site with previews for every change | Frontend frameworks (it makes Next.js), the smoothest beginner experience | Comfort has a price curve: bills can climb quickly once traffic is real |
+| [Netlify](https://netlify.com) | Vercel's closest sibling: static hosting plus functions and form handling | Simple sites and prototypes, built-in form submissions | Same story as Vercel, the free tier is the honeymoon |
+| [Fly.io](https://fly.io) / [Railway](https://railway.com) | Run full containers or servers with the convenience of a platform | Apps that need a real always-on server: websockets, background jobs, any language | An always-on server means an always-on bill, and more moving parts |
+| [Hetzner](https://www.hetzner.com) | Plain rented servers (VPS) in European datacenters | Full control at the lowest price, self-hosting things like PocketBase | Everything is your job: setup, security, updates, backups |
+
+## Which one, when
+
+| Your situation | Reach for |
+| --- | --- |
+| A folder of files, no secrets, no database | GitHub Pages or Cloudflare |
+| An app with some dynamic parts | Cloudflare or Vercel, plus a database from [Storing your data](/learning/store-data-sheets-vs-database) |
+| A real always-on server, or "I want to learn how servers work" | Fly.io or Railway for comfort, Hetzner for control and price |
+
+Two notes on that table. First, "no secrets" matters: an API key in a static site's JavaScript is public, full stop, so anything with a paid API key needs at least one small dynamic function to hold it. Second, this very site practices what it preaches: Vibe Garden is static-ish pages plus a few dynamic routes, running on Cloudflare Workers.
+
+## Try it
+
+Twenty minutes, genuinely: take any project you have, or ask an AI assistant to make you a one-page site, put it in a GitHub repository, and turn on GitHub Pages in the repository settings. You now have a public URL. When that feels easy, do the same on Cloudflare or Vercel by connecting the repository, and watch it redeploy automatically every time you push a change. That loop, edit, push, live, is the whole game.
+
+## Where to go next
+
+The dynamic half of your app usually means data, and [Storing your data: Google Sheet or database?](/learning/store-data-sheets-vs-database) covers where that goes, including the backends-as-a-service that bundle hosting-adjacent features. The doors your hosted app opens to the world are APIs, explained in [What is an API? What is MCP?](/learning/what-is-an-api-what-is-mcp). And once your app is live, [Automate and schedule](/learning/automate-and-schedule) covers the jobs that should keep running when you close the laptop.

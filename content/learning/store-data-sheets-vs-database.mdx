@@ -30,6 +30,28 @@ Reach for a database when:
 - **You are past tens of thousands of rows.** Sheets slow down; databases do not notice.
 - **You want history and safety.** Proper backups, and no "someone sorted one column and scrambled every row" incidents.
 
+## Fine, a database. Which one?
+
+The good news: you do not install a database on your laptop anymore. You click a button on a hosting service and get one in the cloud, usually with a free tier that comfortably fits a workshop project. The names below all show up when you ask an AI assistant to "add a database to my app", so it helps to know what each one is for.
+
+| Option | What it is | Great for | Watch out for |
+| --- | --- | --- | --- |
+| [Supabase](https://supabase.com) | Hosted Postgres with login, file storage, and instant APIs bolted on | The default "give my app a backend" choice, generous free tier | So convenient you may use features you do not need yet |
+| [Neon](https://neon.com) | Serverless Postgres that scales to zero when idle | Plain, standard Postgres; free copies of your database to experiment on | Just the database: login and file storage are your problem |
+| [Convex](https://convex.dev) | Database plus backend functions in TypeScript, live-updating by default | Apps where every screen should update the moment data changes | Its own query style instead of plain SQL, so harder to move away from |
+| [PlanetScale](https://planetscale.com) | Hosted MySQL and Postgres built for serious scale | Products with real traffic and a budget | No free tier: this one is for when your hobby stops being a hobby |
+| [Cloudflare D1](https://developers.cloudflare.com/d1/) | SQLite running inside Cloudflare's network | Apps already hosted on Cloudflare, near-zero cost | Tied to the Cloudflare way of building; awkward from elsewhere |
+| [MotherDuck](https://motherduck.com) | DuckDB in the cloud, a database built for analysis | Crunching large data: years of history, logs, millions of rows | It is for analyzing data, not for storing your app's day-to-day records |
+| [PocketBase](https://pocketbase.io) | A complete backend (SQLite, login, admin screen) in one small file you run yourself | Full control on a cheap rented server, no monthly SaaS bill | You are the operator: updates and backups are on you |
+
+Do not overthink the choice. For a first project, Supabase or Neon if you want a classic database, D1 if you are on Cloudflare anyway, and MotherDuck when the point of the project *is* the data analysis. Everything here speaks SQL or close to it, and your AI assistant knows them all.
+
+## When a database becomes a backend
+
+Notice what Supabase, Convex, and PocketBase are really selling: not just a place for rows, but the whole back half of an app. Once your data lives somewhere, the next questions arrive on schedule: who is allowed to see it (login), where do the uploaded photos go (file storage), and how does the app on someone's phone talk to it (an API). A plain database answers none of these; a *backend as a service* answers all of them in one package.
+
+That bundling is why "pick a database" quietly turns into "pick a backend": choose Supabase for the database and you will likely use its login too. That is convenient, and it is also a commitment, so it is worth noticing you are making it. How those APIs work is covered in [What is an API? What is MCP?](/learning/what-is-an-api-what-is-mcp), and where the rest of your app lives is the subject of [Hosting your app](/learning/hosting-your-app).
+
 ## The good news: switching later is easy
 
 The classic beginner worry is choosing wrong. But moving from a sheet to a database is a well-worn path: export your sheet as a CSV file, import the CSV into the database, done in an afternoon. Going the other way is just as easy. So do not agonize. Start with the sheet unless you already know several people will hammer on your project at once.

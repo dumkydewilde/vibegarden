@@ -106,9 +106,17 @@ Core landed 2026-07-14, see `docs/plans/2026-07-14-gardener-tools.md`.
 - [x] Batch 3 (2026-07-15): "Choosing a model" got a July 2026 model
       snapshot table (OpenRouter pricing) and a "What makes a model good"
       section; new Foundations article "Creating the right context"
-      (markdown knowledge folders, progressive loading, Mermaid)
-- [ ] Later ideas: prompting basics, cost and budgets, publishing/deploying
-      your project, privacy and personal data
+      (markdown knowledge folders, progressive loading, Mermaid).
+      Mermaid code fences in articles/modules now render as real diagrams
+      (client-only lazy chunk, theme-aware; worker bundle untouched)
+- [x] Batch 4 (2026-07-15): "Storing your data" got a hosted-database field
+      guide table (Supabase, Neon, Convex, PlanetScale, Cloudflare D1,
+      MotherDuck, PocketBase) and a "database becomes a backend" (BaaS)
+      section; new Building article "Hosting your app" (static vs dynamic,
+      field guide table: GitHub Pages, Cloudflare, Vercel, Netlify,
+      Fly.io/Railway, Hetzner), cross-linked both ways
+- [ ] Later ideas: prompting basics, cost and budgets, privacy and
+      personal data
 
 ## Phase 6: Polish, deploy, invite
 
