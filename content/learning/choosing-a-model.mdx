@@ -24,11 +24,39 @@ Benchmarks are standardized test sets: math problems, coding tasks, exam questio
 
 A more honest signal is revealed preference: what do people actually use when they pay per token? [OpenRouter's rankings](https://openrouter.ai/rankings) show exactly that, live usage across hundreds of models, sliceable by use case. It is one of the most useful pages in AI, because nobody keeps paying for a model that does not work for them.
 
+## The current crop, a snapshot
+
+To make this concrete, here is a slice of what is popular on OpenRouter as of July 2026. Treat it as a photograph of a moving train: the specific names will be stale within months, but the *shape* of the market (a few expensive flagships, a strong mid-tier, and shockingly good budget options) has been stable for a while.
+
+| Model | Maker | Price in / out, per million tokens | Strong at | Watch out for |
+| --- | --- | --- | --- | --- |
+| Claude Fable 5 | Anthropic | $10 / $50 | The hardest reasoning and long agent runs | Ten times the price of models that match it on everyday tasks |
+| GPT-5.6 (Luna, Terra, Sol) | OpenAI | $1 to $5 / $6 to $30 | Solid all-rounder in three sizes, huge context window | Three tiers of the same name: start with the smallest |
+| Claude Sonnet 5 | Anthropic | $2 / $10 | Dependable workhorse for writing and coding | Mid-tier price adds up on high-volume jobs |
+| Gemini 3.5 Flash | Google | $1.50 / $9 | Speed, very long documents, images and audio | Can skim over tricky multi-step problems |
+| Grok 4.5 | xAI | $2 / $6 | Fast and cheap on the output side | Style varies: run your own five examples first |
+| Kimi K2.7, GLM 5.2, Qwen3.7 | Moonshot, Z.ai, Alibaba (open weights) | $0.30 to $1.30 / $1.30 to $4 | Astonishing value, close to the big names on most tasks | Served by many different hosts, so speed and reliability vary per provider |
+| Free tiers (Nemotron 3 Ultra, Tencent Hy3) | NVIDIA, Tencent | $0 | Learning, experiments, throwaway scripts | Rate limits, and your data may be used for training |
+
+Notice the spread: the cheapest paid option here costs about thirty times less than the most expensive one. That is exactly why the procedure below starts cheap. For live prices and the full list, [OpenRouter's model page](https://openrouter.ai/models) is the place.
+
 ## A procedure that beats reading reviews
 
 1. **Start with a cheap, fast, popular model.** Anything near the top of the OpenRouter rankings in the low price range is a fine default.
 2. **Keep a tiny personal test.** Save five examples of your real task: your actual emails, your actual data. When you consider a new model, run those five. Ten minutes, and it tells you more than any leaderboard.
 3. **Upgrade only on visible failure.** If the cheap model garbles your task, step up one tier and rerun your five examples. Most tasks plateau early: past a certain point, a pricier model just gives you the same answer more expensively.
+
+## What makes a model good
+
+Here is the uncomfortable secret behind all the leaderboard drama: for most real tasks, which model you pick matters less than what you *give* it. A mid-tier model that can see your actual data, knows your definitions, and has the right tools will beat a flagship model working from a vague one-line prompt, almost every time.
+
+So when a result disappoints, the fix is usually not "upgrade the model." Ask instead:
+
+- **Did it have the right context?** Could it see the document, the data, the background it needed, or was it forced to guess?
+- **Did it have the right tools?** An agent that can look things up does not have to remember them. A model asked to compute in its head will lose to a cheap model with a calculator tool.
+- **Can it handle what you gave it?** This is the part where model quality genuinely shows: better models are better at navigating large piles of context and at using tools correctly, not just at being "smarter" in the abstract.
+
+That last point is worth internalizing: modern model quality is mostly about *handling context and tools well*, and your job is mostly about *providing* them well. [Creating the right context](/learning/creating-the-right-context) shows how far a simple folder of notes can take you, which is further than most model upgrades.
 
 ## Try it right here
 
@@ -36,4 +64,4 @@ The Gardener's model picker exists precisely for this. Ask the same question to 
 
 ## Where to go next
 
-Prices and limits are all counted in tokens; [Tokens, embeddings, and latent space](/learning/tokens-embeddings-latent-space) explains that unit. And when your project needs a model to do work for it, [What is an agent?](/learning/what-is-an-agent) covers what to look for beyond raw smarts.
+If one idea from this page sticks, make it this: context beats model choice, and [Creating the right context](/learning/creating-the-right-context) shows how to act on that. Prices and limits are all counted in tokens; [Tokens, embeddings, and latent space](/learning/tokens-embeddings-latent-space) explains that unit. And when your project needs a model to do work for it, [What is an agent?](/learning/what-is-an-agent) covers what to look for beyond raw smarts.

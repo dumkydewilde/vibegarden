@@ -193,13 +193,14 @@
     font-size: 1.185rem;
     margin-top: 1.8em;
   }
-  & a {
+  /* Article/module cards ([data-card]) carry their own styling. */
+  & a:not([data-card]) {
     color: var(--primary);
     text-decoration: underline;
     text-decoration-color: color-mix(in oklch, var(--primary) 40%, transparent);
     text-underline-offset: 3px;
   }
-  & a:hover {
+  & a:not([data-card]):hover {
     text-decoration-color: var(--primary);
   }
   & strong {
@@ -240,6 +241,15 @@
   & pre code {
     background: transparent;
     padding: 0;
+  }
+  & .mermaid-diagram {
+    display: flex;
+    justify-content: center;
+    overflow-x: auto;
+  }
+  & .mermaid-diagram svg {
+    max-width: 100%;
+    height: auto;
   }
   & hr {
     border: 0;

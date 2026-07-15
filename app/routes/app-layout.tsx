@@ -45,9 +45,11 @@ export type AppUser = Awaited<ReturnType<typeof loader>>["user"];
 export default function AppLayout({ loaderData }: Route.ComponentProps) {
   return (
     <GardenerProvider
-      // Remount when the active thread changes (e.g. after "continue" on an
-      // old conversation) so the sidebar picks up the right history.
-      key={loaderData.gardener.threadId ?? "fresh"}
+      // No key here on purpose: the provider must survive navigations, even
+      // when the loader revalidates with a new active thread id (the first
+      // message of a session creates one). Thread switches ("continue",
+      // clear, plant) already update the sidebar client-side; a remount
+      // would cut off a streaming reply.
       initialMessages={loaderData.gardener.messages}
       initialModelId={loaderData.gardener.modelId}
     >

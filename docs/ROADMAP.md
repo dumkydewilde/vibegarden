@@ -103,11 +103,21 @@ Core landed 2026-07-14, see `docs/plans/2026-07-14-gardener-tools.md`.
       what is MCP, key figures in AI (people to follow + foundational
       names). Building: automate and schedule things (cron, GitHub
       Actions). Cross-linked from "What is an agent?" and "Agent frameworks"
+- [x] Batch 3 (2026-07-15): "Choosing a model" got a July 2026 model
+      snapshot table (OpenRouter pricing) and a "What makes a model good"
+      section; new Foundations article "Creating the right context"
+      (markdown knowledge folders, progressive loading, Mermaid)
 - [ ] Later ideas: prompting basics, cost and budgets, publishing/deploying
       your project, privacy and personal data
 
 ## Phase 6: Polish, deploy, invite
 
+- [x] Article links polish (2026-07-15): internal article/module links in
+      MDX render as the same inline cards as in chat (shared ContentLink),
+      external links open in a new tab with an outlink icon; missing
+      external links added (key figures, tools). Chat no longer breaks on
+      navigation: MDX links go through the router and GardenerProvider is
+      no longer remounted when the active thread id changes
 - [ ] Production deploy via wrangler, custom domain
 - [ ] Design pass against the original mockup
 - [ ] Invite the first friends
