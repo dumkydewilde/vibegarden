@@ -1,5 +1,5 @@
 import { Form, useNavigation } from "react-router";
-import { Check, Mail, UserCog, UserX } from "lucide-react";
+import { Check, Mail, Upload, UserCog, UserX } from "lucide-react";
 import { desc, eq } from "drizzle-orm";
 import type { Route } from "./+types/admin";
 import { cloudflareContext } from "~/lib/context";
@@ -14,10 +14,12 @@ import {
   CardTitle,
 } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
+import { Textarea } from "~/components/ui/textarea";
 import { requireAdmin } from "~/lib/auth.server";
 import { getDb } from "~/lib/db.server";
 import { isFeedbackStatus } from "~/lib/feedback";
 import { listFeedback, setFeedbackStatus } from "~/lib/feedback.server";
+import { importBulkInvites } from "~/lib/invites.server";
 import { isValidEmail, normalizeEmail } from "~/lib/otp.server";
 import { summarizeAnswers } from "~/lib/questionnaire";
 import { invites, questionnaireResponses, users } from "~/db/schema";
@@ -79,7 +81,19 @@ export async function action({ request, context }: Route.ActionArgs) {
         target: invites.email,
         set: { status: "pending", invitedBy: admin.email },
       });
-    return { ok: true };
+    return { ok: true, invitedEmail: email };
+  }
+
+  if (intent === "bulk-invite") {
+    try {
+      return { bulk: await importBulkInvites(env.DB, form, admin.email) };
+    } catch (error) {
+      console.error("Bulk invite import failed", error);
+      return {
+        bulkError:
+          "No addresses were imported because the database write failed. Try again.",
+      };
+    }
   }
 
   if (intent === "revoke") {
@@ -158,6 +172,109 @@ export default function Admin({ loaderData, actionData }: Route.ComponentProps) 
           </Form>
           {actionData && "error" in actionData && actionData.error && (
             <p className="mt-2 text-sm text-destructive">{actionData.error}</p>
+          )}
+          {actionData &&
+            "invitedEmail" in actionData &&
+            actionData.invitedEmail && (
+              <p
+                className="mt-2 flex items-center gap-1.5 text-sm text-primary"
+                role="status"
+              >
+                <Check className="size-4" aria-hidden="true" />
+                Invite sent for {actionData.invitedEmail}
+              </p>
+            )}
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="font-serif text-lg font-normal">
+            Bulk invite
+          </CardTitle>
+          <CardDescription>
+            Paste one email per line, separate addresses with commas or
+            semicolons, or upload a single-column CSV. This grants access but
+            does not send an email.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Form
+            method="post"
+            encType="multipart/form-data"
+            className="space-y-4"
+          >
+            <input type="hidden" name="intent" value="bulk-invite" />
+            <div className="space-y-1.5">
+              <label htmlFor="bulk-emails" className="text-sm font-medium">
+                Email addresses
+              </label>
+              <Textarea
+                id="bulk-emails"
+                name="emails"
+                rows={6}
+                placeholder={"alice@example.com\nbob@example.com"}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="invite-file" className="text-sm font-medium">
+                CSV file <span className="text-muted-foreground">(optional)</span>
+              </label>
+              <Input
+                id="invite-file"
+                name="inviteFile"
+                type="file"
+                accept=".csv,text/csv,text/plain"
+                className="max-w-md"
+              />
+            </div>
+            <Button type="submit" disabled={busy} className="gap-1.5">
+              <Upload className="size-4" />
+              {busy ? "Importing..." : "Invite everyone"}
+            </Button>
+          </Form>
+
+          {actionData && "bulkError" in actionData && actionData.bulkError && (
+            <p className="mt-4 text-sm text-destructive" role="alert">
+              {actionData.bulkError}
+            </p>
+          )}
+
+          {actionData && "bulk" in actionData && actionData.bulk && (
+            <div
+              className="mt-4 rounded-md border bg-muted/40 p-3 text-sm"
+              aria-live="polite"
+            >
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <span>
+                  {actionData.bulk.imported}{" "}
+                  {actionData.bulk.imported === 1
+                    ? "address invited"
+                    : "addresses invited"}
+                </span>
+                <span className="text-muted-foreground">
+                  {actionData.bulk.duplicates.length}{" "}
+                  {actionData.bulk.duplicates.length === 1
+                    ? "duplicate skipped"
+                    : "duplicates skipped"}
+                </span>
+                <span className="text-muted-foreground">
+                  {actionData.bulk.rejected.length}{" "}
+                  {actionData.bulk.rejected.length === 1
+                    ? "address rejected"
+                    : "addresses rejected"}
+                </span>
+              </div>
+              {actionData.bulk.rejected.length > 0 && (
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-destructive">
+                  {actionData.bulk.rejected.map((item) => (
+                    <li key={`${item.value}-${item.reason}`}>
+                      {item.value}: {item.reason}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>
