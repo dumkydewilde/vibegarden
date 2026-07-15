@@ -62,3 +62,18 @@ describe("Admin bulk invites", () => {
     );
   });
 });
+
+describe("Admin single invites", () => {
+  it("confirms the email address after an invite is sent", async () => {
+    renderAdmin(() => ({ ok: true, invitedEmail: "alice@example.com" }));
+
+    fireEvent.change(await screen.findByPlaceholderText("friend@example.com"), {
+      target: { value: "Alice@Example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^invite$/i }));
+
+    expect(
+      await screen.findByText("Invite sent for alice@example.com"),
+    ).toBeInTheDocument();
+  });
+});

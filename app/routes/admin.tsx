@@ -81,7 +81,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         target: invites.email,
         set: { status: "pending", invitedBy: admin.email },
       });
-    return { ok: true };
+    return { ok: true, invitedEmail: email };
   }
 
   if (intent === "bulk-invite") {
@@ -173,6 +173,17 @@ export default function Admin({ loaderData, actionData }: Route.ComponentProps) 
           {actionData && "error" in actionData && actionData.error && (
             <p className="mt-2 text-sm text-destructive">{actionData.error}</p>
           )}
+          {actionData &&
+            "invitedEmail" in actionData &&
+            actionData.invitedEmail && (
+              <p
+                className="mt-2 flex items-center gap-1.5 text-sm text-primary"
+                role="status"
+              >
+                <Check className="size-4" aria-hidden="true" />
+                Invite sent for {actionData.invitedEmail}
+              </p>
+            )}
         </CardContent>
       </Card>
 
