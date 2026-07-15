@@ -1,6 +1,7 @@
 import { Form, redirect, useNavigation, useSearchParams } from "react-router";
 import { Sprout } from "lucide-react";
 import type { Route } from "./+types/login";
+import { GoogleIcon } from "~/components/icons/google-icon";
 import { cloudflareContext } from "~/lib/context";
 import { Button } from "~/components/ui/button";
 import {
@@ -188,7 +189,10 @@ export default function Login({
                 <span className="h-px flex-1 bg-border" />
               </div>
               <Button asChild variant="outline" className="w-full">
-                <a href="/auth/google">Continue with Google</a>
+                <a href="/auth/google">
+                  <GoogleIcon className="size-4" />
+                  Continue with Google
+                </a>
               </Button>
             </>
           )}

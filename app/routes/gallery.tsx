@@ -11,6 +11,7 @@ export default function Gallery() {
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
+        icon={Images}
         title="Gallery"
         description="What everyone else is growing. Borrow ideas freely, that is what it is for."
       />

@@ -160,6 +160,7 @@ export default function Garden({ loaderData, actionData }: Route.ComponentProps)
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
+        icon={Sprout}
         title="Idea Garden"
         description="Your projects grow here. Start with a rough idea, or none at all: The Gardener helps you find one."
       >

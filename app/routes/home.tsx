@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { ArrowRight, BookOpen, Lightbulb, MessageCircleQuestion, Sprout } from "lucide-react";
+import { ArrowRight, Flower2, MessageCircleQuestion, Sprout, TreeDeciduous } from "lucide-react";
 import type { Route } from "./+types/home";
 import { useGardener } from "~/components/gardener/gardener-provider";
 import {
@@ -22,7 +22,7 @@ export function meta({}: Route.MetaArgs) {
 const starterPaths = [
   {
     to: "/learning",
-    icon: BookOpen,
+    icon: TreeDeciduous,
     title: "Start with the basics",
     description:
       "Short reads on LLMs, agents, and how digital products come together. Pick what sounds interesting, skip what does not.",
@@ -36,7 +36,7 @@ const starterPaths = [
   },
   {
     to: "/inspiration",
-    icon: Lightbulb,
+    icon: Flower2,
     title: "Browse inspiration",
     description:
       "Public datasets to play with, problems that could use a tool, and stories of what others have built with AI.",

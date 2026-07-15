@@ -1,5 +1,5 @@
 import { Form, useNavigation } from "react-router";
-import { Check, Mail, UserX } from "lucide-react";
+import { Check, Mail, UserCog, UserX } from "lucide-react";
 import { desc, eq } from "drizzle-orm";
 import type { Route } from "./+types/admin";
 import { cloudflareContext } from "~/lib/context";
@@ -126,6 +126,7 @@ export default function Admin({ loaderData, actionData }: Route.ComponentProps) 
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
+        icon={UserCog}
         title="Admin"
         description="Invite people and follow how everyone is doing. Only you can see this."
       />

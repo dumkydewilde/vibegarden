@@ -1,10 +1,10 @@
 import {
-  Archive,
-  BookOpen,
+  Apple,
+  Flower2,
   Home,
   Images,
-  Lightbulb,
   Sprout,
+  TreeDeciduous,
   UserCog,
   type LucideIcon,
 } from "lucide-react";
@@ -19,9 +19,9 @@ export type NavItem = {
 export const navItems: NavItem[] = [
   { to: "/", label: "Home", icon: Home },
   { to: "/garden", label: "Idea Garden", icon: Sprout },
-  { to: "/learning", label: "Learning", icon: BookOpen },
-  { to: "/artifacts", label: "Artifacts", icon: Archive },
+  { to: "/learning", label: "Learning", icon: TreeDeciduous },
+  { to: "/artifacts", label: "Artifacts", icon: Apple },
   { to: "/gallery", label: "Gallery", icon: Images },
-  { to: "/inspiration", label: "Inspiration", icon: Lightbulb },
+  { to: "/inspiration", label: "Inspiration", icon: Flower2 },
   { to: "/admin", label: "Admin", icon: UserCog, adminOnly: true },
 ];
