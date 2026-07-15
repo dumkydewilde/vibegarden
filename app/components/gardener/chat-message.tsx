@@ -67,12 +67,37 @@ function MdLink({
   );
 }
 
+function ActivityBubble({ label }: { label: string }) {
+  return (
+    <div className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+      <span className="shimmer">{label}</span>
+    </div>
+  );
+}
+
+function toolActivityLabel(
+  segment: Extract<ToolNoteSegment, { type: "tool" }>,
+) {
+  if (segment.kind === "article") {
+    return `Reading ${getArticle(segment.value)?.meta.title ?? "an article"}`;
+  }
+  if (segment.kind === "module") {
+    return `Reading ${getModule(segment.value)?.meta.title ?? "a building block"}`;
+  }
+  if (segment.kind === "web") return `Checking ${segment.value}`;
+  return segment.value.charAt(0).toUpperCase() + segment.value.slice(1);
+}
+
 /** A tool activity aside: its own small bubble between the text bubbles. */
 function ToolNoteBubble({
   segment,
+  active = false,
 }: {
   segment: Extract<ToolNoteSegment, { type: "tool" }>;
+  active?: boolean;
 }) {
+  if (active) return <ActivityBubble label={toolActivityLabel(segment)} />;
+
   const wrapper =
     "flex max-w-full items-center gap-1.5 rounded-lg bg-muted/60 px-2.5 py-1.5 text-xs italic text-muted-foreground";
 
@@ -138,9 +163,19 @@ function GardenerTextBubble({
   );
 }
 
-export function ChatMessageBubble({ message }: { message: ChatMessage }) {
+export function ChatMessageBubble({
+  message,
+  isStreaming = false,
+}: {
+  message: ChatMessage;
+  isStreaming?: boolean;
+}) {
   const isGardener = message.role === "gardener";
   const segments = isGardener ? splitToolNotes(message.text) : [];
+  const activeToolIndex =
+    isStreaming && !message.error && segments.at(-1)?.type === "tool"
+      ? segments.length - 1
+      : -1;
   return (
     <div
       className={cn(
@@ -157,11 +192,14 @@ export function ChatMessageBubble({ message }: { message: ChatMessage }) {
             <Sprout className="size-3.5 text-accent-foreground" />
           </div>
         )}
-        {isGardener ? (
-          <div className="flex min-w-0 max-w-[85%] flex-col items-start gap-1.5">
-            {segments.length === 0 && (
-              <GardenerTextBubble text="" error={message.error} />
-            )}
+          {isGardener ? (
+            <div className="flex min-w-0 max-w-[85%] flex-col items-start gap-1.5">
+            {segments.length === 0 &&
+              (isStreaming && !message.error && !message.text ? (
+                <ActivityBubble label="The Gardener is thinking..." />
+              ) : (
+                <GardenerTextBubble text="" error={message.error} />
+              ))}
             {segments.map((segment, i) =>
               segment.type === "text" ? (
                 <GardenerTextBubble
@@ -170,7 +208,11 @@ export function ChatMessageBubble({ message }: { message: ChatMessage }) {
                   error={message.error}
                 />
               ) : (
-                <ToolNoteBubble key={i} segment={segment} />
+                <ToolNoteBubble
+                  key={i}
+                  segment={segment}
+                  active={i === activeToolIndex}
+                />
               ),
             )}
           </div>
