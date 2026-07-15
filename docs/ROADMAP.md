@@ -117,6 +117,11 @@ Core landed 2026-07-14, see `docs/plans/2026-07-14-gardener-tools.md`.
       (client-only lazy chunk, theme-aware; worker bundle untouched)
 - [x] The Gardener can call `visualize_flow` to return a durable Mermaid
       preview in chat; selecting the preview opens a large accessible dialog
+- [x] Audience section (2026-07-15): `content/gardener/audience.md` feeds
+      the friends' shared interests (EA, sociology, basic income,
+      philosophy, sustainability, entrepreneurship) into the system prompt
+      via `{{AUDIENCE}}`, with rules to use them subtly; toggle with
+      `enabled: false` frontmatter or by deleting the file
 - [x] Batch 4 (2026-07-15): "Storing your data" got a hosted-database field
       guide table (Supabase, Neon, Convex, PlanetScale, Cloudflare D1,
       MotherDuck, PocketBase) and a "database becomes a backend" (BaaS)

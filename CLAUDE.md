@@ -16,8 +16,11 @@ A workshop environment for friends learning to build with AI/LLMs. See
   values that contain a colon.
 - **Gardener system prompt:** `content/gardener/system-prompt.md`, plain
   markdown with `{{ARTICLE_INDEX}}`, `{{MODULES}}`, `{{CURRENT_PAGE_RULE}}`,
-  `{{TOOLS_RULE}}` placeholders filled in by `app/lib/gardener.server.ts`.
-  Edit the file, reload, done.
+  `{{TOOLS_RULE}}`, `{{AUDIENCE}}` placeholders filled in by
+  `app/lib/gardener.server.ts`. Edit the file, reload, done. The audience
+  section (the friends' shared interests, used subtly) lives in
+  `content/gardener/audience.md`; turn it off with `enabled: false` in its
+  frontmatter, or delete the file.
 - **Path alias:** `~/*` maps to `app/*`.
 - **Design:** modern Tufte with garden hints. Serif headings (Merriweather),
   sans body (Roboto), ~90ch reading measure, minimal chrome, garden palette.

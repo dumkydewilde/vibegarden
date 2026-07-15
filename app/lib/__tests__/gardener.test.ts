@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildAudienceSection,
   buildSystemPrompt,
   HISTORY_LIMIT,
   readSseRound,
@@ -40,12 +41,29 @@ describe("buildSystemPrompt", () => {
     expect(withoutTools).toContain("does not support tools");
   });
 
+  it("weaves in the audience section without frontmatter or placeholder", () => {
+    const prompt = buildSystemPrompt([]);
+    expect(prompt).toContain("Who tends this garden");
+    expect(prompt).toContain("effective altruism");
+    expect(prompt).not.toContain("{{AUDIENCE}}");
+    expect(prompt).not.toContain("enabled:");
+    expect(prompt).not.toContain("\n\n\n");
+  });
+
   it("appends context blocks", () => {
     const prompt = buildSystemPrompt([
       { kind: "paragraph", label: "a quote", content: "LLMs are guessers." },
     ]);
     expect(prompt).toContain('<context kind="paragraph"');
     expect(prompt).toContain("LLMs are guessers.");
+  });
+});
+
+describe("buildAudienceSection", () => {
+  it("strips the frontmatter and keeps the body", () => {
+    const section = buildAudienceSection();
+    expect(section).toContain("Who tends this garden");
+    expect(section).not.toContain("---");
   });
 });
 

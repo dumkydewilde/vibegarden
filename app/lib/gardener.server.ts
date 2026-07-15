@@ -4,6 +4,26 @@ import { stripToolNotes } from "./tool-notes";
 import type { ToolCall } from "./gardener-tools.server";
 import promptTemplate from "../../content/gardener/system-prompt.md?raw";
 
+// Glob instead of a direct import so deleting the file also disables it.
+const audienceFiles = import.meta.glob<string>("/content/gardener/audience.md", {
+  eager: true,
+  query: "?raw",
+  import: "default",
+});
+
+/**
+ * The optional audience section: who the friends are and how to (subtly)
+ * play to their interests. Toggle with `enabled: false` in the file's
+ * frontmatter, or delete the file.
+ */
+export function buildAudienceSection(): string {
+  const raw = audienceFiles["/content/gardener/audience.md"];
+  if (!raw) return "";
+  const fm = raw.match(/^---\n([\s\S]*?)\n---\n?/);
+  if (fm && /^enabled:\s*false\s*$/m.test(fm[1])) return "";
+  return (fm ? raw.slice(fm[0].length) : raw).trim();
+}
+
 export type WireMessage = { role: "user" | "assistant"; content: string };
 export type WireContextItem = {
   kind: "page" | "article" | "module" | "paragraph" | "project" | "dataset";
@@ -89,10 +109,12 @@ export function buildSystemPrompt(
     .replace("{{MODULES}}", modules.join(", "))
     .replace("{{ARTICLE_INDEX}}", articleIndex)
     .replace("{{CURRENT_PAGE_RULE}}", currentPageRule)
+    .replace("{{AUDIENCE}}", buildAudienceSection())
     .replace(
       "{{TOOLS_RULE}}",
       buildToolsRule(opts.tools ?? false, opts.freshReads ?? false),
-    );
+    )
+    .replace(/\n{3,}/g, "\n\n");
 
   if (contextItems.length > 0) {
     const blocks = contextItems
