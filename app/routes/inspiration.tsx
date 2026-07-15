@@ -24,33 +24,86 @@ const datasets: InspirationItem[] = [
   {
     title: "KNMI weather data",
     description:
-      "Dutch weather observations going back decades. Good for dashboards, seasonal comparisons, or a rain-or-bike advisor.",
+      "Dutch weather observations since 1901. Compare seasons, find the best terrace weather, or build a rain-or-bike advisor.",
     tag: "Open data",
+    href: "https://dataplatform.knmi.nl/en/dataset/daily-in-situ-meteorological-observations-validated-1-0",
   },
   {
     title: "Amsterdam open geodata",
     description:
       "Neighborhoods, trees, parking, playgrounds. Everything in the city has coordinates, which makes for great map projects.",
     tag: "Open data",
+    href: "https://maps.amsterdam.nl/open_geodata/",
   },
   {
     title: "Open Food Facts",
     description:
-      "Ingredients and nutrition for over a million products. Scan a barcode, get data. A natural fit for photo-based tools.",
+      "Ingredients and nutrition for millions of products. Compare supermarket shelves, flag allergens, or build a barcode-scanning lunch helper.",
     tag: "Open data",
+    href: "https://world.openfoodfacts.org/data",
   },
   {
     title: "Your Goodreads export",
     description:
-      "Your whole reading life as one CSV: ratings, shelves, dates read. Raw material for a reading dashboard or a what-to-read-next advisor that actually knows your taste.",
+      "Your reading life as one CSV: ratings, shelves, and dates read. Build a reading dashboard or a recommender that actually knows your taste.",
     tag: "Personal data",
+    href: "https://www.goodreads.com/review/import",
   },
   {
     title: "TalkData",
     description:
-      "A searchable database of conference talks from the data world: speakers, topics, tools, events. Who talks about what, and how topics rise and fall over the years.",
+      "A searchable database of data conference talks: speakers, topics, tools, and events. See who talks about what and how themes rise and fall.",
     tag: "Open data",
     href: "https://talk-data.com/",
+  },
+  {
+    title: "CBS StatLine",
+    description:
+      "Population, housing, income, health, mobility, and more from Statistics Netherlands. Compare neighborhoods or test claims about how the country is changing.",
+    tag: "Open data",
+    href: "https://www.cbs.nl/en-gb/our-services/open-data/statline-as-open-data",
+  },
+  {
+    title: "Your Spotify history",
+    description:
+      "A JSON record of songs and podcasts from the lifetime of your account. Map eras in your taste, measure skips, or plan a group playlist.",
+    tag: "Personal data",
+    href: "https://support.spotify.com/us/article/data-rights-and-privacy-settings/",
+  },
+  {
+    title: "Your Strava archive",
+    description:
+      "Routes, distances, times, and activity files from your own account. Draw a personal heatmap, find neglected rides, or design a club route.",
+    tag: "Personal data",
+    href: "https://support.strava.com/en-us/articles/15401919-exporting-your-data-and-bulk-export",
+  },
+  {
+    title: "Stack Overflow Developer Survey",
+    description:
+      "Annual survey data from developers around the world. Explore salaries, tools, AI attitudes, or which technologies people admire but avoid using.",
+    tag: "Open data",
+    href: "https://survey.stackoverflow.co/",
+  },
+  {
+    title: "iNaturalist observations",
+    description:
+      "Geotagged wildlife sightings shared by a global community. Map city biodiversity, track the seasons, or make a nature-walk companion.",
+    tag: "Open data",
+    href: "https://www.inaturalist.org/pages/developers",
+  },
+  {
+    title: "Dutch election results",
+    description:
+      "Results from national, local, European, and water-board elections, with history back to 1848. Map turnout or show how places shift over time.",
+    tag: "Open data",
+    href: "https://www.verkiezingsuitslagen.nl/",
+  },
+  {
+    title: "Luchtmeetnet air quality",
+    description:
+      "Hourly readings for particulate matter, nitrogen dioxide, ozone, and more across the Netherlands. Find cleaner times to run, ride, or open the windows.",
+    tag: "Open data",
+    href: "https://api-docs.luchtmeetnet.nl/",
   },
 ];
 
