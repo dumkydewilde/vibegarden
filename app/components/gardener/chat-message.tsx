@@ -2,6 +2,7 @@ import { Blocks, BookOpen, Globe, Sprout } from "lucide-react";
 import Markdown from "react-markdown";
 import { ContextQuote } from "./context-quote";
 import type { ChatMessage } from "./gardener-provider";
+import { MermaidToolResult } from "./mermaid-tool-result";
 import { ContentCard, ContentLink } from "~/components/content-link";
 import { getArticle } from "~/lib/content";
 import { getModule } from "~/lib/modules";
@@ -147,6 +148,12 @@ export function ChatMessageBubble({
                   key={i}
                   text={segment.text}
                   error={message.error}
+                />
+              ) : segment.type === "diagram" ? (
+                <MermaidToolResult
+                  key={i}
+                  title={segment.title}
+                  diagram={segment.diagram}
                 />
               ) : (
                 <ToolNoteBubble
