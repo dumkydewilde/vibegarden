@@ -1,11 +1,6 @@
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { createRoutesStub } from "react-router";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildDatasetContext,
   datasets,
@@ -23,17 +18,33 @@ vi.mock("~/components/gardener/gardener-provider", () => ({
   }),
 }));
 
+const loaderData = { commentsByTarget: {}, canModerate: false };
+
+function renderInspiration() {
+  const Stub = createRoutesStub([
+    {
+      id: "inspiration",
+      path: "/",
+      Component: Inspiration,
+      loader: () => loaderData,
+      action: () => ({ ok: true }),
+    },
+  ]);
+  render(
+    <Stub
+      initialEntries={["/"]}
+      hydrationData={{ loaderData: { inspiration: loaderData } }}
+    />,
+  );
+}
+
 beforeEach(() => {
   gardener.askFresh.mockReset();
 });
 
-afterEach(() => {
-  cleanup();
-});
-
 describe("Inspiration datasets", () => {
   it("renders twelve beginner cards with formats and two explicit actions", () => {
-    render(<Inspiration />);
+    renderInspiration();
 
     const heading = screen.getByRole("heading", {
       name: "Datasets to start from",
@@ -74,7 +85,7 @@ describe("Inspiration datasets", () => {
   });
 
   it("starts a fresh Gardener conversation with visible dataset context", () => {
-    render(<Inspiration />);
+    renderInspiration();
     const weather = datasets.find(
       ({ title }) => title === "Open-Meteo weather",
     );

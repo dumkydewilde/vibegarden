@@ -118,6 +118,24 @@ Core landed 2026-07-14, see `docs/plans/2026-07-14-gardener-tools.md`.
 - [ ] Later ideas: prompting basics, cost and budgets, privacy and
       personal data
 
+## Comments & discussion (P1-P3 done, 2026-07-15)
+
+Feedback loop for the workshop. Plan in
+`docs/plans/2026-07-15-comments-discussion.md`. Two shapes: participant-visible
+discussion attached to a target, and private site feedback to the admin.
+Migration `0005_misty_havok.sql` adds `comments` + `site_feedback`.
+
+- [x] P1: article comments (`comments` table, `learning.$slug.tsx` thread,
+      post / delete-own / admin-delete, chronological, flat with a reserved
+      `parent_id` for future replies)
+- [x] P2: inspiration card comments (stable id via `slugify(title)`, thread in
+      a per-card dialog; enabled on every card, not just datasets)
+- [x] P3: private site feedback to the admin (`site_feedback` table,
+      `/api/feedback` resource route, dialog in the nav capturing the current
+      path, admin review section with new/read/resolved)
+- [ ] Later: artifact comments (once Phase 5 uploads + detail pages exist;
+      `comments` already reserves `target_type = "artifact"`)
+
 ## Phase 6: Polish, deploy, invite
 
 - [x] Article links polish (2026-07-15): internal article/module links in

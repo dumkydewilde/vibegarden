@@ -4,19 +4,52 @@ import type { Route } from "./+types/learning.$slug";
 import { useGardener } from "~/components/gardener/gardener-provider";
 import { ContentLink } from "~/components/content-link";
 import { MdxPre } from "~/components/mermaid-block";
+import { CommentThread } from "~/components/comments/comment-thread";
 import {
   ListItemWithAsk,
   ParagraphWithAsk,
 } from "~/components/learning/paragraph-with-ask";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { requireUser } from "~/lib/auth.server";
+import {
+  createComment,
+  deleteComment,
+  listComments,
+} from "~/lib/comments.server";
 import { getArticle, getArticleRaw } from "~/lib/content";
+import { cloudflareContext } from "~/lib/context";
 
-export function loader({ params }: Route.LoaderArgs) {
+export async function loader({ params, request, context }: Route.LoaderArgs) {
   if (!getArticle(params.slug)) {
     throw new Response("Article not found", { status: 404 });
   }
-  return null;
+  const { env } = context.get(cloudflareContext);
+  const user = await requireUser(env, request);
+  const comments = await listComments(env, "article", params.slug, user.id);
+  return { comments, canModerate: user.role === "admin" };
+}
+
+export async function action({ params, request, context }: Route.ActionArgs) {
+  const { env } = context.get(cloudflareContext);
+  const user = await requireUser(env, request);
+  const form = await request.formData();
+  const intent = form.get("intent");
+
+  if (intent === "comment") {
+    // Target is fixed by the route, not trusted from the form.
+    await createComment(env, user.id, {
+      targetType: "article",
+      targetId: params.slug,
+      body: String(form.get("body") ?? ""),
+    });
+    return { ok: true };
+  }
+  if (intent === "delete-comment") {
+    await deleteComment(env, user, String(form.get("commentId") ?? ""));
+    return { ok: true };
+  }
+  return { ok: false };
 }
 
 export function meta({ params }: Route.MetaArgs) {
@@ -34,7 +67,10 @@ const mdxComponents = {
   pre: MdxPre,
 };
 
-export default function LearningArticle({ params }: Route.ComponentProps) {
+export default function LearningArticle({
+  params,
+  loaderData,
+}: Route.ComponentProps) {
   const article = getArticle(params.slug);
   const { addContext } = useGardener();
   if (!article) return null;
@@ -77,9 +113,18 @@ export default function LearningArticle({ params }: Route.ComponentProps) {
         </div>
       </div>
 
-      <article className="prose-garden pb-16">
+      <article className="prose-garden pb-10">
         <article.Component components={mdxComponents} />
       </article>
+
+      <div className="border-t pt-8 pb-16">
+        <CommentThread
+          targetType="article"
+          targetId={meta.slug}
+          comments={loaderData.comments}
+          canModerate={loaderData.canModerate}
+        />
+      </div>
     </div>
   );
 }

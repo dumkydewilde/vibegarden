@@ -93,7 +93,47 @@ export const projects = sqliteTable("projects", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+/**
+ * Participant-visible discussion attached to a target by string, not FK:
+ * articles are file-based (slug), inspiration cards live in code. `parentId`
+ * is reserved for one-level replies; nothing writes it yet.
+ */
+export const comments = sqliteTable("comments", {
+  id: text("id").primaryKey(),
+  targetType: text("target_type", {
+    enum: ["article", "inspiration", "artifact"],
+  }).notNull(),
+  targetId: text("target_id").notNull(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  parentId: text("parent_id"),
+  body: text("body").notNull(),
+  status: text("status", { enum: ["visible", "hidden"] })
+    .notNull()
+    .default("visible"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+/** Private feedback to the admin, not attached to any target. */
+export const siteFeedback = sqliteTable("site_feedback", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** Path the feedback was sent from, e.g. "/learning/what-is-an-agent". */
+  page: text("page"),
+  body: text("body").notNull(),
+  status: text("status", { enum: ["new", "read", "resolved"] })
+    .notNull()
+    .default("new"),
+  createdAt: integer("created_at").notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Invite = typeof invites.$inferSelect;
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type Project = typeof projects.$inferSelect;
+export type Comment = typeof comments.$inferSelect;
+export type SiteFeedback = typeof siteFeedback.$inferSelect;

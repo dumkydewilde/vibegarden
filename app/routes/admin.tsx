@@ -1,5 +1,5 @@
 import { Form, useNavigation } from "react-router";
-import { Mail, UserX } from "lucide-react";
+import { Check, Mail, UserX } from "lucide-react";
 import { desc, eq } from "drizzle-orm";
 import type { Route } from "./+types/admin";
 import { cloudflareContext } from "~/lib/context";
@@ -16,6 +16,8 @@ import {
 import { Input } from "~/components/ui/input";
 import { requireAdmin } from "~/lib/auth.server";
 import { getDb } from "~/lib/db.server";
+import { isFeedbackStatus } from "~/lib/feedback";
+import { listFeedback, setFeedbackStatus } from "~/lib/feedback.server";
 import { isValidEmail, normalizeEmail } from "~/lib/otp.server";
 import { summarizeAnswers } from "~/lib/questionnaire";
 import { invites, questionnaireResponses, users } from "~/db/schema";
@@ -28,10 +30,11 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   await requireAdmin(env, request);
   const db = getDb(env);
-  const [allUsers, allInvites, responses] = await Promise.all([
+  const [allUsers, allInvites, responses, feedback] = await Promise.all([
     db.select().from(users).orderBy(desc(users.createdAt)),
     db.select().from(invites).orderBy(desc(invites.createdAt)),
     db.select().from(questionnaireResponses),
+    listFeedback(env),
   ]);
   const summaries = new Map(
     responses.map((r) => {
@@ -48,6 +51,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       questionnaire: summaries.get(u.id),
     })),
     invites: allInvites,
+    feedback,
   };
 }
 
@@ -86,8 +90,26 @@ export async function action({ request, context }: Route.ActionArgs) {
     return { ok: true };
   }
 
+  if (intent === "feedback-status") {
+    const id = String(form.get("id") ?? "");
+    const status = form.get("status");
+    if (id && isFeedbackStatus(status)) {
+      await setFeedbackStatus(env, id, status);
+    }
+    return { ok: true };
+  }
+
   return { error: "Unknown action." };
 }
+
+const feedbackStatusVariant: Record<
+  string,
+  "default" | "secondary" | "outline"
+> = {
+  new: "default",
+  read: "secondary",
+  resolved: "outline",
+};
 
 const stageLabel: Record<string, string> = {
   invited: "Just arrived",
@@ -219,6 +241,84 @@ export default function Admin({ loaderData, actionData }: Route.ComponentProps) 
               Revoked: {revoked.map((r) => r.email).join(", ")}. Re-invite
               above to restore access.
             </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="font-serif text-lg font-normal">
+            Feedback
+          </CardTitle>
+          <CardDescription>
+            Private notes people sent from the "Feedback" button. Only you see
+            these.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loaderData.feedback.length === 0 ? (
+            <p className="py-4 text-sm text-muted-foreground">
+              No feedback yet.
+            </p>
+          ) : (
+            <ul className="divide-y">
+              {loaderData.feedback.map((f) => (
+                <li key={f.id} className="py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={feedbackStatusVariant[f.status] ?? "default"}>
+                      {f.status}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {f.authorName ?? f.authorEmail}
+                    </span>
+                    {f.page && (
+                      <span className="text-xs text-muted-foreground">
+                        · {f.page}
+                      </span>
+                    )}
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      {new Date(f.createdAt).toISOString().slice(0, 10)}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-sm whitespace-pre-wrap">{f.body}</p>
+                  <div className="mt-2 flex gap-1.5">
+                    {f.status !== "read" && (
+                      <Form method="post">
+                        <input type="hidden" name="intent" value="feedback-status" />
+                        <input type="hidden" name="id" value={f.id} />
+                        <input type="hidden" name="status" value="read" />
+                        <Button
+                          type="submit"
+                          variant="ghost"
+                          size="xs"
+                          disabled={busy}
+                          className="text-muted-foreground"
+                        >
+                          Mark read
+                        </Button>
+                      </Form>
+                    )}
+                    {f.status !== "resolved" && (
+                      <Form method="post">
+                        <input type="hidden" name="intent" value="feedback-status" />
+                        <input type="hidden" name="id" value={f.id} />
+                        <input type="hidden" name="status" value="resolved" />
+                        <Button
+                          type="submit"
+                          variant="ghost"
+                          size="xs"
+                          disabled={busy}
+                          className="gap-1 text-muted-foreground"
+                        >
+                          <Check className="size-3.5" />
+                          Resolve
+                        </Button>
+                      </Form>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
         </CardContent>
       </Card>
