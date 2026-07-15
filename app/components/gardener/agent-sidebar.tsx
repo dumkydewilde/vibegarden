@@ -184,7 +184,7 @@ function LauncherPill({
       aria-label="Ask the Gardener"
       onClick={onClick}
       className={cn(
-        "fixed right-4 bottom-4 z-40 h-12 gap-2 rounded-full border border-primary/25 bg-accent px-5 font-serif text-sm text-accent-foreground shadow-lg hover:bg-accent/80",
+        "fixed right-6 bottom-8 z-40 h-12 cursor-pointer gap-2 rounded-full border border-primary/25 bg-accent px-5 font-serif text-sm text-accent-foreground shadow-lg hover:bg-accent/80",
         className,
       )}
     >

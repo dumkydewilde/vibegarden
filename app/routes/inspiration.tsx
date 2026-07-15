@@ -3,6 +3,7 @@ import {
   BarChart3,
   Database,
   ExternalLink,
+  Flower2,
   Newspaper,
   Sprout,
   Wrench,
@@ -346,6 +347,7 @@ export default function Inspiration() {
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
+        icon={Flower2}
         title="Inspiration"
         description="Datasets to play with and proof that ordinary people build useful things with AI."
       />

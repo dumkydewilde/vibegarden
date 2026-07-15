@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import { TreeDeciduous } from "lucide-react";
 import type { Route } from "./+types/learning";
 import { PageHeader } from "~/components/shell/page-header";
 import { Badge } from "~/components/ui/badge";
@@ -20,6 +21,7 @@ export default function Learning() {
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
+        icon={TreeDeciduous}
         title="Learning"
         description="Short reads, no homework. Read whatever looks useful for what you want to make, in any order."
       />

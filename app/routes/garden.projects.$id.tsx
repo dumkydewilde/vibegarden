@@ -134,7 +134,7 @@ export default function ProjectDetail({
         Idea Garden
       </Link>
 
-      <PageHeader title={project.title} description={project.oneLiner ?? undefined}>
+      <PageHeader icon={Sprout} title={project.title} description={project.oneLiner ?? undefined}>
         <Button
           variant="outline"
           className="gap-1.5"
