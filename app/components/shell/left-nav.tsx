@@ -3,6 +3,7 @@ import { LogOut, PanelLeftClose, PanelLeftOpen, Sprout } from "lucide-react";
 import { useState } from "react";
 import { useAppUser } from "~/hooks/use-app-user";
 import { navItems } from "~/lib/nav";
+import { FeedbackDialog } from "~/components/feedback/feedback-dialog";
 import { ThemeToggle } from "~/components/theme-toggle";
 import { Button } from "~/components/ui/button";
 import {
@@ -72,6 +73,11 @@ export function LeftNav() {
         </ul>
       </TooltipProvider>
 
+      {user && !collapsed && (
+        <div className="border-t px-2 py-1.5">
+          <FeedbackDialog className="w-full justify-start gap-1.5 text-muted-foreground" />
+        </div>
+      )}
       {user && !collapsed && (
         <div className="flex items-center justify-between gap-2 border-t px-4 py-2.5">
           <span

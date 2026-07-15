@@ -1,3 +1,4 @@
+import { useLoaderData } from "react-router";
 import {
   BarChart3,
   Database,
@@ -8,6 +9,7 @@ import {
 } from "lucide-react";
 import type { Route } from "./+types/inspiration";
 import { useOptionalGardener } from "~/components/gardener/gardener-provider";
+import { CommentDialog } from "~/components/comments/comment-dialog";
 import { PageHeader } from "~/components/shell/page-header";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -19,6 +21,14 @@ import {
   CardHeader,
   CardTitle,
 } from "~/components/ui/card";
+import { requireUser } from "~/lib/auth.server";
+import { isCommentTargetType, slugify } from "~/lib/comment-target";
+import {
+  createComment,
+  deleteComment,
+  listCommentsByType,
+} from "~/lib/comments.server";
+import { cloudflareContext } from "~/lib/context";
 import {
   buildDatasetContext,
   datasets,
@@ -113,15 +123,75 @@ const examples: InspirationItem[] = [
   },
 ];
 
+/** Stable comment target ids for every card on the page, for validation. */
+const inspirationTargetIds = new Set(
+  [...stories, ...tools, ...examples, ...datasets].map((i) => slugify(i.title)),
+);
+
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const { env } = context.get(cloudflareContext);
+  const user = await requireUser(env, request);
+  const commentsByTarget = await listCommentsByType(
+    env,
+    "inspiration",
+    user.id,
+  );
+  return { commentsByTarget, canModerate: user.role === "admin" };
+}
+
+export async function action({ request, context }: Route.ActionArgs) {
+  const { env } = context.get(cloudflareContext);
+  const user = await requireUser(env, request);
+  const form = await request.formData();
+  const intent = form.get("intent");
+
+  if (intent === "comment") {
+    const targetType = form.get("targetType");
+    const targetId = String(form.get("targetId") ?? "");
+    // Only known cards on this page are valid targets.
+    if (
+      isCommentTargetType(targetType) &&
+      targetType === "inspiration" &&
+      inspirationTargetIds.has(targetId)
+    ) {
+      await createComment(env, user.id, {
+        targetType,
+        targetId,
+        body: String(form.get("body") ?? ""),
+      });
+    }
+    return { ok: true };
+  }
+  if (intent === "delete-comment") {
+    await deleteComment(env, user, String(form.get("commentId") ?? ""));
+    return { ok: true };
+  }
+  return { ok: false };
+}
+
+/** Reads this route's comments and renders the discuss dialog for one card. */
+function CardDiscussion({
+  targetId,
+  title,
+}: {
+  targetId: string;
+  title: string;
+}) {
+  const { commentsByTarget, canModerate } = useLoaderData<typeof loader>();
+  return (
+    <CommentDialog
+      targetType="inspiration"
+      targetId={targetId}
+      title={title}
+      comments={commentsByTarget[targetId] ?? []}
+      canModerate={canModerate}
+    />
+  );
+}
+
 function InspirationCard({ item }: { item: InspirationItem }) {
-  const card = (
-    <Card
-      className={
-        item.href
-          ? "h-full transition-colors group-hover:border-primary/40"
-          : "h-full"
-      }
-    >
+  return (
+    <Card className="flex h-full flex-col">
       <CardHeader>
         <Badge variant="outline" className="mb-2 w-fit">
           {item.tag}
@@ -133,14 +203,23 @@ function InspirationCard({ item }: { item: InspirationItem }) {
           {item.description}
         </CardDescription>
       </CardHeader>
+      <CardFooter className="mt-auto flex-wrap gap-1">
+        {item.href && (
+          <Button asChild variant="outline" size="sm">
+            <a
+              href={item.href}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`Open ${item.title}`}
+            >
+              Open
+              <ExternalLink />
+            </a>
+          </Button>
+        )}
+        <CardDiscussion targetId={slugify(item.title)} title={item.title} />
+      </CardFooter>
     </Card>
-  );
-
-  if (!item.href) return card;
-  return (
-    <a href={item.href} target="_blank" rel="noreferrer" className="group">
-      {card}
-    </a>
   );
 }
 
@@ -196,6 +275,7 @@ function DatasetCard({
             <ExternalLink />
           </a>
         </Button>
+        <CardDiscussion targetId={slugify(item.title)} title={item.title} />
       </CardFooter>
     </Card>
   );

@@ -26,6 +26,7 @@ export default [
   route("welcome", "routes/welcome.tsx"),
   route("api/chat", "routes/api.chat.ts"),
   route("api/thread", "routes/api.thread.ts"),
+  route("api/feedback", "routes/api.feedback.ts"),
   route("login", "routes/login.tsx"),
   route("logout", "routes/logout.tsx"),
   route("auth/google", "routes/auth.google.tsx"),

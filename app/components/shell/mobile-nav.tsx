@@ -3,6 +3,7 @@ import { LogOut, Menu, Sprout } from "lucide-react";
 import { useState } from "react";
 import { useAppUser } from "~/hooks/use-app-user";
 import { navItems } from "~/lib/nav";
+import { FeedbackDialog } from "~/components/feedback/feedback-dialog";
 import { ThemeToggle } from "~/components/theme-toggle";
 import { Button } from "~/components/ui/button";
 import {
@@ -59,7 +60,15 @@ export function MobileNav() {
             ))}
           </ul>
           {user && (
-            <div className="mt-auto flex items-center justify-between gap-2 border-t px-4 py-3">
+            <div className="mt-auto border-t px-2 py-1.5">
+              <FeedbackDialog
+                className="w-full justify-start gap-1.5 text-muted-foreground"
+                onDone={() => setOpen(false)}
+              />
+            </div>
+          )}
+          {user && (
+            <div className="flex items-center justify-between gap-2 border-t px-4 py-3">
               <span
                 className="truncate text-xs text-muted-foreground"
                 title={user.email}
