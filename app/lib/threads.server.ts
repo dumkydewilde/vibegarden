@@ -135,7 +135,7 @@ export async function listThreads(env: Env, userId: string) {
     .orderBy(desc(chatThreads.updatedAt));
 }
 
-/** Non-empty participant conversations for the protected admin review area. */
+/** Non-empty conversations for the protected admin review area. */
 export async function listAdminThreads(env: Env) {
   const db = getDb(env);
   return db
@@ -152,7 +152,6 @@ export async function listAdminThreads(env: Env) {
     .from(chatThreads)
     .innerJoin(users, eq(users.id, chatThreads.userId))
     .innerJoin(chatMessages, eq(chatMessages.threadId, chatThreads.id))
-    .where(eq(users.role, "user"))
     .groupBy(chatThreads.id, users.id)
     .orderBy(desc(chatThreads.updatedAt));
 }
@@ -175,14 +174,14 @@ export async function getThread(env: Env, userId: string, threadId: string) {
   return { thread, messages };
 }
 
-/** A participant-owned thread for an already-authorized admin to review. */
+/** A thread for an already-authorized admin to review. */
 export async function getAdminThread(env: Env, threadId: string) {
   const db = getDb(env);
   const rows = await db
     .select({ thread: chatThreads, participant: users })
     .from(chatThreads)
     .innerJoin(users, eq(users.id, chatThreads.userId))
-    .where(and(eq(chatThreads.id, threadId), eq(users.role, "user")))
+    .where(eq(chatThreads.id, threadId))
     .limit(1);
   const result = rows[0];
   if (!result) return null;
