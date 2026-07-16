@@ -8,7 +8,15 @@ import {
   useState,
 } from "react";
 import { useLocation } from "react-router";
+import { toast } from "sonner";
+import type { DatasetSource } from "~/lib/duckdb.client";
 import { defaultModel, findModel, type Model } from "~/lib/models";
+import {
+  datasetSummary,
+  MAX_CONTINUATIONS,
+  type DatasetInfo,
+} from "~/lib/query-tool";
+import { queryResultNote, splitToolNotes } from "~/lib/tool-notes";
 
 export type ContextItem = {
   id: string;
@@ -19,6 +27,8 @@ export type ContextItem = {
   kind: "page" | "article" | "module" | "paragraph" | "project" | "dataset";
   /** For project context: ties the conversation to that project. */
   projectId?: string;
+  /** For dataset context: removing the chip also drops the DuckDB view. */
+  datasetName?: string;
 };
 
 /** Context that was attached to a sent message, for display. */
@@ -71,6 +81,12 @@ export type GardenerState = {
   /** Web search via the OpenRouter web plugin; off by default (it costs). */
   webSearch: boolean;
   setWebSearch: (on: boolean) => void;
+  /** Datasets loaded into the browser's DuckDB for the query_data tool. */
+  datasets: DatasetInfo[];
+  /** Label of the dataset currently being loaded, if any. */
+  attachingDataset: string | null;
+  attachDataset: (source: DatasetSource) => Promise<void>;
+  removeDataset: (name: string) => void;
   /** Attach to the composer textarea so addContext can focus it. */
   composerRef: React.RefObject<HTMLTextAreaElement | null>;
 };
@@ -124,6 +140,10 @@ export function GardenerProvider({
     () => findModel(initialModelId) ?? defaultModel,
   );
   const [webSearch, setWebSearch] = useState(false);
+  const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
+  const [attachingDataset, setAttachingDataset] = useState<string | null>(
+    null,
+  );
 
   const { pathname } = useLocation();
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -140,6 +160,8 @@ export function GardenerProvider({
   pathnameRef.current = pathname;
   const webSearchRef = useRef(webSearch);
   webSearchRef.current = webSearch;
+  const datasetsRef = useRef(datasets);
+  datasetsRef.current = datasets;
 
   const setOpen = useCallback((nextOpen: boolean) => {
     setOpenState(nextOpen);
@@ -151,19 +173,84 @@ export function GardenerProvider({
   }, []);
 
   const addContext = useCallback((item: Omit<ContextItem, "id">) => {
-    setContextItems((items) => {
-      // One chip per source; re-adding the same label replaces it.
-      const rest = items.filter((i) => i.label !== item.label);
-      return [...rest, { ...item, id: uid() }];
-    });
+    // One chip per source; re-adding the same label replaces it. The ref is
+    // synced now (not on the next render) so an immediate ask() sees it.
+    const rest = contextRef.current.filter((i) => i.label !== item.label);
+    const next = [...rest, { ...item, id: uid() }];
+    contextRef.current = next;
+    setContextItems(next);
     setOpen(true);
     // Wait for the panel (or mobile sheet) to render before focusing.
     setTimeout(() => composerRef.current?.focus(), 250);
   }, []);
 
-  const removeContext = useCallback((id: string) => {
-    setContextItems((items) => items.filter((i) => i.id !== id));
+  const removeDataset = useCallback((name: string) => {
+    setDatasets((d) => d.filter((x) => x.name !== name));
+    setContextItems((items) => items.filter((i) => i.datasetName !== name));
+    void import("~/lib/duckdb.client").then(({ dropDataset }) =>
+      dropDataset(name),
+    );
   }, []);
+
+  const removeContext = useCallback(
+    (id: string) => {
+      const item = contextRef.current.find((i) => i.id === id);
+      if (item?.datasetName) {
+        // Removing the pending chip un-attaches the dataset entirely.
+        removeDataset(item.datasetName);
+        return;
+      }
+      setContextItems((items) => items.filter((i) => i.id !== id));
+    },
+    [removeDataset],
+  );
+
+  /** Datasets belong to one conversation; a fresh one starts clean. */
+  const clearDatasets = useCallback(() => {
+    for (const d of datasetsRef.current) {
+      void import("~/lib/duckdb.client").then(({ dropDataset }) =>
+        dropDataset(d.name),
+      );
+    }
+    setDatasets([]);
+    datasetsRef.current = [];
+  }, []);
+
+  const attachDataset = useCallback(async (source: DatasetSource) => {
+    const label =
+      source.kind === "file"
+        ? source.file.name
+        : source.url.split("/").pop() || source.url;
+    setAttachingDataset(label);
+    setOpen(true);
+    try {
+      // Lazy: DuckDB-WASM only loads when someone actually attaches data.
+      const { registerDataset } = await import("~/lib/duckdb.client");
+      const info = await registerDataset(source);
+      // Sync the ref now so a send() that attached then immediately asks
+      // includes this dataset's schema in the request.
+      const next = [
+        ...datasetsRef.current.filter((x) => x.name !== info.name),
+        info,
+      ];
+      datasetsRef.current = next;
+      setDatasets(next);
+      // The attachment rides on the next message as a context quote (the
+      // schema itself travels separately, via the datasets request field).
+      addContext({
+        kind: "dataset",
+        label: `${info.name} (${info.rowCount.toLocaleString()} rows)`,
+        content: `Attached ${info.label}: ${info.columns.length} columns, queryable with SQL.`,
+        datasetName: info.name,
+      });
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "The data could not be loaded.",
+      );
+    } finally {
+      setAttachingDataset(null);
+    }
+  }, [addContext]);
 
   const ask = useCallback(async (question: string) => {
     const sentContext = contextRef.current.map(
@@ -198,17 +285,31 @@ export function GardenerProvider({
         m.map((msg) => (msg.id === assistantId ? patch(msg) : msg)),
       );
 
-    try {
+    // The whole answer, across the primary turn and any query
+    // continuations; it mirrors what patchAssistant has rendered.
+    let text = "";
+    const append = (chunk: string) => {
+      text += chunk;
+      patchAssistant((msg) => ({ ...msg, text }));
+    };
+
+    type Wire = { role: "user" | "assistant" | "data"; content: string };
+    const streamTurn = async (messages: Wire[], continuation: boolean) => {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: wireMessages,
+          messages,
+          continuation,
           model: modelRef.current.id,
           page: pathnameRef.current,
           context: sentContext,
           projectId,
           web: webSearchRef.current,
+          datasets: datasetsRef.current.map((d) => ({
+            name: d.name,
+            summary: datasetSummary(d),
+          })),
         }),
       });
       if (!res.ok || !res.body) {
@@ -225,17 +326,20 @@ export function GardenerProvider({
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
-        if (chunk) patchAssistant((msg) => ({ ...msg, text: msg.text + chunk }));
+        if (chunk) append(chunk);
       }
-      patchAssistant((msg) =>
-        msg.text
-          ? msg
-          : {
-              ...msg,
-              text: "I came back empty-handed. Ask again, or try another model?",
-              error: true,
-            },
-      );
+    };
+
+    try {
+      await streamTurn(wireMessages, false);
+      if (!text) {
+        patchAssistant((msg) => ({
+          ...msg,
+          text: "I came back empty-handed. Ask again, or try another model?",
+          error: true,
+        }));
+        return;
+      }
     } catch (e) {
       patchAssistant((msg) => ({
         ...msg,
@@ -245,6 +349,54 @@ export function GardenerProvider({
             : "Something went wrong. Try again.",
         error: true,
       }));
+      setBusy(false);
+      return;
+    }
+
+    // The turn may end on a query marker: run the SQL in the browser,
+    // fold the result into the same bubble, and let the model narrate it
+    // in a hidden continuation turn. Capped so a stubborn model cannot
+    // loop query after query.
+    try {
+      for (let i = 0; i < MAX_CONTINUATIONS; i++) {
+        const last = splitToolNotes(text).at(-1);
+        if (last?.type !== "query") break;
+        // The assistant turn sent as history stops at the query marker; the
+        // result travels only in the data message, so the model is not fed
+        // a pre-summarized result line it would otherwise parrot back.
+        const historyText = text;
+        const { runQuery } = await import("~/lib/duckdb.client");
+        const envelope = await runQuery(last.sql);
+        append(`\n\n${queryResultNote(envelope)}\n\n`);
+        await streamTurn(
+          [
+            ...wireMessages,
+            { role: "assistant", content: historyText },
+            { role: "data", content: JSON.stringify(envelope) },
+          ],
+          true,
+        );
+      }
+      // Never leave the answer on a bare table or error card: if the model
+      // ran out of continuations, or fell silent after a result, close with
+      // a short line so the person is not staring at an unexplained result.
+      const tail = splitToolNotes(text).at(-1);
+      if (tail?.type === "query") {
+        append(
+          "\n\nI could not get that query to run after a few tries. Want to rephrase, or try a simpler question about the data?",
+        );
+      } else if (tail?.type === "queryresult") {
+        append(
+          tail.result.status === "error"
+            ? "\n\nThat query did not run against your data. Want me to try a different angle?"
+            : "\n\nThe table above has your answer.",
+        );
+      }
+    } catch (e) {
+      console.error("query continuation failed", e);
+      append(
+        "\n\nI ran the query, but lost the connection while reading the results. Ask again?",
+      );
     } finally {
       setBusy(false);
     }
@@ -257,6 +409,7 @@ export function GardenerProvider({
     ) => {
       messagesRef.current = [welcome];
       setMessages([welcome]);
+      clearDatasets();
       const seededContext = context.map((item) => ({ ...item, id: uid() }));
       contextRef.current = seededContext;
       setContextItems(seededContext);
@@ -305,6 +458,7 @@ export function GardenerProvider({
       // created server-side, so ask() lands on it.
       messagesRef.current = [welcome];
       setMessages([welcome]);
+      clearDatasets();
       contextRef.current = [
         {
           id: uid(),
@@ -325,9 +479,10 @@ export function GardenerProvider({
   const clearConversation = useCallback(() => {
     setMessages([welcome]);
     setContextItems([]);
+    clearDatasets();
     // The old thread stays in the database; this just starts a new one.
     void fetch("/api/thread", { method: "POST" });
-  }, []);
+  }, [clearDatasets]);
 
   const value = useMemo(
     () => ({
@@ -347,6 +502,10 @@ export function GardenerProvider({
       setModel,
       webSearch,
       setWebSearch,
+      datasets,
+      attachingDataset,
+      attachDataset,
+      removeDataset,
       composerRef,
     }),
     [
@@ -363,6 +522,10 @@ export function GardenerProvider({
       plantProject,
       model,
       webSearch,
+      datasets,
+      attachingDataset,
+      attachDataset,
+      removeDataset,
     ],
   );
 

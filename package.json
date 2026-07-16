@@ -16,6 +16,7 @@
     "db:migrate:prod": "wrangler d1 migrations apply DB --remote"
   },
   "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.33.1-dev57.0",
     "@fontsource-variable/merriweather": "^5.2.6",
     "@fontsource/roboto": "^5.2.10",
     "@react-router/node": "8.0.0",

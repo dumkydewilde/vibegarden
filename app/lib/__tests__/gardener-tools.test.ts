@@ -112,6 +112,27 @@ describe("executeTool", () => {
     expect(await executeTool(oversized, env)).toContain("12,000 characters");
     expect(toolNoteFor(oversized)).toBeNull();
   });
+
+  it("rejects Mermaid data charts, steering them to query_data", async () => {
+    for (const diagram of [
+      "xychart-beta\n  x-axis [2001, 2002]\n  bar [1, 7]",
+      "linechart\n  x: year\n  y: avg_score",
+      "barchart\n  x: dept\n  y: salary",
+    ]) {
+      const chart = call("visualize_flow", { title: "Data chart", diagram });
+      expect(await executeTool(chart, env)).toContain("query_data");
+      expect(toolNoteFor(chart)).toBeNull();
+    }
+  });
+
+  it("still allows a genuine flowchart", async () => {
+    const flow = call("visualize_flow", {
+      title: "Pipeline",
+      diagram: "flowchart LR\n  A --> B --> C",
+    });
+    expect(await executeTool(flow, env)).toContain("is ready");
+    expect(toolNoteFor(flow)).toContain("[[tool:diagram:");
+  });
 });
 
 describe("htmlToText", () => {

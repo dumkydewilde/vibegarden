@@ -8,15 +8,20 @@ import {
   readSseRound,
   trimHistory,
   type WireContextItem,
+  type WireDataset,
   type WireMessage,
 } from "~/lib/gardener.server";
 import {
   executeTool,
+  queryMarkerFor,
   toolDefinitions,
   toolNoteFor,
 } from "~/lib/gardener-tools.server";
+import { MAX_DATASETS, parseEnvelope } from "~/lib/query-tool";
+import { queryResultNote } from "~/lib/tool-notes";
 import { findModel, defaultModel } from "~/lib/models";
 import {
+  appendToLastAssistantMessage,
   ensureThread,
   saveMessage,
   tagThreadWithProject,
@@ -33,6 +38,13 @@ type ChatRequest = {
   projectId?: string;
   /** Let the model search the web via the OpenRouter web plugin. */
   web?: boolean;
+  /** Datasets registered in the person's browser (DuckDB-WASM views). */
+  datasets?: WireDataset[];
+  /**
+   * True when this request carries query results back for narration; the
+   * last message must then be a `data` message with the result envelope.
+   */
+  continuation?: boolean;
 };
 
 /** Messages as sent upstream; assistant turns may carry tool calls. */
@@ -72,8 +84,16 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (!Array.isArray(body.messages) || body.messages.length === 0) {
     return Response.json({ error: "messages is required." }, { status: 400 });
   }
+  const continuation = body.continuation === true;
   const lastMessage = body.messages[body.messages.length - 1];
-  if (lastMessage.role !== "user" || !lastMessage.content?.trim()) {
+  if (continuation) {
+    if (lastMessage.role !== "data" || !parseEnvelope(lastMessage.content)) {
+      return Response.json(
+        { error: "A continuation needs a valid query-result envelope." },
+        { status: 400 },
+      );
+    }
+  } else if (lastMessage.role !== "user" || !lastMessage.content?.trim()) {
     return Response.json(
       { error: "The last message must be from the user." },
       { status: 400 },
@@ -83,19 +103,33 @@ export async function action({ request, context }: Route.ActionArgs) {
   const model = findModel(body.model) ?? defaultModel;
   const contextItems = (body.context ?? []).slice(0, 8);
   const webSearch = body.web === true;
+  const datasets = (body.datasets ?? [])
+    .filter(
+      (d) =>
+        typeof d?.name === "string" &&
+        d.name.trim() &&
+        typeof d?.summary === "string",
+    )
+    .slice(0, MAX_DATASETS);
+  // Re-cap the envelope server-side; the client is not trusted with sizes.
+  const envelope = continuation ? parseEnvelope(lastMessage.content)! : null;
 
   const db = getDb(env);
   const thread = await ensureThread(db, user.id);
   if (typeof body.projectId === "string") {
     await tagThreadWithProject(env, user.id, thread.id, body.projectId);
   }
-  await saveMessage(
-    db,
-    thread,
-    "user",
-    lastMessage.content,
-    contextItems.length > 0 ? JSON.stringify(contextItems) : undefined,
-  );
+  // The envelope is not a person's message: it is persisted as a marker on
+  // the assistant answer instead (below), keeping one row per visual bubble.
+  if (!continuation) {
+    await saveMessage(
+      db,
+      thread,
+      "user",
+      lastMessage.content,
+      contextItems.length > 0 ? JSON.stringify(contextItems) : undefined,
+    );
+  }
   if (user.modelPref !== model.id) {
     await db
       .update(users)
@@ -103,16 +137,36 @@ export async function action({ request, context }: Route.ActionArgs) {
       .where(eq(users.id, user.id));
   }
 
+  // After a successful query the model should only narrate, so its
+  // continuation turn gets no tools at all (otherwise it wanders into
+  // reading unrelated articles or re-fetching). An error continuation keeps
+  // tools so it can repair the SQL with query_data.
+  const narrateOnly = continuation && envelope?.status === "ok";
+  const toolsAllowed = model.tools && !narrateOnly;
+  const offerQueryData = datasets.length > 0 && !narrateOnly;
+
+  // The model sees the re-capped envelope, not the client's raw payload.
+  const historyMessages = envelope
+    ? [
+        ...body.messages.slice(0, -1),
+        { role: "data" as const, content: JSON.stringify(envelope) },
+      ]
+    : body.messages;
+
   const upstreamMessages: UpstreamMessage[] = [
     {
       role: "system",
       content: buildSystemPrompt(
         contextItems,
         typeof body.page === "string" ? body.page : undefined,
-        { tools: model.tools, freshReads: !!env.MOTHERDUCK_TOKEN },
+        {
+          tools: model.tools,
+          freshReads: !!env.MOTHERDUCK_TOKEN,
+          datasets,
+        },
       ),
     },
-    ...trimHistory(body.messages),
+    ...trimHistory(historyMessages),
   ];
 
   const callUpstream = (withTools: boolean) =>
@@ -127,14 +181,16 @@ export async function action({ request, context }: Route.ActionArgs) {
         model: model.id,
         stream: true,
         messages: upstreamMessages,
-        ...(withTools ? { tools: toolDefinitions(env) } : {}),
+        ...(withTools
+          ? { tools: toolDefinitions(env, { queryData: offerQueryData }) }
+          : {}),
         ...(webSearch ? { plugins: [{ id: "web", max_results: 3 }] } : {}),
       }),
     });
 
   // The first request happens before the Response exists, so upstream
   // config errors still surface as a JSON 502 instead of a broken stream.
-  const first = await callUpstream(model.tools);
+  const first = await callUpstream(toolsAllowed);
   if (!first.ok || !first.body) {
     const detail = await first.text().catch(() => "");
     console.error("OpenRouter error", first.status, detail.slice(0, 500));
@@ -154,7 +210,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
       try {
         let response = first;
-        for (let round = 0; ; round++) {
+        outer: for (let round = 0; ; round++) {
           const result = await readSseRound(response.body!, emit);
           if (result.toolCalls.length === 0) break;
 
@@ -168,6 +224,17 @@ export async function action({ request, context }: Route.ActionArgs) {
             })),
           });
           for (const call of result.toolCalls) {
+            // A valid query_data ends this turn: the SQL travels to the
+            // browser as a marker, and the browser sends the result back
+            // in a continuation request. Invalid calls fall through to
+            // executeTool so the model hears what was wrong.
+            const queryMarker = queryMarkerFor(call);
+            if (queryMarker) {
+              emit(
+                `${full && !full.endsWith("\n\n") ? "\n\n" : ""}${queryMarker}`,
+              );
+              break outer;
+            }
             const note = toolNoteFor(call);
             if (note) {
               emit(
@@ -182,7 +249,7 @@ export async function action({ request, context }: Route.ActionArgs) {
           }
 
           // On the last allowed round, withhold tools to force a text answer.
-          response = await callUpstream(round + 1 < MAX_TOOL_ROUNDS);
+          response = await callUpstream(toolsAllowed && round + 1 < MAX_TOOL_ROUNDS);
           if (!response.ok || !response.body) {
             const detail = await response.text().catch(() => "");
             console.error(
@@ -200,7 +267,17 @@ export async function action({ request, context }: Route.ActionArgs) {
       }
 
       try {
-        if (full) await saveMessage(db, thread, "assistant", full);
+        if (envelope) {
+          // Same visual answer: result marker plus narration are appended
+          // onto the assistant row that ended with the query marker.
+          await appendToLastAssistantMessage(
+            db,
+            thread,
+            `\n\n${queryResultNote(envelope)}${full ? `\n\n${full}` : ""}`,
+          );
+        } else if (full) {
+          await saveMessage(db, thread, "assistant", full);
+        }
       } catch (e) {
         console.error("failed to persist assistant message", e);
       }

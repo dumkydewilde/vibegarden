@@ -1,25 +1,56 @@
-import { Globe, Send, Sprout, SquarePen, X } from "lucide-react";
+import { Database, Send, Sprout, SquarePen, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ChatMessageBubble } from "./chat-message";
 import { ContextChips } from "./context-chips";
 import { useGardener } from "./gardener-provider";
 import { ModelPicker } from "./model-picker";
+import { ToolsMenu } from "./tools-menu";
 import { Button } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTitle } from "~/components/ui/sheet";
 import { Textarea } from "~/components/ui/textarea";
 import { useIsMobile } from "~/hooks/use-mobile";
+import { extractDataUrls, stripDataUrls } from "~/lib/query-tool";
 import { cn } from "~/lib/utils";
 
+/** Brief indicator while a dataset is being fetched and introspected. */
+function AttachingDatasetNote() {
+  const { attachingDataset } = useGardener();
+  if (!attachingDataset) return null;
+  return (
+    <div className="flex border-t px-3 py-2">
+      <span className="flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-xs text-muted-foreground">
+        <Database className="size-3" />
+        <span className="shimmer">Reading {attachingDataset}...</span>
+      </span>
+    </div>
+  );
+}
+
 function Composer() {
-  const { ask, busy, composerRef, webSearch, setWebSearch } = useGardener();
+  const { ask, busy, composerRef, datasets, attachDataset, attachingDataset } =
+    useGardener();
   const [draft, setDraft] = useState("");
 
-  const send = () => {
-    const question = draft.trim();
-    if (!question || busy) return;
-    ask(question);
+  const send = async () => {
+    const raw = draft.trim();
+    if (!raw || busy || attachingDataset) return;
     setDraft("");
+    // A data-file link pasted into the message is attached on the fly, so
+    // there is no need to open the tools menu. Skip links already loaded.
+    const loaded = new Set(
+      datasets.map((d) => d.sourceUrl).filter(Boolean) as string[],
+    );
+    const fresh = extractDataUrls(raw).filter((u) => !loaded.has(u));
+    for (const url of fresh) {
+      await attachDataset({ kind: "url", url });
+    }
+    // Once attached, strip the link from the message so the model queries
+    // the dataset rather than fetching the raw file into its context.
+    const question = extractDataUrls(raw).length
+      ? stripDataUrls(raw) || "Tell me about the data I just attached."
+      : raw;
+    ask(question);
   };
 
   return (
@@ -44,31 +75,13 @@ function Composer() {
         rows={1}
         className="min-h-9 resize-none text-sm"
       />
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        aria-label="Web search"
-        aria-pressed={webSearch}
-        title={
-          webSearch
-            ? "Web search is on (each search costs a little)"
-            : "Let The Gardener search the web (each search costs a little)"
-        }
-        onClick={() => setWebSearch(!webSearch)}
-        className={cn(
-          "shrink-0 text-muted-foreground",
-          webSearch && "bg-accent text-primary",
-        )}
-      >
-        <Globe className="size-4" />
-      </Button>
+      <ToolsMenu />
       <Button
         type="submit"
         size="icon"
         aria-label="Send"
         className="shrink-0"
-        disabled={busy}
+        disabled={busy || attachingDataset !== null}
       >
         <Send className="size-4" />
       </Button>
@@ -102,6 +115,7 @@ function PanelBody() {
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
+      <AttachingDatasetNote />
       <ContextChips />
       <Composer />
     </>
@@ -195,9 +209,10 @@ function LauncherPill({
 }
 
 const MIN_WIDTH = 320;
-const MAX_WIDTH = 640;
-const DEFAULT_WIDTH = 400;
-const WIDTH_KEY = "vg-gardener-width";
+const MAX_WIDTH = 800;
+const DEFAULT_WIDTH = 480;
+// v2: the default widened for data tables; a new key resets stale widths.
+const WIDTH_KEY = "vg-gardener-width-2";
 
 const clampWidth = (w: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, w));
 

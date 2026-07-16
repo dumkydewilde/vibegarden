@@ -24,10 +24,9 @@ Check items off as they land. One section per building block. Details live in
 - [x] Admin: invite management, participant overview
 - [x] Route guards: everything requires login except /login and /join;
       admin routes 404 for non-admins
-- [ ] Production email: set RESEND_API_KEY (until then the login screen
-      shows the code inline)
-- [ ] Production D1: `wrangler d1 create vibe-garden`, put the id in
-      wrangler.jsonc, `npm run db:migrate:prod`, `wrangler secret put SESSION_SECRET`
+- [x] Production email: RESEND_API_KEY set (2026-07-15)
+- [x] Production D1: created, id in wrangler.jsonc, migrated, SESSION_SECRET
+      set (2026-07-15)
 
 ## Phase 3: The Gardener (agent) (done, 2026-07-14)
 
@@ -64,10 +63,32 @@ Core landed 2026-07-14, see `docs/plans/2026-07-14-gardener-tools.md`.
       summaries, score >= 3, news/opinion/tutorial) via the PG endpoint and
       the `pg` driver. Activates when MOTHERDUCK_TOKEN is set (use a
       read-scaling token)
-- [ ] Data analysis, workshop-native: DuckDB-WASM in the browser. The
-      Gardener writes SQL, the participant's browser runs it against their
-      uploaded CSV, results return to the chat. No server compute, data
-      stays on their machine
+- [x] Data analysis, workshop-native: DuckDB-WASM in the browser
+      (2026-07-15). A tools menu (wrench) in the composer attaches a data
+      file or link (CSV/JSON/Parquet/Excel); the browser registers it as a
+      DuckDB view and introspects the schema, which rides along as a
+      dataset chip and system-prompt block. The Gardener's `query_data(sql,
+      chart?)` tool ends the turn as a `[[tool:query:...]]` marker; the
+      browser runs the SQL, renders a table plus optional minimal chart
+      (line/scatter/bar), and fires a hidden continuation carrying a capped
+      result (50 rows) so the model narrates the numbers in the same
+      bubble. Data never leaves the machine; server compute is zero.
+      Successful continuations withhold `query_data` so the model narrates
+      instead of re-querying; errors re-offer it for self-repair. Capped
+      results persist on the assistant message and re-render on reload.
+      An attached dataset shows as a context quote above the composer and
+      moves into the chat with the sent message (removable from the tools
+      menu); datasets are scoped to the conversation. Charts follow the
+      shadcn style (transparent, smooth line, dashed gridlines, no axis
+      lines, gap-spaced x labels that never overlap); the sidebar defaults
+      wider (480px) for tables, which scroll horizontally with a sticky
+      header. Data-file links pasted into the message are auto-attached and
+      stripped from the text (so the model queries rather than fetches the
+      raw file). Guardrails keep the answer clean: Mermaid data charts
+      (xychart/line/bar/pie) are rejected so data is never charted twice;
+      a successful continuation is text-only (no tools) so the model
+      narrates instead of re-querying or wandering into unrelated reads;
+      and parroted tool-echo fragments are stripped from the narration
 - [ ] MotherDuck MCP for shared/persistent datasets across participants.
       Note: MotherDuck supports agent-created accounts that a user can later
       claim by POSTing to new.motherduck.com, so the Gardener can provision
@@ -157,7 +178,7 @@ Migration `0005_misty_havok.sql` adds `comments` + `site_feedback`.
       external links added (key figures, tools). Chat no longer breaks on
       navigation: MDX links go through the router and GardenerProvider is
       no longer remounted when the active thread id changes
-- [ ] Production deploy via wrangler, custom domain
+- [x] Production deploy via wrangler, custom domain (2026-07-15)
 - [ ] Design pass against the original mockup
 - [ ] Invite the first friends
 
