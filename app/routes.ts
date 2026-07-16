@@ -21,6 +21,10 @@ export default [
     route("gallery", "routes/gallery.tsx"),
     route("inspiration", "routes/inspiration.tsx"),
     route("admin", "routes/admin.tsx"),
+    route(
+      "admin/conversations/:id",
+      "routes/admin.conversations.$id.tsx",
+    ),
   ]),
   route("join", "routes/join.tsx"),
   route("welcome", "routes/welcome.tsx"),

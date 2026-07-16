@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { getDb, type Db } from "./db.server";
-import { chatMessages, chatThreads } from "~/db/schema";
+import { chatMessages, chatThreads, users } from "~/db/schema";
 
 const TITLE_MAX = 64;
 
@@ -135,6 +135,28 @@ export async function listThreads(env: Env, userId: string) {
     .orderBy(desc(chatThreads.updatedAt));
 }
 
+/** Non-empty participant conversations for the protected admin review area. */
+export async function listAdminThreads(env: Env) {
+  const db = getDb(env);
+  return db
+    .select({
+      id: chatThreads.id,
+      title: chatThreads.title,
+      updatedAt: chatThreads.updatedAt,
+      messageCount: sql<number>`count(${chatMessages.id})`,
+      participant: {
+        name: users.name,
+        email: users.email,
+      },
+    })
+    .from(chatThreads)
+    .innerJoin(users, eq(users.id, chatThreads.userId))
+    .innerJoin(chatMessages, eq(chatMessages.threadId, chatThreads.id))
+    .where(eq(users.role, "user"))
+    .groupBy(chatThreads.id, users.id)
+    .orderBy(desc(chatThreads.updatedAt));
+}
+
 /** A single thread with messages, only if it belongs to the user. */
 export async function getThread(env: Env, userId: string, threadId: string) {
   const db = getDb(env);
@@ -151,6 +173,26 @@ export async function getThread(env: Env, userId: string, threadId: string) {
     .where(eq(chatMessages.threadId, threadId))
     .orderBy(asc(chatMessages.createdAt));
   return { thread, messages };
+}
+
+/** A participant-owned thread for an already-authorized admin to review. */
+export async function getAdminThread(env: Env, threadId: string) {
+  const db = getDb(env);
+  const rows = await db
+    .select({ thread: chatThreads, participant: users })
+    .from(chatThreads)
+    .innerJoin(users, eq(users.id, chatThreads.userId))
+    .where(and(eq(chatThreads.id, threadId), eq(users.role, "user")))
+    .limit(1);
+  const result = rows[0];
+  if (!result) return null;
+
+  const messages = await db
+    .select()
+    .from(chatMessages)
+    .where(eq(chatMessages.threadId, threadId))
+    .orderBy(asc(chatMessages.createdAt));
+  return { ...result, messages };
 }
 
 /** Makes an old thread the active one again. */

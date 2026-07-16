@@ -1,4 +1,4 @@
-import { Form, useNavigation } from "react-router";
+import { Form, Link, useNavigation } from "react-router";
 import { Check, Mail, Upload, UserCog, UserX } from "lucide-react";
 import { desc, eq } from "drizzle-orm";
 import type { Route } from "./+types/admin";
@@ -22,6 +22,7 @@ import { listFeedback, setFeedbackStatus } from "~/lib/feedback.server";
 import { importBulkInvites } from "~/lib/invites.server";
 import { isValidEmail, normalizeEmail } from "~/lib/otp.server";
 import { summarizeAnswers } from "~/lib/questionnaire";
+import { listAdminThreads } from "~/lib/threads.server";
 import { invites, questionnaireResponses, users } from "~/db/schema";
 
 export function meta({}: Route.MetaArgs) {
@@ -32,11 +33,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   await requireAdmin(env, request);
   const db = getDb(env);
-  const [allUsers, allInvites, responses, feedback] = await Promise.all([
+  const [allUsers, allInvites, responses, feedback, conversations] = await Promise.all([
     db.select().from(users).orderBy(desc(users.createdAt)),
     db.select().from(invites).orderBy(desc(invites.createdAt)),
     db.select().from(questionnaireResponses),
     listFeedback(env),
+    listAdminThreads(env),
   ]);
   const summaries = new Map(
     responses.map((r) => {
@@ -54,6 +56,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     })),
     invites: allInvites,
     feedback,
+    conversations,
   };
 }
 
@@ -275,6 +278,64 @@ export default function Admin({ loaderData, actionData }: Route.ComponentProps) 
                 </ul>
               )}
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <h2 className="font-serif text-lg font-normal">
+            Gardener conversations
+          </h2>
+          <CardDescription>
+            Read-only transcripts to help you spot where workshop participants
+            need more support.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loaderData.conversations.length === 0 ? (
+            <p className="py-4 text-sm text-muted-foreground">
+              No Gardener conversations to review yet.
+            </p>
+          ) : (
+            <ul className="divide-y">
+              {loaderData.conversations.map((conversation) => (
+                <li key={conversation.id}>
+                  <Link
+                    to={`/admin/conversations/${conversation.id}`}
+                    className="block py-3 transition-colors hover:text-primary"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                      <span className="font-medium">
+                        {conversation.title ?? "Untitled conversation"}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(conversation.updatedAt).toLocaleDateString(
+                          "en-US",
+                          { month: "short", day: "numeric" },
+                        )}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      <span>
+                        {conversation.participant.name ??
+                          conversation.participant.email}
+                      </span>
+                      {conversation.participant.name && (
+                        <span> · {conversation.participant.email}</span>
+                      )}
+                      <span>
+                        {` · ${conversation.messageCount} ${
+                          conversation.messageCount === 1
+                            ? "message"
+                            : "messages"
+                        }`}
+                      </span>
+                    </p>
+                  </Link>
+                </li>
+              ))}
+            </ul>
           )}
         </CardContent>
       </Card>
