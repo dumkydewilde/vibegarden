@@ -7,6 +7,18 @@ const loaderData = {
   users: [],
   invites: [],
   feedback: [],
+  conversations: [
+    {
+      id: "thread-1",
+      title: "Build a reading tracker",
+      updatedAt: Date.UTC(2026, 6, 16),
+      messageCount: 4,
+      participant: {
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+      },
+    },
+  ],
 };
 
 function renderAdmin(action: () => unknown = () => ({ ok: true })) {
@@ -75,5 +87,22 @@ describe("Admin single invites", () => {
     expect(
       await screen.findByText("Invite sent for alice@example.com"),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Admin Gardener conversations", () => {
+  it("links each participant conversation to its read-only transcript", async () => {
+    renderAdmin();
+
+    expect(
+      await screen.findByRole("heading", { name: /gardener conversations/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
+    expect(screen.getByText("Build a reading tracker")).toBeInTheDocument();
+    expect(screen.getByText(/4 messages/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /build a reading tracker/i })).toHaveAttribute(
+      "href",
+      "/admin/conversations/thread-1",
+    );
   });
 });
