@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildDatasetContext,
-  datasets,
-} from "../inspiration-datasets";
+import { buildDatasetContext, datasets } from "../inspiration-datasets";
 
 describe("inspiration datasets", () => {
   it("provides twelve beginner-friendly sources with usable metadata", () => {
@@ -18,6 +15,23 @@ describe("inspiration datasets", () => {
     expect(datasets.every((item) => item.docsUrl.startsWith("https://"))).toBe(
       true,
     );
+    // Every card carries a pre-researched briefing so the Gardener need
+    // not fetch the docs page to understand the source.
+    expect(datasets.every((item) => item.briefing.length > 100)).toBe(true);
+  });
+
+  it("hands the Gardener the briefing and offers in-browser analysis", () => {
+    const weather = datasets.find(
+      ({ title }) => title === "Open-Meteo weather",
+    );
+    const context = buildDatasetContext(weather!);
+
+    expect(context).toContain("Briefing (pre-researched background):");
+    expect(context).toContain("WMO code");
+    // Lead it away from re-fetching and toward analyzing attached data.
+    expect(context).toContain("Rely on the briefing above");
+    expect(context).toContain("analyze this data right here");
+    expect(context).toContain("query it with SQL");
   });
 
   it("serializes public source metadata without pretending it was analyzed", () => {

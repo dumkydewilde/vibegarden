@@ -1,4 +1,5 @@
 import { getArticle, getArticles } from "./content";
+import { datasets as datasetCatalog } from "./inspiration-datasets";
 import { getModule, getModules, modules } from "./modules";
 import {
   DATASET_SUMMARY_MAX_CHARS,
@@ -10,11 +11,14 @@ import type { ToolCall } from "./gardener-tools.server";
 import promptTemplate from "../../content/gardener/system-prompt.md?raw";
 
 // Glob instead of a direct import so deleting the file also disables it.
-const audienceFiles = import.meta.glob<string>("/content/gardener/audience.md", {
-  eager: true,
-  query: "?raw",
-  import: "default",
-});
+const audienceFiles = import.meta.glob<string>(
+  "/content/gardener/audience.md",
+  {
+    eager: true,
+    query: "?raw",
+    import: "default",
+  },
+);
 
 /**
  * The optional audience section: who the friends are and how to (subtly)
@@ -129,6 +133,13 @@ export function buildSystemPrompt(
     )
     .join("\n");
 
+  const datasetIndex = datasetCatalog
+    .map(
+      (d) =>
+        `- ${d.title} (${d.tag}, ${d.formats.join("/")}): ${d.description}`,
+    )
+    .join("\n");
+
   const pageDescription = describePage(currentPage);
   const currentPageRule = pageDescription
     ? `The person is currently looking at ${pageDescription}`
@@ -137,6 +148,7 @@ export function buildSystemPrompt(
   let prompt = promptTemplate
     .replace("{{MODULES}}", modules.join(", "))
     .replace("{{ARTICLE_INDEX}}", articleIndex)
+    .replace("{{DATASETS}}", datasetIndex)
     .replace("{{CURRENT_PAGE_RULE}}", currentPageRule)
     .replace("{{AUDIENCE}}", buildAudienceSection())
     .replace(
@@ -246,7 +258,11 @@ export async function readSseRound(
       onText(delta.content);
     }
     for (const tc of delta.tool_calls ?? []) {
-      const entry = partial.get(tc.index) ?? { id: "", name: "", arguments: "" };
+      const entry = partial.get(tc.index) ?? {
+        id: "",
+        name: "",
+        arguments: "",
+      };
       if (tc.id) entry.id = tc.id;
       if (tc.function?.name) entry.name = tc.function.name;
       if (tc.function?.arguments) entry.arguments += tc.function.arguments;
