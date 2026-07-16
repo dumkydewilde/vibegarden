@@ -1,12 +1,17 @@
 import { Blocks, BookOpen, Globe, Sprout } from "lucide-react";
 import Markdown from "react-markdown";
 import { ContextQuote } from "./context-quote";
+import { DataToolResult } from "./data-tool-result";
 import type { ChatMessage } from "./gardener-provider";
 import { MermaidToolResult } from "./mermaid-tool-result";
 import { ContentCard, ContentLink } from "~/components/content-link";
 import { getArticle } from "~/lib/content";
 import { getModule } from "~/lib/modules";
-import { splitToolNotes, type ToolNoteSegment } from "~/lib/tool-notes";
+import {
+  splitToolNotes,
+  stripToolEcho,
+  type ToolNoteSegment,
+} from "~/lib/tool-notes";
 import { cn } from "~/lib/utils";
 
 function ActivityBubble({ label }: { label: string }) {
@@ -118,6 +123,10 @@ export function ChatMessageBubble({
     isStreaming && !message.error && segments.at(-1)?.type === "tool"
       ? segments.length - 1
       : -1;
+  // Between the browser finishing a query and the narration streaming in,
+  // the answer ends on a result: show that the Gardener is still at work.
+  const readingResults =
+    isStreaming && !message.error && segments.at(-1)?.type === "queryresult";
   return (
     <div
       className={cn(
@@ -142,26 +151,57 @@ export function ChatMessageBubble({
               ) : (
                 <GardenerTextBubble text="" error={message.error} />
               ))}
-            {segments.map((segment, i) =>
-              segment.type === "text" ? (
-                <GardenerTextBubble
-                  key={i}
-                  text={segment.text}
-                  error={message.error}
-                />
-              ) : segment.type === "diagram" ? (
-                <MermaidToolResult
-                  key={i}
-                  title={segment.title}
-                  diagram={segment.diagram}
-                />
-              ) : (
+            {segments.map((segment, i) => {
+              if (segment.type === "text") {
+                // Drop any tool-echo the model parroted; skip if nothing left.
+                const clean = message.error
+                  ? segment.text
+                  : stripToolEcho(segment.text);
+                if (!clean) return null;
+                return (
+                  <GardenerTextBubble
+                    key={i}
+                    text={clean}
+                    error={message.error}
+                  />
+                );
+              }
+              if (segment.type === "diagram") {
+                return (
+                  <MermaidToolResult
+                    key={i}
+                    title={segment.title}
+                    diagram={segment.diagram}
+                  />
+                );
+              }
+              if (segment.type === "query") {
+                // Its result, when present, is the very next segment;
+                // render the pair as one block.
+                const next = segments[i + 1];
+                return (
+                  <DataToolResult
+                    key={i}
+                    sql={segment.sql}
+                    chart={segment.chart}
+                    result={
+                      next?.type === "queryresult" ? next.result : undefined
+                    }
+                    running={isStreaming && !message.error}
+                  />
+                );
+              }
+              if (segment.type === "queryresult") return null; // consumed above
+              return (
                 <ToolNoteBubble
                   key={i}
                   segment={segment}
                   active={i === activeToolIndex}
                 />
-              ),
+              );
+            })}
+            {readingResults && (
+              <ActivityBubble label="Reading the results..." />
             )}
           </div>
         ) : (

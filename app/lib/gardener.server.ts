@@ -1,6 +1,11 @@
 import { getArticle, getArticles } from "./content";
 import { getModule, getModules, modules } from "./modules";
-import { stripToolNotes } from "./tool-notes";
+import {
+  DATASET_SUMMARY_MAX_CHARS,
+  MAX_DATASETS,
+  RESULT_MAX_ROWS,
+} from "./query-tool";
+import { toModelText } from "./tool-notes";
 import type { ToolCall } from "./gardener-tools.server";
 import promptTemplate from "../../content/gardener/system-prompt.md?raw";
 
@@ -24,7 +29,17 @@ export function buildAudienceSection(): string {
   return (fm ? raw.slice(fm[0].length) : raw).trim();
 }
 
-export type WireMessage = { role: "user" | "assistant"; content: string };
+/**
+ * `data` messages carry a query-result envelope from the browser back to
+ * the model during a continuation turn; they are never shown to the person.
+ */
+export type WireMessage = {
+  role: "user" | "assistant" | "data";
+  content: string;
+};
+
+/** A dataset the person attached, as the client reports it each request. */
+export type WireDataset = { name: string; summary: string };
 export type WireContextItem = {
   kind: "page" | "article" | "module" | "paragraph" | "project" | "dataset";
   label: string;
@@ -64,7 +79,11 @@ function describePage(page: string | undefined) {
   return name ? `${name} (${page}).` : `${page}.`;
 }
 
-function buildToolsRule(toolsEnabled: boolean, freshReads: boolean) {
+function buildToolsRule(
+  toolsEnabled: boolean,
+  freshReads: boolean,
+  hasDatasets: boolean,
+) {
   if (!toolsEnabled) {
     return "You cannot read files or fetch pages in this conversation (the selected model does not support tools). Point at links instead.";
   }
@@ -78,10 +97,15 @@ function buildToolsRule(toolsEnabled: boolean, freshReads: boolean) {
       moduleSlugs +
       ".",
     "- fetch_page(url): the text of a public web page. Use it when the person shares a link.",
-    "- visualize_flow(title, diagram): render a Mermaid flow, sequence, decision path, or relationship directly in the chat. Use it only when the visual is clearer than prose, keep it small, and follow it with a short explanation.",
+    "- visualize_flow(title, diagram): render a Mermaid flow, sequence, decision path, or relationship directly in the chat. Use it only when the visual is clearer than prose, keep it small, and follow it with a short explanation. Never use it to chart data: numeric results get the chart option of query_data instead.",
     ...(freshReads
       ? [
           "- fresh_reads(topic?, content_type?): recent well-scored news, opinion pieces, and tutorials about AI and building things, from a curated reading feed. Use it when something current would enrich the answer, and share the best one or two as markdown links.",
+        ]
+      : []),
+    ...(hasDatasets
+      ? [
+          `- query_data(sql, chart?): run DuckDB SQL against the datasets the person attached (listed below). The query runs in their browser and a table appears in the chat automatically; the result comes back to you in a follow-up message capped at ${RESULT_MAX_ROWS} rows, so aggregate (GROUP BY, LIMIT) rather than selecting everything. Pass chart {type: line|scatter|bar, x, y, title} when a trend or comparison is clearer as a visual, and always when the person asks for a chart; the x and y must be columns of the query result. This is the only way to chart data (never Mermaid). Column types come from how the CSV was sniffed, so a date stored as text (e.g. "21-JUN-07") stays VARCHAR: parse it with strptime(col, '%d-%b-%y'), not CAST AS DATE, which fails on non-ISO formats. After the result arrives, state the key numbers plainly and briefly; never invent values you have not seen. If the result reports an error, change the SQL (do not resend the same query) and try again.`,
         ]
       : []),
     "Prefer one well-chosen tool call over none when facts matter; never call more than needed. Do not mention tool names to the person.",
@@ -91,8 +115,13 @@ function buildToolsRule(toolsEnabled: boolean, freshReads: boolean) {
 export function buildSystemPrompt(
   contextItems: WireContextItem[],
   currentPage?: string,
-  opts: { tools?: boolean; freshReads?: boolean } = {},
+  opts: {
+    tools?: boolean;
+    freshReads?: boolean;
+    datasets?: WireDataset[];
+  } = {},
 ) {
+  const datasets = (opts.datasets ?? []).slice(0, MAX_DATASETS);
   const articleIndex = getArticles()
     .map(
       (a) =>
@@ -112,9 +141,20 @@ export function buildSystemPrompt(
     .replace("{{AUDIENCE}}", buildAudienceSection())
     .replace(
       "{{TOOLS_RULE}}",
-      buildToolsRule(opts.tools ?? false, opts.freshReads ?? false),
+      buildToolsRule(
+        opts.tools ?? false,
+        opts.freshReads ?? false,
+        datasets.length > 0,
+      ),
     )
     .replace(/\n{3,}/g, "\n\n");
+
+  if (datasets.length > 0) {
+    const blocks = datasets
+      .map((d) => d.summary.slice(0, DATASET_SUMMARY_MAX_CHARS))
+      .join("\n\n");
+    prompt += `\n\nThe person attached these datasets. They live only in their browser as DuckDB tables; the query_data tool is the only way to read them:\n\n${blocks}`;
+  }
 
   if (contextItems.length > 0) {
     const blocks = contextItems
@@ -129,15 +169,27 @@ export function buildSystemPrompt(
   return prompt;
 }
 
-/** Keep the tail of the conversation within budget, minus tool notes. */
+/**
+ * Keep the tail of the conversation within budget. Assistant text is
+ * compacted (tool notes dropped, past query markers become one-liners);
+ * `data` messages become user-role result envelopes for the model.
+ */
 export function trimHistory(messages: WireMessage[]): WireMessage[] {
-  return messages.slice(-HISTORY_LIMIT).map((m) => ({
-    role: m.role,
-    content: (m.role === "assistant"
-      ? stripToolNotes(m.content)
-      : m.content
-    ).slice(0, MESSAGE_MAX_CHARS),
-  }));
+  return messages.slice(-HISTORY_LIMIT).map((m) => {
+    if (m.role === "data") {
+      return {
+        role: "user" as const,
+        content: `<query_results>\n${m.content.slice(0, MESSAGE_MAX_CHARS)}\n</query_results>\nThese are the results of your query_data call, run in the person's browser. The result table, and the chart if you asked for one, are ALREADY displayed on their screen, so your job now is only to talk about them. Reply in plain conversational prose, quoting the actual values (real numbers, names, dates). Do NOT re-run or restate the query, do NOT output SQL, "chart=", brackets, "query result", or any tool syntax, and do NOT offer to draw a chart that is already shown. If the result is an error, briefly say so and call query_data again with corrected SQL; otherwise do not query again.`,
+      };
+    }
+    return {
+      role: m.role,
+      content: (m.role === "assistant"
+        ? toModelText(m.content)
+        : m.content
+      ).slice(0, MESSAGE_MAX_CHARS),
+    };
+  });
 }
 
 export type StreamRound = {

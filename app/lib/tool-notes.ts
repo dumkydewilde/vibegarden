@@ -3,8 +3,19 @@
  * lines like `[[tool:article:what-is-an-llm]]`. The server emits them
  * between tool rounds; the chat UI renders them as separate little bubbles
  * (with a clickable card for articles and building blocks); history sent
- * back to the model has them stripped.
+ * back to the model has them stripped or compacted.
+ *
+ * Data queries use a marker pair: `[[tool:query:...]]` carries the SQL the
+ * model wants to run (the browser executes it), and `[[tool:queryresult:...]]`
+ * carries the capped result the browser produced, appended right after it.
  */
+
+import {
+  envelopeSummaryLine,
+  parseChartSpec,
+  type ChartSpec,
+  type QueryResultEnvelope,
+} from "./query-tool";
 
 export type ToolNoteKind = "article" | "module" | "web" | "note";
 
@@ -14,13 +25,23 @@ export type DiagramPayload = {
   diagram: string;
 };
 
+export type QueryPayload = {
+  version: 1;
+  sql: string;
+  chart?: ChartSpec;
+};
+
 export type ToolNoteSegment =
   | { type: "text"; text: string }
   | { type: "tool"; kind: ToolNoteKind; value: string }
-  | { type: "diagram"; title: string; diagram: string };
+  | { type: "diagram"; title: string; diagram: string }
+  | { type: "query"; sql: string; chart?: ChartSpec }
+  | { type: "queryresult"; result: QueryResultEnvelope };
 
 const NOTE_LINE = /^\[\[tool:(article|module|web|note):(.+?)\]\]$/;
 const DIAGRAM_LINE = /^\[\[tool:diagram:(.+?)\]\]$/;
+const QUERY_LINE = /^\[\[tool:query:(.+?)\]\]$/;
+const QUERY_RESULT_LINE = /^\[\[tool:queryresult:(.+?)\]\]$/;
 
 export function toolNote(kind: ToolNoteKind, value: string): string {
   return `[[tool:${kind}:${value}]]`;
@@ -34,6 +55,16 @@ export function diagramNote(
   )}]]`;
 }
 
+export function queryNote(payload: Omit<QueryPayload, "version">): string {
+  return `[[tool:query:${encodeURIComponent(
+    JSON.stringify({ version: 1, ...payload } satisfies QueryPayload),
+  )}]]`;
+}
+
+export function queryResultNote(result: QueryResultEnvelope): string {
+  return `[[tool:queryresult:${encodeURIComponent(JSON.stringify(result))}]]`;
+}
+
 function decodeDiagram(value: string): DiagramPayload | null {
   try {
     const parsed = JSON.parse(
@@ -44,6 +75,40 @@ function decodeDiagram(value: string): DiagramPayload | null {
       typeof parsed.diagram === "string"
       ? { version: 1, title: parsed.title, diagram: parsed.diagram }
       : null;
+  } catch {
+    return null;
+  }
+}
+
+function decodeQuery(value: string): QueryPayload | null {
+  try {
+    const parsed = JSON.parse(
+      decodeURIComponent(value),
+    ) as Partial<QueryPayload>;
+    return parsed.version === 1 && typeof parsed.sql === "string" && parsed.sql
+      ? { version: 1, sql: parsed.sql, chart: parseChartSpec(parsed.chart) }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function decodeQueryResult(value: string): QueryResultEnvelope | null {
+  try {
+    const parsed = JSON.parse(
+      decodeURIComponent(value),
+    ) as QueryResultEnvelope;
+    if (parsed.status === "error" && typeof parsed.error === "string") {
+      return parsed;
+    }
+    if (
+      parsed.status === "ok" &&
+      Array.isArray(parsed.columns) &&
+      Array.isArray(parsed.rows)
+    ) {
+      return parsed;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -76,6 +141,34 @@ export function splitToolNotes(text: string): ToolNoteSegment[] {
       continue;
     }
 
+    const queryMatch = trimmed.match(QUERY_LINE);
+    if (queryMatch) {
+      const payload = decodeQuery(queryMatch[1]);
+      if (payload) {
+        flush();
+        segments.push({
+          type: "query",
+          sql: payload.sql,
+          chart: payload.chart,
+        });
+      } else {
+        buffer.push(line);
+      }
+      continue;
+    }
+
+    const resultMatch = trimmed.match(QUERY_RESULT_LINE);
+    if (resultMatch) {
+      const payload = decodeQueryResult(resultMatch[1]);
+      if (payload) {
+        flush();
+        segments.push({ type: "queryresult", result: payload });
+      } else {
+        buffer.push(line);
+      }
+      continue;
+    }
+
     const noteMatch = trimmed.match(NOTE_LINE);
     if (noteMatch) {
       flush();
@@ -97,5 +190,44 @@ export function stripToolNotes(text: string): string {
   return splitToolNotes(text)
     .filter((s) => s.type === "text")
     .map((s) => s.text)
+    .join("\n\n");
+}
+
+/**
+ * Strip stray tool-echo fragments a model sometimes parrots back from the
+ * compacted history: `[ran query_data: ...]`, `[query result: ...]`, and a
+ * bare `chart={...}` line. These never occur in real prose, and the single
+ * brackets never match the double-bracket `[[tool:...]]` markers. Applied
+ * both to displayed text and to model-bound history (so it cannot re-prime).
+ */
+export function stripToolEcho(text: string): string {
+  return text
+    .replace(/\[ran query_data:[^\]]*\]/gi, "")
+    .replace(/\[query results?:[^\]]*\]/gi, "")
+    .replace(/^\s*chart\s*=\s*\{[^}]*\}\s*$/gim, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Message text for model-bound history: plain text kept, activity notes and
+ * diagrams dropped, query markers compacted to one-liners so the model
+ * remembers what SQL ran and what came back without re-reading full results.
+ */
+export function toModelText(text: string): string {
+  return splitToolNotes(text)
+    .map((s) => {
+      if (s.type === "text") {
+        const clean = stripToolEcho(s.text);
+        return clean || null;
+      }
+      if (s.type === "query") {
+        return `[ran query_data: ${s.sql.replace(/\s+/g, " ").slice(0, 300)}]`;
+      }
+      if (s.type === "queryresult") return envelopeSummaryLine(s.result);
+      return null;
+    })
+    .filter(Boolean)
     .join("\n\n");
 }

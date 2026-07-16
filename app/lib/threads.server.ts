@@ -163,6 +163,43 @@ export async function touchThread(env: Env, userId: string, threadId: string) {
     );
 }
 
+/**
+ * A continuation turn (browser ran a query, model narrates the result)
+ * belongs to the same visual answer, so it is appended onto the previous
+ * assistant row instead of creating a new one. Falls back to a fresh row
+ * when the thread has no assistant message yet.
+ */
+export async function appendToLastAssistantMessage(
+  db: Db,
+  thread: { id: string; title: string | null },
+  suffix: string,
+) {
+  const rows = await db
+    .select({ id: chatMessages.id, content: chatMessages.content })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.threadId, thread.id),
+        eq(chatMessages.role, "assistant"),
+      ),
+    )
+    .orderBy(desc(chatMessages.createdAt))
+    .limit(1);
+  const last = rows[0];
+  if (!last) {
+    await saveMessage(db, thread, "assistant", suffix.trimStart());
+    return;
+  }
+  await db
+    .update(chatMessages)
+    .set({ content: last.content + suffix })
+    .where(eq(chatMessages.id, last.id));
+  await db
+    .update(chatThreads)
+    .set({ updatedAt: Date.now() })
+    .where(eq(chatThreads.id, thread.id));
+}
+
 export async function saveMessage(
   db: Db,
   thread: { id: string; title: string | null },

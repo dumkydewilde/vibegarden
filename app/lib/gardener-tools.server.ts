@@ -5,7 +5,8 @@ import {
   FRESH_READ_TYPES,
   queryFreshReads,
 } from "./motherduck.server";
-import { diagramNote, toolNote } from "./tool-notes";
+import { parseQueryRequest, QUERY_SQL_MAX_CHARS } from "./query-tool";
+import { diagramNote, queryNote, toolNote } from "./tool-notes";
 
 /**
  * First-party tools the Gardener can call mid-conversation. Definitions are
@@ -71,6 +72,40 @@ const visualizeFlowDefinition = {
   },
 };
 
+const queryDataDefinition = {
+  type: "function" as const,
+  function: {
+    name: "query_data",
+    description:
+      "Run DuckDB SQL against the datasets the person attached. The query executes in their browser, never on a server; the capped result (max 50 rows) arrives in a follow-up message, after which you narrate the key numbers. Aggregate to few rows whenever possible. Optionally pass a chart to draw a small visual next to the result table when a trend or comparison is clearer visually.",
+    parameters: {
+      type: "object",
+      properties: {
+        sql: {
+          type: "string",
+          description: `DuckDB SQL over the attached tables, ${QUERY_SQL_MAX_CHARS} characters max.`,
+        },
+        chart: {
+          type: "object",
+          description:
+            "Optional small chart of the result: pick two result columns.",
+          properties: {
+            type: { type: "string", enum: ["line", "scatter", "bar"] },
+            x: { type: "string", description: "Result column for the x axis." },
+            y: {
+              type: "string",
+              description: "Numeric result column for the y axis.",
+            },
+            title: { type: "string", description: "Short chart title." },
+          },
+          required: ["type", "x", "y"],
+        },
+      },
+      required: ["sql"],
+    },
+  },
+};
+
 const baseDefinitions = [
   {
     type: "function" as const,
@@ -129,11 +164,16 @@ const baseDefinitions = [
   visualizeFlowDefinition,
 ];
 
-/** fresh_reads only exists when a MotherDuck token is configured. */
-export function toolDefinitions(env: Env) {
-  return env.MOTHERDUCK_TOKEN
-    ? [...baseDefinitions, freshReadsDefinition]
-    : baseDefinitions;
+/**
+ * fresh_reads only exists when a MotherDuck token is configured;
+ * query_data only when the conversation has attached datasets.
+ */
+export function toolDefinitions(env: Env, opts: { queryData?: boolean } = {}) {
+  return [
+    ...baseDefinitions,
+    ...(env.MOTHERDUCK_TOKEN ? [freshReadsDefinition] : []),
+    ...(opts.queryData ? [queryDataDefinition] : []),
+  ];
 }
 
 /** Strip MDX frontmatter; the model gets the prose, not the metadata. */
@@ -214,6 +254,16 @@ function validateFlow(args: Record<string, unknown>): FlowValidation {
   }
   const title = args.title.trim();
   const diagram = args.diagram.trim();
+  // Charting data belongs to query_data, whose result already renders a
+  // clean chart. Reject Mermaid attempts to plot data (xychart, plus the
+  // invalid line/bar/pie "chart" types the model reaches for, which do not
+  // render at all) so it does not draw a second, broken copy of the numbers.
+  if (/\b(xychart(-beta)?|line-?chart|bar-?chart|pie-?chart)\b/i.test(diagram)) {
+    return {
+      error:
+        "Error: do not chart data with Mermaid. Use the chart option of query_data instead; visualize_flow is only for flows, sequences, decision paths, and relationships.",
+    };
+  }
   if (title.length > DIAGRAM_TITLE_MAX_CHARS) {
     return { error: "Error: diagram title must be 120 characters or fewer." };
   }
@@ -274,6 +324,13 @@ export async function executeTool(call: ToolCall, env: Env): Promise<string> {
     }
     case "fetch_page":
       return fetchPage(String(args.url ?? ""));
+    case "query_data": {
+      // Valid calls never reach here: the chat loop turns them into a
+      // marker and hands the SQL to the browser. This is the invalid path,
+      // sent back so the model can correct itself.
+      const parsed = parseQueryRequest(args);
+      return parsed.error ?? "Error: query_data ran out of band.";
+    }
     default:
       return `Error: unknown tool "${call.name}".`;
   }
@@ -321,4 +378,19 @@ export function toolNoteFor(call: ToolCall): string | null {
     default:
       return toolNote("note", `using ${call.name}`);
   }
+}
+
+/**
+ * A valid query_data call becomes a `[[tool:query:...]]` marker: the server
+ * ends its turn there and the browser takes over. Returns null when the
+ * call is invalid (then it goes through executeTool for a normal error).
+ */
+export function queryMarkerFor(call: ToolCall): string | null {
+  if (call.name !== "query_data") return null;
+  const args = parseArgs(call.arguments);
+  if (!args) return null;
+  const parsed = parseQueryRequest(args);
+  return parsed.value
+    ? queryNote({ sql: parsed.value.sql, chart: parsed.value.chart })
+    : null;
 }
