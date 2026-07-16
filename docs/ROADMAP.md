@@ -33,6 +33,12 @@ Check items off as they land. One section per building block. Details live in
 - [x] Streaming chat endpoint via OpenRouter (default Kimi K2.6; also
       DeepSeek V4 Flash, Qwen3.7 Plus, Gemma 4 26B free)
 - [x] Model picker wired to real models, per-user preference saved on chat
+- [x] MiniMax M3 and DeepSeek V4 Pro added to the menu (2026-07-16) and
+      MiniMax M3 made the default (~6x faster TTFT, ~4x cheaper than Kimi
+      K2.6 with equal tool grounding), plus a benchmark harness:
+      `scripts/benchmark-models.mjs` replays production-shaped Gardener turns
+      against OpenRouter, `scripts/build-model-report.mjs` renders
+      `docs/benchmarks/model-comparison.html` from the results
 - [x] Context injection: article "Discuss" button, paragraph-level ask,
       article index in system prompt
 - [x] Chat persistence: threads/messages in D1, history loads on sign-in,

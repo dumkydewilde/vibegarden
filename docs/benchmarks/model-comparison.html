@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gardener model comparison</title>
+<style>
+  .viz-root {
+    --surface-1: #fcfcfb;
+    --page: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --series-1: #2a78d6;
+    --emphasis-gray: #c3c2b7;
+    --good: #0ca30c;
+    --border: rgba(11,11,11,0.10);
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      --surface-1: #1a1a19;
+      --page: #0d0d0d;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --series-1: #3987e5;
+      --emphasis-gray: #52514e;
+      --good: #0ca30c;
+      --border: rgba(255,255,255,0.10);
+    }
+  }
+  * { box-sizing: border-box; }
+  body.viz-root {
+    margin: 0; padding: 32px 24px 64px;
+    background: var(--page); color: var(--text-primary);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 24px; font-weight: 650; margin: 0 0 4px; }
+  h2 { font-size: 17px; font-weight: 600; margin: 40px 0 4px; }
+  .sub { color: var(--text-secondary); margin: 0 0 8px; }
+  .note { color: var(--text-muted); font-size: 13px; margin: 4px 0 12px; }
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px; margin-top: 12px;
+  }
+  svg text { font: 12px system-ui, -apple-system, "Segoe UI", sans-serif; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--grid); }
+  th { color: var(--text-muted); font-weight: 500; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .tag {
+    display: inline-block; font-size: 11px; color: var(--text-muted);
+    border: 1px solid var(--grid); border-radius: 999px; padding: 0 7px; margin-left: 6px;
+  }
+  #tooltip {
+    position: fixed; pointer-events: none; z-index: 10; display: none;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.12); padding: 8px 12px; font-size: 12.5px;
+    color: var(--text-primary); max-width: 280px;
+  }
+  #tooltip .t-title { font-weight: 600; margin-bottom: 2px; }
+  #tooltip .t-row { display: flex; justify-content: space-between; gap: 16px; color: var(--text-secondary); }
+  #tooltip .t-row b { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; color: var(--text-secondary); }
+  .answer { white-space: pre-wrap; font-size: 13px; color: var(--text-secondary);
+    border-left: 2px solid var(--grid); padding: 4px 0 4px 12px; margin: 8px 0 16px; }
+  .ok { color: var(--good); }
+  .bad { color: #d03b3b; }
+</style>
+</head>
+<body class="viz-root">
+<main>
+  <h1>Gardener model comparison</h1>
+  <p class="sub">Production-shaped benchmark: real system prompt, real tool definitions, the same
+  tool-round loop as the chat route, against OpenRouter.</p>
+  <p class="note" id="meta"></p>
+
+  <h2>Price list (OpenRouter, per million tokens)</h2>
+  <div class="card"><table id="pricing"></table></div>
+
+  <h2>Time to first visible token</h2>
+  <p class="note">Median across all scenarios and trials; what a person waits before anything appears. Lower is better. Hover a bar for the per-scenario split.</p>
+  <div class="card" id="chart-ttft"></div>
+
+  <h2>Total answer time</h2>
+  <p class="note">Median wall-clock time until the full answer (including tool rounds) finished. Lower is better.</p>
+  <div class="card" id="chart-total"></div>
+
+  <h2>Cost per answer</h2>
+  <p class="note">Median metered cost of one full answer (all rounds), from OpenRouter's own accounting.</p>
+  <div class="card" id="chart-cost"></div>
+
+  <h2>Generation speed</h2>
+  <p class="note">Median completion tokens per second, as metered by OpenRouter. Higher is better.</p>
+  <div class="card" id="chart-tps"></div>
+
+  <h2>Tool-calling reliability</h2>
+  <p class="note">The "grounding" scenario should trigger read_article with the embeddings article slug.</p>
+  <div class="card"><table id="tools"></table></div>
+
+  <h2>All numbers (table view)</h2>
+  <div class="card" style="overflow-x:auto"><table id="alltable"></table></div>
+
+  <h2>Sample answers (judge quality yourself)</h2>
+  <p class="note">First trial per scenario, verbatim. Speed and price are measurable; whether the voice fits the Gardener is a human call.</p>
+  <div id="samples"></div>
+</main>
+<div id="tooltip"></div>
+<script>
+const DATA = {"ran_at":"2026-07-16T12:18:47.768Z","trials":3,"scenarios":[{"id":"concept","label":"Conceptual question","expectTool":null},{"id":"grounding","label":"Article-grounded explanation","expectTool":"read_article"},{"id":"brainstorm","label":"Project brainstorm turn","expectTool":null}],"summary":[{"model":"moonshotai/kimi-k2.6","label":"Kimi K2.6","isDefault":true,"pricing":{"prompt_per_m":0.95,"completion_per_m":4,"context":262144},"trials":9,"failures":0,"ttft_ms":24526.427645999996,"total_ms":32960.88754199998,"cost_usd":0.00436104,"throughput_tps":34.119306232525915,"tokens_out":1024,"grounding_tool_rate":1,"grounding_correct_rate":1,"byScenario":{"concept":{"ttft_ms":48333.876146,"total_ms":35364.853166999994,"cost_usd":0.0035416600000000003,"throughput_tps":18.668877580193264,"tool_calls":[["read_article"],["read_article"],["read_article"]]},"grounding":{"ttft_ms":31056.77808399999,"total_ms":40603.31920800003,"cost_usd":0.006575615999999999,"throughput_tps":34.119306232525915,"tool_calls":[["read_article"],["read_article"],["read_article"]]},"brainstorm":{"ttft_ms":12779.990417000023,"total_ms":16194.557499999995,"cost_usd":0.0039096,"throughput_tps":52.426702004306776,"tool_calls":[[],[],[]]}}},{"model":"minimax/minimax-m3","label":"MiniMax M3","isDefault":false,"pricing":{"prompt_per_m":0.3,"completion_per_m":1.2,"context":1048576},"trials":9,"failures":0,"ttft_ms":3886.909166999976,"total_ms":6557.848916999996,"cost_usd":0.00102834,"throughput_tps":38.266617701065,"tokens_out":400,"grounding_tool_rate":1,"grounding_correct_rate":1,"byScenario":{"concept":{"ttft_ms":3269.344417000015,"total_ms":6529.6379169999855,"cost_usd":0.00105228,"throughput_tps":76.23179423613263,"tool_calls":[["read_article"],["read_article"],["read_article"]]},"grounding":{"ttft_ms":7821.187541000021,"total_ms":13773.39975000004,"cost_usd":0.0012393,"throughput_tps":34.11744603292134,"tool_calls":[["read_article"],["read_article"],["read_article"]]},"brainstorm":{"ttft_ms":1262.2464589999872,"total_ms":2944.462499999965,"cost_usd":0.0006141,"throughput_tps":31.493145609484998,"tool_calls":[[],[],[]]}}},{"model":"deepseek/deepseek-v4-flash","label":"DeepSeek V4 Flash","isDefault":false,"pricing":{"prompt_per_m":0.098,"completion_per_m":0.196,"context":1048576},"trials":9,"failures":0,"ttft_ms":3529.9467909999657,"total_ms":11516.720042000059,"cost_usd":0.000613672,"throughput_tps":40.54205229941657,"tokens_out":452,"grounding_tool_rate":0.6666666666666666,"grounding_correct_rate":0.6666666666666666,"byScenario":{"concept":{"ttft_ms":3178.298999999999,"total_ms":12388.752665999928,"cost_usd":0.000737744,"throughput_tps":40.40735873850197,"tool_calls":[["read_article"],["read_article"],["read_article"]]},"grounding":{"ttft_ms":3306.0807499999646,"total_ms":11516.720042000059,"cost_usd":0.00061083,"throughput_tps":38.56130997256473,"tool_calls":[["read_article"],["read_article"],[]]},"brainstorm":{"ttft_ms":5055.9882080000825,"total_ms":6865.83579199994,"cost_usd":0.000356328,"throughput_tps":41.474654377880185,"tool_calls":[["read_module","read_module"],[],[]]}}},{"model":"deepseek/deepseek-v4-pro","label":"DeepSeek V4 Pro","isDefault":false,"pricing":{"prompt_per_m":0.435,"completion_per_m":0.87,"context":1048576},"trials":9,"failures":0,"ttft_ms":7384.565207999985,"total_ms":18029.28175000001,"cost_usd":0.0019100089999999998,"throughput_tps":30.82091732398481,"tokens_out":521,"grounding_tool_rate":1,"grounding_correct_rate":1,"byScenario":{"concept":{"ttft_ms":9872.179542000002,"total_ms":21664.474875,"cost_usd":0.001576138,"throughput_tps":30.82091732398481,"tool_calls":[["read_article"],["read_article"],["read_article"]]},"grounding":{"ttft_ms":7384.565207999985,"total_ms":18029.28175000001,"cost_usd":0.003697314,"throughput_tps":30.450439067534273,"tool_calls":[["read_article"],["read_article"],["read_article"]]},"brainstorm":{"ttft_ms":5693.541417,"total_ms":10329.721292000002,"cost_usd":0.001261766,"throughput_tps":35.93913955928647,"tool_calls":[[],[],["read_module","read_module","visualize_flow"]]}}},{"model":"qwen/qwen3.7-plus","label":"Qwen3.7 Plus","isDefault":false,"pricing":{"prompt_per_m":0.32,"completion_per_m":1.28,"context":1000000},"trials":9,"failures":0,"ttft_ms":32681.516042000032,"total_ms":34940.584417000064,"cost_usd":0.002904,"throughput_tps":52.99363057324841,"tokens_out":1491,"grounding_tool_rate":0.3333333333333333,"grounding_correct_rate":0.3333333333333333,"byScenario":{"concept":{"ttft_ms":36024.85262500006,"total_ms":39422.71279100003,"cost_usd":0.00488064,"throughput_tps":52.969578764598154,"tool_calls":[["read_article"],[],["read_article"]]},"grounding":{"ttft_ms":32681.516042000032,"total_ms":37462.03366700001,"cost_usd":0.002904,"throughput_tps":53.4734785587274,"tool_calls":[["read_article"],[],[]]},"brainstorm":{"ttft_ms":17337.509292000206,"total_ms":19715.689459000016,"cost_usd":0.00234208,"throughput_tps":52.96944864313558,"tool_calls":[[],[],[]]}}},{"model":"google/gemma-4-26b-a4b-it:free","label":"Gemma 4 26B (free)","isDefault":false,"pricing":{"prompt_per_m":0,"completion_per_m":0,"context":262144},"trials":8,"failures":1,"ttft_ms":7513.157374999952,"total_ms":14699.66087549983,"cost_usd":0,"throughput_tps":14.541775363993032,"tokens_out":123,"grounding_tool_rate":0.3333333333333333,"grounding_correct_rate":0.3333333333333333,"byScenario":{"concept":{"ttft_ms":7876.250333499862,"total_ms":18920.268020999967,"cost_usd":0,"throughput_tps":19.858127612189307,"tool_calls":[[],[]]},"grounding":{"ttft_ms":null,"total_ms":13174.418208999792,"cost_usd":0,"throughput_tps":1.6260162601626018,"tool_calls":[["read_article"],[],[]]},"brainstorm":{"ttft_ms":7513.157374999952,"total_ms":9681.346625000006,"cost_usd":0,"throughput_tps":12.956017729287419,"tool_calls":[[],[],[]]}}}],"samples":[{"model":"moonshotai/kimi-k2.6","label":"Kimi K2.6","answers":[{"scenario":"Conceptual question","tools":["read_article"],"answer":"**Automation follows a script; an agent pursues a goal.**\n\nA normal automation is like a vending machine: you press the button, it drops the snack. It does exactly what it was wired to do—\"every new email with 'invoice' in the subject, save the attachment\"—and never deviates.\n\nAn AI agent is more like a resourceful intern with a to-do list and a set of keys. You give it a goal (\"find me a dog-friendly campsite near Amsterdam for next weekend\"), and it runs a loop: look at what it knows, decide the next step, use a tool if needed (search the web, check a map, read reviews), then repeat until done. If a campsite is fully booked, it adapts and tries another; automation would usually just break.\n\n**The difference is the decision loop.** Automation handles the predictable; an agent handles uncertainty by choosing what to do next.\n\nFor the full picture and when to use one: [What is an agent?](/learning/what-is-an-agent)"},{"scenario":"Article-grounded explanation","tools":["read_article"],"answer":"Imagine every sentence as a star in the night sky. An **embedding** is simply the coordinates of that star. The sky is arranged so that ideas meaning similar things cluster together. \"I love this restaurant\" shines right next to \"This place is amazing,\" while both sit far away from \"My tire is flat.\"\n\nWhen engineers say \"latent space,\" they just mean that sky—the giant map where all these meaning-coordinates live.\n\n**Why this matters:** once ideas have coordinates, finding \"more like this\" becomes a math problem instead of a keyword hunt. That's how Spotify suggests songs, how semantic search finds relevant documents even when you use totally different words, and how AI matches a question to the right answer in a pile of notes.\n\nIf you want the full walkthrough without math, the article [Tokens, embeddings, and latent space](/learning/tokens-embeddings-latent-space) covers how the map gets built.\n\nDoes the \"night sky\" picture make sense, or is there a part—like how the computer actually *computes* the coordinates—that still feels fuzzy?"},{"scenario":"Project brainstorm turn","tools":[],"answer":"Absolutely. Three directions, from tiny to slightly fancy:\n\n1. **The Suggestion Box.** A simple web form where members drop titles and a sentence about why. Everything lands neatly in a [Google Sheet](/garden/modules/google-sheet) — no more scrolling through chat history.\n2. **The Shortlister.** Same form, but the sheet auto-fetches a one-line summary, genre, and page count for each book. When you vote, you’re comparing apples to apples using a [Content finder](/garden/modules/content-finder) or [Summarizer](/garden/modules/summarizer).\n3. **The Rotating Curator.** The sheet tracks who suggested what, and a tiny [Scheduled task](/garden/modules/scheduled-task) nudges the next host to pick from the list so one person isn’t herding cats every month.\n\nWhich of those sounds like something your group would actually use?"}]},{"model":"minimax/minimax-m3","label":"MiniMax M3","answers":[{"scenario":"Conceptual question","tools":["read_article"],"answer":"Great question, and the word does get thrown around. Here's the plain version:\n\n**A normal automation is a fixed recipe.** You write the steps yourself: \"When a new row lands in this spreadsheet, do X, then Y.\" It only does exactly what you scripted, and it bails out the moment something unexpected shows up.\n\n**An agent is a language model with a goal and a few tools.** Instead of following a script, it decides what to do next, then acts, then looks at the result, then decides again. Tools are things like search the web, read a file, look something up in your spreadsheet, run a bit of code. You give it the goal (\"research these three companies and write me a summary\"), and it figures out the steps.\n\nThe simplest way I think about it: **automation is a recipe, an agent is a resourceful intern**. The intern might use a recipe when it's the right move, but it can also improvise.\n\nA few quick contrasts:\n\n- **Where it gets the steps**: you wrote them vs. the model decides each turn.\n- **When it gives up**: on any surprise vs. only on things it genuinely can't do.\n- **What it costs**: a script is cheap and fast; an agent is slower because each step is a roundtrip to a model.\n- **What can go wrong**: automation breaks in predictable ways; agents can be clever in ways you didn't plan.\n\nSo \"agent\" isn't a magic word, it's just the name for \"LLM + tools + a loop.\" If you'd like the one article that explains it with diagrams and examples, it's here: [/learning/what-is-an-agent](/learning/what-is-an-agent).\n\nDoes one of those land closer to what you've been hearing described?"},{"scenario":"Article-grounded explanation","tools":["read_article"],"answer":"\n\nSure. The shortest useful version:\n\n**An embedding is a list of numbers that stands for the meaning of a piece of text.** Not the words, but what the words mean.\n\nThe trick is in how those numbers get arranged. Imagine a giant map. Words and sentences that mean similar things get placed close together on it. \"Dog\" sits near \"puppy\", far from \"invoice\". So instead of searching text by matching letters, you can search by *distance on the map*: \"find me the things closest in meaning to this one.\"\n\nA few things that fall out of this:\n\n- The directions on the map also carry meaning. The path from \"king\" to \"queen\" points roughly the same way as from \"man\" to \"woman\".\n- It works across languages. A Dutch sentence and its English translation land in nearly the same spot, because they mean the same thing.\n- It's the engine behind \"find similar articles\", semantic search, and the way an LLM gets pointed at the right ten documents out of your ten thousand.\n\nThe full article goes a bit deeper and covers the related ideas of tokens (how the model chops up your text before any of this happens) and latent space (the map itself): [Tokens, embeddings, and latent space](/learning/tokens-embeddings-latent-space).\n\nIs there a specific use for embeddings you were curious about, like search or recommendations?"},{"scenario":"Project brainstorm turn","tools":[],"answer":"Yes, that's a perfect first project. A small place where suggestions don't disappear.\n\nThe simplest version: a shared list where anyone drops a book (title + author + one line on why), and the group can react. Maybe one button to pick a random winner when it's time.\n\nWhat does your club's \"decide the next book\" moment actually look like today — a vote, a debate, someone just deciding?"}]},{"model":"deepseek/deepseek-v4-flash","label":"DeepSeek V4 Flash","answers":[{"scenario":"Conceptual question","tools":["read_article"],"answer":"The short version: **automation follows a script, an agent figures out the script as it goes.**\n\nA normal automation is like a to-do list written in permanent ink. \"If this happens, do that. Then do that. Then stop.\" Every step is fixed. A scheduled email, a Zapier workflow that moves rows from one sheet to another — those are automations. They're fast, reliable, and dumb. If something unexpected happens, they break.\n\nAn agent is more like a junior gardener you give a goal and a handful of tools. \"Find out who emailed me about the project, check my calendar, and propose three meeting times.\" It doesn't have a fixed route — it **looks, decides, acts, repeats**. It might check email first, then notice the sender mentioned a deadline, decide to read that calendar note too, then draft the message. Next time, it might do it in a different order.\n\nConcretely:\n\n| | Automation | Agent |\n|---|---|---|\n| **Decides the steps** | You, upfront | It, in the moment |\n| **Handles surprise** | Breaks | Adapts (within reason) |\n| **Good for** | Reliable, repetitive tasks | Multi-step, fuzzy goals |\n| **Example** | \"Email this report every Monday at 9am\" | \"Find the latest climate funding opportunity and draft a pitch\" |\n\nThe article I pulled that from ([What is an agent?](/learning/what-is-an-agent)) puts it neatly: an LLM is a brilliant intern who can only talk. An agent is that same intern with hands — tools they can grab and use.\n\nDoes that distinction land, or is there a specific thing you're thinking of building where you're wondering which camp it falls into?"},{"scenario":"Article-grounded explanation","tools":["read_article"],"answer":"Sure. Let me try a different angle.\n\nImagine you have a giant box of Lego bricks. Each brick is a word or idea. Now, instead of keeping them in a pile, you sort them onto a huge table: **things that are alike go near each other**. \"Dog\" goes next to \"puppy\", which is near \"cat\" (they're both pets), which is far from \"bank statement\". That's all an embedding is: a way of saying \"here is exactly where this thing sits on the map of meaning.\"\n\nThe numbers are just the coordinates. Like how your phone knows you're at latitude 52.37, longitude 4.90 — except the map of meaning has *hundreds* of dimensions instead of just two. You can't picture it, but the math works the same way.\n\n**The really cool bit:** because the map is organised by meaning, not by spelling, a Dutch sentence and its English translation end up in almost the same spot. The model doesn't know they're different languages — it just knows they mean the same thing.\n\n**Why you'd use one:** ever searched a folder of notes for \"things about that gardening idea I had\" and got nothing because you used the wrong keyword? Embeddings let you search by *vibe* instead. \"Find stuff similar to this\" is just \"find the nearest points on the map.\"\n\nDoes that click better? Or is there a piece that still feels fuzzy?"},{"scenario":"Project brainstorm turn","tools":["read_module","read_module"],"answer":"That's the perfect problem to solve. A few directions you could grow this:\n\n**Option 1: The suggestion board**\nA Google Sheet with a simple form link. Anyone drops a title, author, and a sentence on why they want to read it. No more scrolling through group chat. You open the sheet and see all the candidates in one place.\n\n**Option 2: The suggestion board + AI picker**\nSame sheet, but when it's time to choose, a small AI assistant reads the pile and helps you pick: *\"You have 7 suggestions. Three are thrillers, two are non-fiction, one is a doorstopper. Given your club's last three books were novels, maybe this is the moment for that non-fiction pick.\"* It's like having a friend who read the whole backlog.\n\n**Option 3: The content finder version**\nInstead of members suggesting, a content finder scans for new books that fit your club's taste — reviewed well, right length, matching your genres — and brings you a shortlist each month. Less communal, but great for when the group chat has gone quiet.\n\nI'd lean toward **Option 2** — it keeps the human part (members suggesting books they actually care about) and adds just enough AI to make the decision easier.\n\nIngredients would be:\n- A **Google Sheet** with columns for title, author, suggester, why-one-sentence\n- A **Summarizer** or **Knowledge assistant** that reads the sheet and gives you a pick with a reason\n\nThe first step: create a Google Sheet with those four columns, share the link in your group chat, and collect a few suggestions. That's already 80% of the win.\n\nWant to go with that? Or does one of the other options pull you more?"}]},{"model":"deepseek/deepseek-v4-pro","label":"DeepSeek V4 Pro","answers":[{"scenario":"Conceptual question","tools":["read_article"],"answer":"Great question — and the confusion is real, because people slap \"agent\" on everything now.\n\n**The short version: normal automation follows a script. An agent figures out its own next step.**\n\nHere's the difference in practice:\n\n| | Normal automation | Agent |\n|---|---|---|\n| **What it does** | The same sequence every time | Decides what to do as it goes |\n| **When it works** | The problem is predictable | The path isn't known in advance |\n| **Surprises** | Breaks | Handles them (or asks for help) |\n| **Example** | \"Every Friday, email me a report from this spreadsheet\" | \"Find the cheapest flight to Barcelona in June, considering my calendar and budget\" |\n\nNormal automation is a recipe: do step 1, then step 2, then step 3. If the spreadsheet moved, it fails.\n\nAn agent is the same language model you chat with, but wired into a loop: **look at the goal → decide what to do next → use a tool (search, read a file, do math) → check the result → repeat** until the job is done. It can pivot when it hits something unexpected.\n\nThe reason you're hearing \"agent\" everywhere now is that models got good enough at that deciding step, and a standard called MCP made plugging tools into them easy — like USB for AI. What took a team of engineers two years ago is now a weekend project.\n\n**One rule of thumb:** start with the simplest thing that works. A single well-aimed LLM call beats a wobbly five-tool agent. You can always grow it later."},{"scenario":"Article-grounded explanation","tools":["read_article"],"answer":"Imagine you have a giant map where every word, every sentence, every idea has a spot. But instead of two directions (north-south, east-west), this map has hundreds of directions — things like \"living-ness,\" \"size,\" \"formality,\" and lots of others that don't have English names.\n\nThat spot is an **embedding**: just a long list of numbers, like coordinates. And here's the clever bit: things that mean similar things get placed near each other. \"Dog\" lands close to \"puppy.\" \"Invoice\" lands close to \"receipt.\" \"The cat sat on the mat\" lands right next to \"De kat zat op de mat,\" because they mean the same thing even though they look nothing alike.\n\nThis is why you can search a pile of notes by meaning instead of by exact words. You take every note, find its coordinates, and store those. Then \"show me everything like this one\" becomes \"what else is nearby on the map?\"\n\n**Embeddings turn meaning into location, and location is something computers are very fast at comparing.**\n\nDoes that click? Or is there a specific part that still feels fuzzy?"},{"scenario":"Project brainstorm turn","tools":[],"answer":"Oh, that's a classic one — the group chat is where suggestions go to die. A small tool could totally fix this.\n\nBefore I suggest a shape, one question: do you want people to just submit ideas into a tidy list, or would you also want them to **vote or rank** the suggestions? (Even just a \"I'd read this\" thumbs-up changes things.)"}]},{"model":"qwen/qwen3.7-plus","label":"Qwen3.7 Plus","answers":[{"scenario":"Conceptual question","tools":["read_article"],"answer":"The short version: traditional automation follows a strict, pre-written script, while an agent decides its own steps to reach a goal.\n\nThink of it like this:\n* **Normal automation** is a rigid recipe. \"Every morning, download the report and email it to Dave.\" If the report's name changes, the script breaks.\n* **An agent** is a goal with hands. You tell it, \"Make sure Dave has the latest report.\" It has tools—like accessing your files or sending emails—looks at the situation, figures out the steps, and adapts if something looks different.\n\nAn agent just runs a simple loop: it *looks* at the goal, *decides* the next step, *acts* using a tool, and *repeats* until the job is done. \n\nIf your task is exactly the same every time, normal automation is best—it is predictable. If you need something that can handle messy exceptions or figure out the steps itself, that is when an agent is the right seed to plant.\n\nIs there a repetitive task in your life or work you are trying to solve right now?"},{"scenario":"Article-grounded explanation","tools":["read_article"],"answer":"Think of an embedding as a **GPS coordinate for meaning**.\n\nNormally, a computer just sees symbols. The word \"dog\" is just letters; to a computer, it has no more in common with \"puppy\" than with \"brick.\"\n\nAn embedding translates that word into a long list of numbers—a location on a giant, invisible map inside the AI. The AI learns to group similar things together, so \"dog\" and \"puppy\" end up at coordinates right next to each other. \"Dog\" and \"brick\" end up on opposite sides of the map. Because of this, \"The cat sat on the mat\" and its Dutch translation end up in almost the exact same spot, since they mean the same thing.\n\nThat is why they are so useful: embeddings let a computer search by *meaning* instead of just matching exact letters. A search for \"furry pet\" suddenly matches a document that only says \"golden retriever.\"\n\nDoes that help the idea of a \"map of meaning\" click a bit better?"},{"scenario":"Project brainstorm turn","tools":[],"answer":"You absolutely can. A simple web page where anyone in the club can drop a title and see the pile would solve the \"lost in chat\" problem instantly. As a nice touch, it could even automatically pull the book cover and a short blurb so the list is actually readable.\n\nHow does the club usually make the final pick once you have a shortlist—do you take a vote, or does someone just decide?"}]},{"model":"google/gemma-4-26b-a4b-it:free","label":"Gemma 4 26B (free)","answers":[{"scenario":"Conceptual question","tools":[],"answer":"It's a great question. The term \"agent\" is definitely being thrown around a lot right now, often without much precision.\n\nThe simplest way to look at it is the difference between a **recipe** and a **chef**.\n\n*   **A normal automation** is like a recipe. It follows a strict, predefined script: \"If *this* happens, then do *that*.\" It’s reliable and fast, but if something unexpected occurs—like an ingredient is missing or the oven temperature is wrong—the automation just breaks or does nothing.\n*   **An AI agent** is like a chef. You give it a goal (like \"make a delicious dinner for four people\") and some constraints, but you don't give it step-by-step instructions. The agent uses reasoning to decide which tools to use, how to handle surprises, and how to adjust its plan if things don't go perfectly.\n\nHere is a quick breakdown of how they differ in practice:\n\n| Feature | Normal Automation | AI Agent |\n| :--- | :--- | :--- |\n| **Logic** | Deterministic (Predictable/Fixed) | Probabilistic (Reasoning-based) |\n| **Instructions** | \"If A, then do B\" | \"Achieve goal X using tools Y and Z\" |\n| **Handling Errors** | Stops or fails when it hits an unknown | Tries a different path or asks for help |\n| **Complexity** | Best for repetitive, simple tasks | Best for messy, multi-step tasks |\n\nYou can read more about this distinction in our guide on [What is an agent?](/learning/what-is-an-agent).\n\nAre you thinking about a specific task you'd like to automate, or are you just curious about the hype?"},{"scenario":"Article-grounded explanation","tools":["read_article"],"answer":""},{"scenario":"Project brainstorm turn","tools":[],"answer":"Definitely. We can turn that chaotic group chat into a organized voting system or a shortlist generator.\n\nInstead of scrolling through hundreds of messages, you could build a little web app where everyone's suggestions are collected in one place, categorized by genre, and then voted on.\n\nTo figure out the best way to build this, tell me: **do you want it to be a simple list where people just click \"vote,\" or something a bit more clever, like an AI that reads the suggestions and suggests a \"theme\" for the next few months?**"}]}]};
+
+const fmtMs = (v) => v == null ? "–" : (v >= 10000 ? (v/1000).toFixed(1) + "s" : (v/1000).toFixed(2) + "s");
+const fmtCost = (v) => v == null ? "–" : (v === 0 ? "$0" : "$" + v.toFixed(4));
+const fmtTps = (v) => v == null ? "–" : v.toFixed(0) + " tok/s";
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+document.getElementById("meta").textContent =
+  "Ran " + new Date(DATA.ran_at).toLocaleString() + " · " + DATA.scenarios.length +
+  " scenarios × " + DATA.trials + " trials per model · medians shown · * = current default";
+
+// ----- pricing table -----
+{
+  const rows = DATA.summary.map((m) => {
+    const p = m.pricing;
+    return "<tr><td>" + esc(m.label) + (m.isDefault ? '<span class="tag">current default</span>' : "") +
+      "</td><td class='num'>" + (p ? "$" + p.prompt_per_m.toFixed(2) : "–") +
+      "</td><td class='num'>" + (p ? "$" + p.completion_per_m.toFixed(2) : "–") +
+      "</td><td class='num'>" + (p ? Math.round(p.context / 1024) + "k" : "–") + "</td></tr>";
+  }).join("");
+  document.getElementById("pricing").innerHTML =
+    "<tr><th>Model</th><th class='num'>Input /M</th><th class='num'>Output /M</th><th class='num'>Context</th></tr>" + rows;
+}
+
+// ----- bar chart builder (horizontal, single series, value at tip) -----
+const tooltip = document.getElementById("tooltip");
+function showTip(evt, title, rows) {
+  tooltip.innerHTML = '<div class="t-title">' + esc(title) + "</div>" +
+    rows.map((r) => '<div class="t-row"><span>' + esc(r[0]) + "</span><b>" + esc(r[1]) + "</b></div>").join("");
+  tooltip.style.display = "block";
+  const pad = 14;
+  let x = evt.clientX + pad, y = evt.clientY + pad;
+  const rect = tooltip.getBoundingClientRect();
+  if (x + rect.width > innerWidth - 8) x = evt.clientX - rect.width - pad;
+  if (y + rect.height > innerHeight - 8) y = evt.clientY - rect.height - pad;
+  tooltip.style.left = x + "px"; tooltip.style.top = y + "px";
+}
+const hideTip = () => (tooltip.style.display = "none");
+
+function barChart(el, items, fmt, perScenario) {
+  // items: [{label, value, isDefault, model}] sorted by value asc (best first)
+  const W = 820, rowH = 34, mL = 150, mR = 90, mT = 6, mB = 22;
+  const H = mT + items.length * rowH + mB;
+  const vals = items.map((i) => i.value).filter((v) => v != null);
+  const rawMax = Math.max(...vals) || 1;
+  // round the axis max up to a clean 1/2/2.5/5 x 10^k so ticks land on round numbers
+  const pow = Math.pow(10, Math.floor(Math.log10(rawMax)));
+  const max = [1, 2, 2.5, 5, 10].map((m) => m * pow).find((m) => m >= rawMax) ?? rawMax;
+  const x = (v) => mL + (v / max) * (W - mL - mR);
+  let s = '<svg viewBox="0 0 ' + W + " " + H + '" width="100%" role="img">';
+  // gridlines: 4 clean ticks
+  const ticks = 4;
+  for (let t = 1; t <= ticks; t++) {
+    const v = (max * t) / ticks;
+    s += '<line x1="' + x(v) + '" y1="' + mT + '" x2="' + x(v) + '" y2="' + (H - mB) +
+      '" stroke="var(--grid)" stroke-width="1"/>';
+    s += '<text x="' + x(v) + '" y="' + (H - 6) + '" text-anchor="middle" fill="var(--text-muted)">' +
+      fmt(v).replace("$0.", "$.") + "</text>";
+  }
+  s += '<line x1="' + mL + '" y1="' + mT + '" x2="' + mL + '" y2="' + (H - mB) +
+    '" stroke="var(--baseline)" stroke-width="1"/>';
+  items.forEach((it, i) => {
+    const y = mT + i * rowH + (rowH - 20) / 2;
+    s += '<text x="' + (mL - 8) + '" y="' + (y + 14) + '" text-anchor="end" fill="var(--text-secondary)">' +
+      esc(it.label) + "</text>";
+    if (it.value == null) {
+      s += '<text x="' + (mL + 8) + '" y="' + (y + 14) + '" fill="var(--text-muted)">no data</text>';
+      return;
+    }
+    const w = Math.max(x(it.value) - mL, 2);
+    // square at baseline, 4px rounded data-end: rect with right-side rounding via path
+    const r = Math.min(4, w);
+    s += '<path class="bar" data-i="' + i + '" d="M' + mL + " " + y + " h" + (w - r) +
+      " a" + r + " " + r + " 0 0 1 " + r + " " + r + " v" + (20 - 2 * r) +
+      " a" + r + " " + r + " 0 0 1 -" + r + " " + r + " h-" + (w - r) +
+      ' Z" fill="var(--series-1)"/>';
+    s += '<text x="' + (x(it.value) + 6) + '" y="' + (y + 14) + '" fill="var(--text-primary)" font-weight="600">' +
+      fmt(it.value) + "</text>";
+  });
+  s += "</svg>";
+  el.innerHTML = s;
+  el.querySelectorAll(".bar").forEach((bar) => {
+    const it = items[Number(bar.dataset.i)];
+    const move = (e) => showTip(e, it.label, perScenario(it));
+    bar.addEventListener("mousemove", move);
+    bar.addEventListener("mouseleave", hideTip);
+  });
+}
+
+const byVal = (key, dir = 1) =>
+  DATA.summary
+    .map((m) => ({ label: m.label + (m.isDefault ? " *" : ""), value: m[key], byScenario: m.byScenario }))
+    .sort((a, b) => (a.value == null) - (b.value == null) || dir * (a.value - b.value));
+
+const scenarioRows = (key, fmt) => (it) =>
+  DATA.scenarios.map((s) => [s.label, fmt(it.byScenario?.[s.id]?.[key])]);
+
+barChart(document.getElementById("chart-ttft"), byVal("ttft_ms"), fmtMs, scenarioRows("ttft_ms", fmtMs));
+barChart(document.getElementById("chart-total"), byVal("total_ms"), fmtMs, scenarioRows("total_ms", fmtMs));
+barChart(document.getElementById("chart-cost"), byVal("cost_usd"), fmtCost, scenarioRows("cost_usd", fmtCost));
+barChart(document.getElementById("chart-tps"), byVal("throughput_tps", -1), fmtTps, scenarioRows("throughput_tps", fmtTps));
+
+// ----- tool reliability table -----
+{
+  const rows = DATA.summary.map((m) => {
+    const rate = (v) => v == null ? "–" : Math.round(v * 100) + "%";
+    const cls = (v) => v == null ? "" : v >= 1 ? "ok" : v > 0 ? "" : "bad";
+    return "<tr><td>" + esc(m.label) + (m.isDefault ? '<span class="tag">current default</span>' : "") +
+      "</td><td class='num " + cls(m.grounding_tool_rate) + "'>" + rate(m.grounding_tool_rate) +
+      "</td><td class='num " + cls(m.grounding_correct_rate) + "'>" + rate(m.grounding_correct_rate) +
+      "</td><td class='num'>" + (m.failures || 0) + "</td></tr>";
+  }).join("");
+  document.getElementById("tools").innerHTML =
+    "<tr><th>Model</th><th class='num'>Called read_article</th><th class='num'>Correct article</th><th class='num'>Failed trials</th></tr>" + rows;
+}
+
+// ----- full table -----
+{
+  let head = "<tr><th>Model</th>";
+  for (const s of DATA.scenarios) head += "<th class='num' colspan='3'>" + esc(s.label) + "</th>";
+  head += "</tr><tr><th></th>" + DATA.scenarios.map(() =>
+    "<th class='num'>TTFT</th><th class='num'>Total</th><th class='num'>Cost</th>").join("") + "</tr>";
+  const rows = DATA.summary.map((m) =>
+    "<tr><td>" + esc(m.label) + "</td>" + DATA.scenarios.map((s) => {
+      const b = m.byScenario[s.id] ?? {};
+      return "<td class='num'>" + fmtMs(b.ttft_ms) + "</td><td class='num'>" + fmtMs(b.total_ms) +
+        "</td><td class='num'>" + fmtCost(b.cost_usd) + "</td>";
+    }).join("") + "</tr>").join("");
+  document.getElementById("alltable").innerHTML = head + rows;
+}
+
+// ----- samples -----
+{
+  const el = document.getElementById("samples");
+  el.innerHTML = DATA.samples.map((m) =>
+    "<details><summary><b>" + esc(m.label) + "</b></summary>" +
+    m.answers.map((a) =>
+      "<p class='note'>" + esc(a.scenario) + (a.tools.length ? " · tools: " + esc(a.tools.join(", ")) : " · no tools") + "</p>" +
+      "<div class='answer'>" + esc(a.answer) + "</div>").join("") +
+    "</details>").join("");
+}
+</script>
+</body>
+</html>
