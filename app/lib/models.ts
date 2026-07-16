@@ -12,15 +12,27 @@ export type Model = {
  */
 export const models: Model[] = [
   {
+    id: "minimax/minimax-m3",
+    label: "MiniMax M3",
+    note: "default",
+    tools: true,
+  },
+  {
     id: "moonshotai/kimi-k2.6",
     label: "Kimi K2.6",
-    note: "default",
+    note: "thorough, slower",
     tools: true,
   },
   {
     id: "deepseek/deepseek-v4-flash",
     label: "DeepSeek V4 Flash",
     note: "fast + cheap",
+    tools: true,
+  },
+  {
+    id: "deepseek/deepseek-v4-pro",
+    label: "DeepSeek V4 Pro",
+    note: "strong all-rounder",
     tools: true,
   },
   {

@@ -1,0 +1,1138 @@
+{
+  "ran_at": "2026-07-16T12:18:47.768Z",
+  "trials": 3,
+  "models": [
+    "moonshotai/kimi-k2.6",
+    "minimax/minimax-m3",
+    "deepseek/deepseek-v4-flash",
+    "deepseek/deepseek-v4-pro",
+    "qwen/qwen3.7-plus",
+    "google/gemma-4-26b-a4b-it:free"
+  ],
+  "scenarios": [
+    {
+      "id": "concept",
+      "label": "Conceptual question",
+      "expectTool": null
+    },
+    {
+      "id": "grounding",
+      "label": "Article-grounded explanation",
+      "expectTool": "read_article"
+    },
+    {
+      "id": "brainstorm",
+      "label": "Project brainstorm turn",
+      "expectTool": null
+    }
+  ],
+  "results": [
+    {
+      "model": "moonshotai/kimi-k2.6",
+      "scenario": "concept",
+      "ttfb_ms": 5235.424083,
+      "ttft_ms": 75104.171292,
+      "total_ms": 82368.422542,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\":\"what-is-an-agent\"}"
+        }
+      ],
+      "cost_usd": 0.00562094,
+      "tokens_out": 1395,
+      "tokens_reasoning": 1339,
+      "throughput_tps": 16.992508678969486,
+      "providers": [
+        "SiliconFlow"
+      ],
+      "answer_chars": 927,
+      "answer": "**Automation follows a script; an agent pursues a goal.**\n\nA normal automation is like a vending machine: you press the button, it drops the snack. It does exactly what it was wired to do—\"every new email with 'invoice' in the subject, save the attachment\"—and never deviates.\n\nAn AI agent is more like a resourceful intern with a to-do list and a set of keys. You give it a goal (\"find me a dog-friendly campsite near Amsterdam for next weekend\"), and it runs a loop: look at what it knows, decide the next step, use a tool if needed (search the web, check a map, read reviews), then repeat until done. If a campsite is fully booked, it adapts and tries another; automation would usually just break.\n\n**The difference is the decision loop.** Automation handles the predictable; an agent handles uncertainty by choosing what to do next.\n\nFor the full picture and when to use one: [What is an agent?](/learning/what-is-an-agent)"
+    },
+    {
+      "model": "moonshotai/kimi-k2.6",
+      "scenario": "concept",
+      "ttfb_ms": 6857.045708000005,
+      "ttft_ms": 21563.581000000006,
+      "total_ms": 35364.853166999994,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\":\"what-is-an-agent\"}"
+        }
+      ],
+      "cost_usd": 0.0035416600000000003,
+      "tokens_out": 653,
+      "tokens_reasoning": 372,
+      "throughput_tps": 18.668877580193264,
+      "providers": [
+        "SiliconFlow"
+      ],
+      "answer_chars": 1401,
+      "answer": "**Automation follows a recipe. An agent follows a brief.**\n\nA normal automation is \"when X happens, do Y.\" Think of an email auto-reply, a backup that runs at midnight, or a spreadsheet formula. You write every step—or every if/then branch—and it never deviates. It is fast, reliable, and completely helpless when it meets a situation you did not predict.\n\nAn **AI agent** is a language model that can use tools and loop until a job is done. You give it a goal, not a script. It looks at what it knows, decides what to do next—search the web, read a file, run some math—and repeats. It handles variation and ambiguity because it judges what to do at each step.\n\nSo:\n\n- \"Every morning at 7, email me the weather\" → **automation** (one fixed step, zero thinking).\n- \"Check if I have any outdoor plans Saturday, then warn me if it will rain\" → **agent** (it must read your calendar, decide which event matters, look up the forecast, then choose to message you).\n\nThe line blurs when agents run on schedules, but the difference is who makes the plan: you, or the model.\n\nIf you want the longer version, [What is an agent?](/learning/what-is-an-agent) covers the loop and tools, and [What is an API? What is MCP?](/learning/what-is-an-api-what-is-mcp) explains how the agent actually reaches outside itself.\n\nAre you wondering whether something *you* have in mind should be an agent or a simple automation?"
+    },
+    {
+      "model": "moonshotai/kimi-k2.6",
+      "scenario": "concept",
+      "ttfb_ms": 3013.3870830000087,
+      "ttft_ms": null,
+      "total_ms": 28708.559374999983,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\":\"what-is-an-agent\"}"
+        }
+      ],
+      "cost_usd": 0.00273434,
+      "tokens_out": 546,
+      "tokens_reasoning": 547,
+      "throughput_tps": 19.234834073134646,
+      "providers": [
+        "SiliconFlow"
+      ],
+      "answer_chars": 0,
+      "answer": ""
+    },
+    {
+      "model": "moonshotai/kimi-k2.6",
+      "scenario": "grounding",
+      "ttfb_ms": 1775.6219169999822,
+      "ttft_ms": 27489.274291999987,
+      "total_ms": 32960.88754199998,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\":\"tokens-embeddings-latent-space\"}"
+        }
+      ],
+      "cost_usd": 0.005932656,
+      "tokens_out": 1179,
+      "tokens_reasoning": 932,
+      "throughput_tps": 37.211210705718976,
+      "providers": [
+        "Baidu"
+      ],
+      "answer_chars": 1052,
+      "answer": "Imagine every sentence as a star in the night sky. An **embedding** is simply the coordinates of that star. The sky is arranged so that ideas meaning similar things cluster together. \"I love this restaurant\" shines right next to \"This place is amazing,\" while both sit far away from \"My tire is flat.\"\n\nWhen engineers say \"latent space,\" they just mean that sky—the giant map where all these meaning-coordinates live.\n\n**Why this matters:** once ideas have coordinates, finding \"more like this\" becomes a math problem instead of a keyword hunt. That's how Spotify suggests songs, how semantic search finds relevant documents even when you use totally different words, and how AI matches a question to the right answer in a pile of notes.\n\nIf you want the full walkthrough without math, the article [Tokens, embeddings, and latent space](/learning/tokens-embeddings-latent-space) covers how the map gets built.\n\nDoes the \"night sky\" picture make sense, or is there a part—like how the computer actually *computes* the coordinates—that still feels fuzzy?"
+    },
+    {
+      "model": "moonshotai/kimi-k2.6",
+      "scenario": "grounding",
+      "ttfb_ms": 849.0064169999969,
+      "ttft_ms": 31056.77808399999,
+      "total_ms": 41250.798167,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\":\"tokens-embeddings-latent-space\"}"
+        }
+      ],
+      "cost_usd": 0.006575615999999999,
+      "tokens_out": 1331,
+      "tokens_reasoning": 975,
+      "throughput_tps": 32.43572560009748,
+      "providers": [
+        "Baidu"
+      ],
+      "answer_chars": 1480,
+      "answer": "Imagine a giant map where every word, sentence, or document gets a pin. The model places that pin by *meaning*, not by alphabet or language. \"Dog\" sits next to \"puppy.\" The Dutch sentence \"de kat zat op de mat\" sits almost exactly on top of \"the cat sat on the mat.\" That list of numbers—the pin's coordinates—is an **embedding**.\n\n**The one thing to remember:** an embedding is just a set of coordinates on a map of meaning, so \"nearby\" means \"similar in spirit,\" not \"similar in spelling.\"\n\nThe model learns this map during training by noticing which words keep showing up in the same kinds of sentences. It ends up with thousands of invisible axes—like \"animal-ness\" or \"formality\" or \"joy\"—that position every fragment of text. That giant map is called *latent space*.\n\nThis matters because it turns \"find similar stuff\" into a math problem. You don't need the same keywords. If you have a pile of notes and you want \"things like this one,\" you just look for the nearest pins. That's how semantic search works, how Spotify finds songs in the same vibe, and how a support desk surfaces related tickets without anyone tagging them.\n\nThe full walkthrough of how text becomes those coordinates lives in [Tokens, embeddings, and latent space](/learning/tokens-embeddings-latent-space)—no math, I promise.\n\nDo you have a pile of notes, articles, or messages where \"find the ones similar to this\" would actually save you time? That's usually the first place embeddings become useful."
+    },
+    {
+      "model": "moonshotai/kimi-k2.6",
+      "scenario": "grounding",
+      "ttfb_ms": 553.7783330000238,
+      "ttft_ms": 33412.11412500002,
+      "total_ms": 40603.31920800003,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\":\"tokens-embeddings-latent-space\"}"
+        }
+      ],
+      "cost_usd": 0.006821855999999999,
+      "tokens_out": 1379,
+      "tokens_reasoning": 1107,
+      "throughput_tps": 34.119306232525915,
+      "providers": [
+        "Baidu"
+      ],
+      "answer_chars": 1053,
+      "answer": "An **embedding** is just a way to turn a word, sentence, or even a photo into a point on a giant map of meaning.\n\nThe map is organized by what things *mean*, not by spelling or language. So \"dog\" lives next to \"puppy,\" far from \"invoice.\" A sentence like \"The cat sat on the mat\" in English lands practically on top of \"De kat zat op de mat\" in Dutch, because the ideas are the same. Even directions carry meaning: the step from \"king\" to \"queen\" points the same way as \"man\" to \"woman.\"\n\n**Why this matters:** once everything has a \"map address,\" finding similar stuff becomes simple distance. That is how a tool can search ten thousand notes and surface the one that *means* the same thing, even if it uses totally different words.\n\nIf you want to dig deeper, the site's short article on [tokens, embeddings, and latent space](/learning/tokens-embeddings-latent-space) walks through the exact same idea with slightly more detail.\n\nDo you have a pile of notes, articles, or emails where you wish you could search by meaning instead of by exact keyword?"
+    },
+    {
+      "model": "moonshotai/kimi-k2.6",
+      "scenario": "brainstorm",
+      "ttfb_ms": 1253.352041999984,
+      "ttft_ms": 16498.04466699995,
+      "total_ms": 20113.235166999977,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0.00436104,
+      "tokens_out": 1024,
+      "tokens_reasoning": 834,
+      "throughput_tps": 51.34376253509828,
+      "providers": [
+        "Baidu"
+      ],
+      "answer_chars": 826,
+      "answer": "Absolutely. Three directions, from tiny to slightly fancy:\n\n1. **The Suggestion Box.** A simple web form where members drop titles and a sentence about why. Everything lands neatly in a [Google Sheet](/garden/modules/google-sheet) — no more scrolling through chat history.\n2. **The Shortlister.** Same form, but the sheet auto-fetches a one-line summary, genre, and page count for each book. When you vote, you’re comparing apples to apples using a [Content finder](/garden/modules/content-finder) or [Summarizer](/garden/modules/summarizer).\n3. **The Rotating Curator.** The sheet tracks who suggested what, and a tiny [Scheduled task](/garden/modules/scheduled-task) nudges the next host to pick from the list so one person isn’t herding cats every month.\n\nWhich of those sounds like something your group would actually use?"
+    },
+    {
+      "model": "moonshotai/kimi-k2.6",
+      "scenario": "brainstorm",
+      "ttfb_ms": 714.181958000001,
+      "ttft_ms": 9488.019250000012,
+      "total_ms": 12242.900500000047,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0.00305298,
+      "tokens_out": 633,
+      "tokens_reasoning": 477,
+      "throughput_tps": 52.426702004306776,
+      "providers": [
+        "Baidu"
+      ],
+      "answer_chars": 692,
+      "answer": "Absolutely — a suggestion catcher is a perfect first build.\n\nThree directions it could grow:\n\n- **The living list**: a shared Google Sheet with columns for title, who suggested it, and a vote tally. Drop the link in chat once; it never gets buried.\n- **The smart form**: a tiny web page where someone types a book title and it auto-fetches the cover, a blurb, and a review score so people actually know what they're voting on.\n- **The decider**: same as above, but with a simple voting button and a dashboard that shows the front-runners by month or genre.\n\nOne question to shape this: **Would you want people to vote on the suggestions, or is just keeping them in one place enough for now?**"
+    },
+    {
+      "model": "moonshotai/kimi-k2.6",
+      "scenario": "brainstorm",
+      "ttfb_ms": 612.6898749999818,
+      "ttft_ms": 12779.990417000023,
+      "total_ms": 16194.557499999995,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0.0039096,
+      "tokens_out": 892,
+      "tokens_reasoning": 706,
+      "throughput_tps": 56.77912157861235,
+      "providers": [
+        "Baidu"
+      ],
+      "answer_chars": 843,
+      "answer": "Absolutely. You could build a little **book suggestion box** for the club: one place where titles go in, details get filled out automatically, and no one has to scroll back through three weeks of chat history.\n\nA simple version might use:\n- A **[Google Sheet](/garden/modules/google-sheet)** to catch submissions and store them forever\n- A tiny **[web app](/garden/modules/web-app)** with a form so people can submit from their phones without touching the spreadsheet\n- A **[content finder](/garden/modules/content-finder)** or **[summarizer](/garden/modules/summarizer)** to auto-fill the blurb, page count, or reviews from just the title\n\nOr you could start even smaller: a shared Google Form that drops straight into a sheet.\n\nDo you want people to also vote or rank the suggestions, or is the main goal just to stop them from getting lost?"
+    },
+    {
+      "model": "minimax/minimax-m3",
+      "scenario": "concept",
+      "ttfb_ms": 1003.0827089999802,
+      "ttft_ms": 3269.344417000015,
+      "total_ms": 6529.6379169999855,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\": \"what-is-an-agent\"}"
+        }
+      ],
+      "cost_usd": 0.00105228,
+      "tokens_out": 529,
+      "tokens_reasoning": 166,
+      "throughput_tps": 82.47583411287809,
+      "providers": [
+        "Novita"
+      ],
+      "answer_chars": 1590,
+      "answer": "Great question, and the word does get thrown around. Here's the plain version:\n\n**A normal automation is a fixed recipe.** You write the steps yourself: \"When a new row lands in this spreadsheet, do X, then Y.\" It only does exactly what you scripted, and it bails out the moment something unexpected shows up.\n\n**An agent is a language model with a goal and a few tools.** Instead of following a script, it decides what to do next, then acts, then looks at the result, then decides again. Tools are things like search the web, read a file, look something up in your spreadsheet, run a bit of code. You give it the goal (\"research these three companies and write me a summary\"), and it figures out the steps.\n\nThe simplest way I think about it: **automation is a recipe, an agent is a resourceful intern**. The intern might use a recipe when it's the right move, but it can also improvise.\n\nA few quick contrasts:\n\n- **Where it gets the steps**: you wrote them vs. the model decides each turn.\n- **When it gives up**: on any surprise vs. only on things it genuinely can't do.\n- **What it costs**: a script is cheap and fast; an agent is slower because each step is a roundtrip to a model.\n- **What can go wrong**: automation breaks in predictable ways; agents can be clever in ways you didn't plan.\n\nSo \"agent\" isn't a magic word, it's just the name for \"LLM + tools + a loop.\" If you'd like the one article that explains it with diagrams and examples, it's here: [/learning/what-is-an-agent](/learning/what-is-an-agent).\n\nDoes one of those land closer to what you've been hearing described?"
+    },
+    {
+      "model": "minimax/minimax-m3",
+      "scenario": "concept",
+      "ttfb_ms": 1112.398125000007,
+      "ttft_ms": 1945.2173750000075,
+      "total_ms": 5689.91616600001,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\": \"what-is-an-agent\"}"
+        }
+      ],
+      "cost_usd": 0.00107394,
+      "tokens_out": 400,
+      "tokens_reasoning": 135,
+      "throughput_tps": 71.89072609633357,
+      "providers": [
+        "Novita"
+      ],
+      "answer_chars": 1019,
+      "answer": "\n\nShort version: a normal automation follows a script you wrote (\"if X happens, do Y\"). An **agent** is more like a loop — the model looks at the goal, decides the next move, calls a tool if it needs to (search the web, read your spreadsheet, run some code), looks at what came back, and decides again. Less recipe, more \"intern with hands.\"\n\nThe difference matters because the world rarely hands you clean triggers. A script can email a birthday greeting when the date hits; an agent can be told \"find me a quiet café within 20 minutes of the office, check it's open Saturday, and book a table for four\" — and figure out the steps itself.\n\nThe honest catch: agents are less predictable than scripts, so they're usually scoped tightly (read-only access, a few tools, a human in the loop for anything risky). Worth a slow read if you want the full picture: [What is an agent?](/learning/what-is-an-agent).\n\nWhat made you curious — is it a specific product you've been hearing about, or more \"should I be building these\"?"
+    },
+    {
+      "model": "minimax/minimax-m3",
+      "scenario": "concept",
+      "ttfb_ms": 1128.4174590000184,
+      "ttft_ms": 3886.909166999976,
+      "total_ms": 6557.848916999996,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\": \"what-is-an-agent\"}"
+        }
+      ],
+      "cost_usd": 0.00100788,
+      "tokens_out": 492,
+      "tokens_reasoning": 206,
+      "throughput_tps": 76.23179423613263,
+      "providers": [
+        "Novita"
+      ],
+      "answer_chars": 1262,
+      "answer": "\n\nShort version: an **agent** is when you let an LLM (a large language model — the \"brain\" behind ChatGPT and Claude) **decide for itself** which tools to call, in what order, until it thinks the job is done. Plain automation follows a script you wrote; the agent writes its own steps, one at a time.\n\nConcretely:\n\n- **Regular automation**: \"When a new row lands in this spreadsheet, send a Slack message.\" Same trigger, same action, every time. No judgement.\n- **Agent**: \"Look at this messy inbox, figure out which messages are urgent, draft replies, and flag the rest for me.\" It might check your calendar, search old threads, or ask you a clarifying question before acting.\n\nThe reason \"agent\" is suddenly everywhere: two things matured at once — models got reliable enough at **choosing the next tool**, and **MCP** (a new standard for plugging tools into models, like USB for AI) made giving an agent new abilities almost free. What used to be a six-month build is now something you can sketch in a chat.\n\nIf you want the longer read with the decision loop drawn out: [What is an agent?](/learning/what-is-an-agent).\n\nWhich part would help you most right now — knowing whether *your* project should be an agent, or how to keep one from going off the rails?"
+    },
+    {
+      "model": "minimax/minimax-m3",
+      "scenario": "grounding",
+      "ttfb_ms": 1574.9787910000305,
+      "ttft_ms": 7821.187541000021,
+      "total_ms": 13773.39975000004,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\":\"tokens-embeddings-latent-space\"}"
+        }
+      ],
+      "cost_usd": 0.00200586,
+      "tokens_out": 521,
+      "tokens_reasoning": 243,
+      "throughput_tps": 38.266617701065,
+      "providers": [
+        "Novita"
+      ],
+      "answer_chars": 1312,
+      "answer": "\n\nSure. The shortest useful version:\n\n**An embedding is a list of numbers that stands for the meaning of a piece of text.** Not the words, but what the words mean.\n\nThe trick is in how those numbers get arranged. Imagine a giant map. Words and sentences that mean similar things get placed close together on it. \"Dog\" sits near \"puppy\", far from \"invoice\". So instead of searching text by matching letters, you can search by *distance on the map*: \"find me the things closest in meaning to this one.\"\n\nA few things that fall out of this:\n\n- The directions on the map also carry meaning. The path from \"king\" to \"queen\" points roughly the same way as from \"man\" to \"woman\".\n- It works across languages. A Dutch sentence and its English translation land in nearly the same spot, because they mean the same thing.\n- It's the engine behind \"find similar articles\", semantic search, and the way an LLM gets pointed at the right ten documents out of your ten thousand.\n\nThe full article goes a bit deeper and covers the related ideas of tokens (how the model chops up your text before any of this happens) and latent space (the map itself): [Tokens, embeddings, and latent space](/learning/tokens-embeddings-latent-space).\n\nIs there a specific use for embeddings you were curious about, like search or recommendations?"
+    },
+    {
+      "model": "minimax/minimax-m3",
+      "scenario": "grounding",
+      "ttfb_ms": 2067.629249999998,
+      "ttft_ms": 5417.729082999984,
+      "total_ms": 11238.605333000014,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\":\"tokens-embeddings-latent-space\"}"
+        }
+      ],
+      "cost_usd": 0.0009573,
+      "tokens_out": 364,
+      "tokens_reasoning": 43,
+      "throughput_tps": 32.75737940964723,
+      "providers": [
+        "Novita"
+      ],
+      "answer_chars": 1319,
+      "answer": "Imagine you wrote down a list of words and then had to place each one somewhere on a giant map. You would put \"dog\" close to \"puppy\" and far from \"invoice\", because they mean different things. That is essentially what an **embedding** is: a list of numbers, like coordinates, that tells you where a piece of meaning sits on that map.\n\nThe wild part is the map is learned by the model itself during training, in hundreds of dimensions at once. You can't picture it, but the model can: \"king\" lands near \"queen\", and the direction from \"man\" to \"woman\" is almost the same as the direction from \"king\" to \"queen\". Meaning becomes geometry.\n\nTwo things make this useful for non-programmers too:\n\n- **Semantic search.** Turn all your notes, recipes, or support tickets into embeddings, store the numbers, and \"find things similar to this one\" is just \"find the nearest points on the map\". That is how \"related articles\" features work under the hood.\n- **Languages collapse onto one map.** A Dutch sentence and its English translation land in nearly the same spot, because they mean the same thing. The model learned one shared map, with different languages as different roads to the same places.\n\nWant me to go a step further and walk through what \"nearness on the map\" looks like in practice, with an example you could try?"
+    },
+    {
+      "model": "minimax/minimax-m3",
+      "scenario": "grounding",
+      "ttfb_ms": 3312.17849999998,
+      "ttft_ms": 11004.659958000004,
+      "total_ms": 17740.680667000008,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\":\"tokens-embeddings-latent-space\"}"
+        }
+      ],
+      "cost_usd": 0.0012393,
+      "tokens_out": 599,
+      "tokens_reasoning": 270,
+      "throughput_tps": 34.11744603292134,
+      "providers": [
+        "Novita"
+      ],
+      "answer_chars": 1531,
+      "answer": "\n\nTotally fair — the word \"embedding\" sounds technical, but the idea underneath it is friendly. Here's the short version:\n\n**An embedding is a list of numbers that describes what something means.** When a model turns a word, a sentence, or a whole document into an embedding, it picks coordinates so that things with similar meanings end up *close together*. Things with different meanings end up far apart.\n\nYou can think of it like dropping pins on a giant map. \"Dog\" lands near \"puppy\" and far from \"invoice\". \"King\" and \"queen\" are neighbors, and so are \"man\" and \"woman\" — with the same little arrow between them, because the *direction* from one to the other means the same thing (royalty, gender, that kind of pattern).\n\nThat's it, really. A map of meaning, made of numbers, where **distance = similarity**.\n\nThe part that's actually useful for you: once you have these maps for your own stuff (recipes, notes, support tickets, charity evaluations), \"find me things like this one\" becomes a geometry problem — just look for the nearest pins. That's how semantic search works, and how an AI can pick the right ten documents out of ten thousand.\n\nThe full article I just pulled from goes deeper if you want it: [Tokens, embeddings, and latent space](/learning/tokens-embeddings-latent-space). And if you want to see the \"so what\" for projects, [Storing your data](/learning/store-data-sheets-vs-database) picks up the practical side.\n\nWhat's still fuzzy — the *what* of the map, or the *so what* for something you might build?"
+    },
+    {
+      "model": "minimax/minimax-m3",
+      "scenario": "brainstorm",
+      "ttfb_ms": 1262.2448749999749,
+      "ttft_ms": 1262.2464589999872,
+      "total_ms": 2944.462499999965,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0.00102834,
+      "tokens_out": 85,
+      "tokens_reasoning": 0,
+      "throughput_tps": 31.493145609484998,
+      "providers": [
+        "Minimax"
+      ],
+      "answer_chars": 387,
+      "answer": "Yes, that's a perfect first project. A small place where suggestions don't disappear.\n\nThe simplest version: a shared list where anyone drops a book (title + author + one line on why), and the group can react. Maybe one button to pick a random winner when it's time.\n\nWhat does your club's \"decide the next book\" moment actually look like today — a vote, a debate, someone just deciding?"
+    },
+    {
+      "model": "minimax/minimax-m3",
+      "scenario": "brainstorm",
+      "ttfb_ms": 1069.539832999988,
+      "ttft_ms": 5121.4019160000025,
+      "total_ms": 6995.670207999938,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0.0006141,
+      "tokens_out": 350,
+      "tokens_reasoning": 294,
+      "throughput_tps": 50.403225806451616,
+      "providers": [
+        "Minimax"
+      ],
+      "answer_chars": 477,
+      "answer": "Yeah, that's a real itch. A couple of directions it could grow:\n\n- **A shared wall of suggestions** — somewhere outside the chat where people drop books, maybe with a sentence on why, and everyone can see them.\n- **A helper for the actual decision** — once suggestions are in, something that pulls in a short blurb on each, surfaces reviews, and helps the group vote or compare.\n\nWhich part of the pain is sharper for you — losing the suggestions, or struggling to land on one?"
+    },
+    {
+      "model": "minimax/minimax-m3",
+      "scenario": "brainstorm",
+      "ttfb_ms": 737.2199999999721,
+      "ttft_ms": 737.2216669999762,
+      "total_ms": 2225.3913750000065,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0.0002733,
+      "tokens_out": 66,
+      "tokens_reasoning": 0,
+      "throughput_tps": 30.44280442804428,
+      "providers": [
+        "Minimax"
+      ],
+      "answer_chars": 307,
+      "answer": "Absolutely — that's a perfect first project. A \"next book\" picker where suggestions don't get lost in chat.\n\nQuick sketch: a shared **Google Sheet** everyone can add to, then a small tool that ranks suggestions by votes and shows the top contenders.\n\nWant me to lay out the full plan with a few first steps?"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "scenario": "concept",
+      "ttfb_ms": 2627.3712499999674,
+      "ttft_ms": 3133.1564999999246,
+      "total_ms": 12388.752665999928,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\": \"what-is-an-agent\"}"
+        }
+      ],
+      "cost_usd": 0.000762048,
+      "tokens_out": 492,
+      "tokens_reasoning": 56,
+      "throughput_tps": 40.40735873850197,
+      "providers": [
+        "GMICloud"
+      ],
+      "answer_chars": 1573,
+      "answer": "The short version: **automation follows a script, an agent figures out the script as it goes.**\n\nA normal automation is like a to-do list written in permanent ink. \"If this happens, do that. Then do that. Then stop.\" Every step is fixed. A scheduled email, a Zapier workflow that moves rows from one sheet to another — those are automations. They're fast, reliable, and dumb. If something unexpected happens, they break.\n\nAn agent is more like a junior gardener you give a goal and a handful of tools. \"Find out who emailed me about the project, check my calendar, and propose three meeting times.\" It doesn't have a fixed route — it **looks, decides, acts, repeats**. It might check email first, then notice the sender mentioned a deadline, decide to read that calendar note too, then draft the message. Next time, it might do it in a different order.\n\nConcretely:\n\n| | Automation | Agent |\n|---|---|---|\n| **Decides the steps** | You, upfront | It, in the moment |\n| **Handles surprise** | Breaks | Adapts (within reason) |\n| **Good for** | Reliable, repetitive tasks | Multi-step, fuzzy goals |\n| **Example** | \"Email this report every Monday at 9am\" | \"Find the latest climate funding opportunity and draft a pitch\" |\n\nThe article I pulled that from ([What is an agent?](/learning/what-is-an-agent)) puts it neatly: an LLM is a brilliant intern who can only talk. An agent is that same intern with hands — tools they can grab and use.\n\nDoes that distinction land, or is there a specific thing you're thinking of building where you're wondering which camp it falls into?"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "scenario": "concept",
+      "ttfb_ms": 2602.732500000042,
+      "ttft_ms": 3178.298999999999,
+      "total_ms": 10517.416292000096,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\": \"what-is-an-agent\"}"
+        }
+      ],
+      "cost_usd": 0.000737744,
+      "tokens_out": 357,
+      "tokens_reasoning": 43,
+      "throughput_tps": 34.883720930232556,
+      "providers": [
+        "GMICloud"
+      ],
+      "answer_chars": 992,
+      "answer": "Great article on it, but the short version:\n\n**Automation** is a fixed recipe. \"Every morning at 7am, take this CSV, upload it to that sheet, email the boss.\" It does the same thing every time. If the CSV format changes, it breaks. It follows instructions, it doesn't *decide*.\n\n**An agent** is more like a *doer with judgment*. You give it a goal (\"plan a weekend trip under €300\"), and it figures out the steps itself: check the weather, look up train prices, search for hostels, pick the best option. It decides what tool to use and when. If the first hostel is fully booked, it tries another without being told.\n\nThe core difference in one sentence:\n\n> Automation follows a script. An agent works toward a goal, deciding the next step as it goes.\n\nThat loop from the article is the real magic — **Look → Decide → Act → Repeat** — until the thing is done or it hits a wall. That's why \"agent\" is exciting, and also why you want to keep a human in the loop for anything that's hard to undo."
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "scenario": "concept",
+      "ttfb_ms": 2880.238624999998,
+      "ttft_ms": 3529.9467909999657,
+      "total_ms": 14093.874291000073,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\": \"what-is-an-agent\"}"
+        }
+      ],
+      "cost_usd": 0.000613672,
+      "tokens_out": 549,
+      "tokens_reasoning": 81,
+      "throughput_tps": 40.73304644606025,
+      "providers": [
+        "GMICloud"
+      ],
+      "answer_chars": 1689,
+      "answer": "Great question — the word is everywhere right now, and it's not always used clearly. Here's the short version.\n\n**Normal automation** follows a script. It does the same thing every time, in the same order. Like a zap that says: *if a new row appears in a spreadsheet, send an email*. It's reliable, but brittle — if anything unexpected happens, it breaks.\n\n**An AI agent** decides what to do next, based on what it finds. It has a goal, a set of tools (search, read a file, look something up, run a bit of code), and it works in a loop: look, decide, act, repeat (the article calls this the agent loop). If the weather service fails, an agent might try a different one. If it can't find the picnic address in your calendar, it might search your email for \"picnic\" instead.\n\nSo the one sentence difference:\n\n> **Automation follows a recipe. An agent has a goal and figures out the steps.**\n\nThe other big shift: giving a model tools used to take a team of engineers. Now there's a standard called MCP (think of it like USB for tools — [this article](/learning/what-is-an-api-what-is-mcp) explains it) that makes it a weekend project. That's why you're hearing \"agent\" so much lately.\n\nThe table in the article is useful too:\n\n| Your idea sounds like | You probably want |\n|---|---|\n| \"Turn this into that\" (summarize, translate...) | A plain LLM call |\n| \"Answer questions about my stuff\" | An LLM + your data |\n| \"Find things, check things, do multi-step work\" | An agent with a tool or two |\n\nAnd the honest caveat: a simple LLM call that works perfectly beats a wobbly agent with five tools. Start simple, grow it.\n\nDoes one of those three shapes sound closer to what you're thinking of?"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "scenario": "grounding",
+      "ttfb_ms": 2900.641583000077,
+      "ttft_ms": 7166.628542000079,
+      "total_ms": 11516.720042000059,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\": \"tokens-embeddings-latent-space\"}"
+        }
+      ],
+      "cost_usd": 0.00075852,
+      "tokens_out": 452,
+      "tokens_reasoning": 95,
+      "throughput_tps": 40.02833864682962,
+      "providers": [
+        "GMICloud"
+      ],
+      "answer_chars": 1277,
+      "answer": "Sure. Let me try a different angle.\n\nImagine you have a giant box of Lego bricks. Each brick is a word or idea. Now, instead of keeping them in a pile, you sort them onto a huge table: **things that are alike go near each other**. \"Dog\" goes next to \"puppy\", which is near \"cat\" (they're both pets), which is far from \"bank statement\". That's all an embedding is: a way of saying \"here is exactly where this thing sits on the map of meaning.\"\n\nThe numbers are just the coordinates. Like how your phone knows you're at latitude 52.37, longitude 4.90 — except the map of meaning has *hundreds* of dimensions instead of just two. You can't picture it, but the math works the same way.\n\n**The really cool bit:** because the map is organised by meaning, not by spelling, a Dutch sentence and its English translation end up in almost the same spot. The model doesn't know they're different languages — it just knows they mean the same thing.\n\n**Why you'd use one:** ever searched a folder of notes for \"things about that gardening idea I had\" and got nothing because you used the wrong keyword? Embeddings let you search by *vibe* instead. \"Find stuff similar to this\" is just \"find the nearest points on the map.\"\n\nDoes that click better? Or is there a piece that still feels fuzzy?"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "scenario": "grounding",
+      "ttfb_ms": 3019.9820419999305,
+      "ttft_ms": 3306.0807499999646,
+      "total_ms": 13818.800832999987,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\": \"tokens-embeddings-latent-space\"}"
+        }
+      ],
+      "cost_usd": 0.00061083,
+      "tokens_out": 504,
+      "tokens_reasoning": 70,
+      "throughput_tps": 37.09428129829985,
+      "providers": [
+        "GMICloud"
+      ],
+      "answer_chars": 1542,
+      "answer": "Sure. Let me try a completely different angle, because the article knits together several ideas and the key one is simpler than it sounds.\n\n**An embedding is a location tag for meaning.**\n\nImagine you have a big warehouse with shelves. Every book, every note, every conversation you've ever had lives on one of those shelves. But the shelves aren't labelled alphabetically. They're labelled by *vibe*: what the thing is about.\n\nSo \"dog\" and \"puppy\" sit on neighbouring shelves. \"Dog\" and \"bark\" (the tree kind) are far apart. \"Bark\" (tree) and \"bark\" (dog sound) — the same word — sit in two different places depending on meaning, like two copies of the same book in different sections depending on the topic.\n\nThe embedding is the **shelf number**. It's what the computer writes down so it can find things later without re-reading everything.\n\n**Why this matters for you:**\n\nThe cool thing is you don't need to label the shelves yourself. The model has already done it. So if you have 500 support tickets or 200 recipe ideas or a pile of charity evaluations, you can ask the model: \"find me the 10 things closest to *this thing*.\" It returns the shelves nearest to the one you're pointing at.\n\nThat's semantic search. That's \"related articles\". That's your project being able to say \"oh, you liked *this*? Here's what else lives nearby.\"\n\n**The one thing to remember:** An embedding is just a coordinate. \"Dog\" is one point on the map, \"puppy\" is the next street over, and finding similar things is just checking what's in the neighbourhood."
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "scenario": "grounding",
+      "ttfb_ms": 2421.261167000048,
+      "ttft_ms": 2421.2648749999935,
+      "total_ms": 9469.321499999962,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0,
+      "tokens_out": 0,
+      "tokens_reasoning": 0,
+      "throughput_tps": null,
+      "providers": [],
+      "answer_chars": 1789,
+      "answer": "\n\nSure. The article you saw probably covered the formal definition, so let me try it a different way.\n\nImagine you have to describe every word in the English language using just three numbers on a scale of 1 to 10.\n\n| Word | How warm? | How alive? | How big? |\n| --- | --- | --- | --- |\n| *puppy* | 9 | 9 | 3 |\n| *dog* | 8 | 9 | 5 |\n| *rock* | 2 | 1 | 4 |\n| *planet* | 4 | 2 | 10 |\n\nAlready two things happen:\n\n1. **Similar words end up close together.** *Puppy* and *dog* are neighbors — they share a high \"alive\" score. *Rock* and *planet* are nearby too (low \"alive,\" medium \"big\").\n\n2. **You can do arithmetic.** *Puppy* minus *dog* = (1, 0, -2). That vector — \"smaller, equally warm, equally alive\" — is basically *baby*. You just discovered that *puppy* = *baby dog*, without anyone teaching you the word \"puppy.\"\n\n---\n\n**Embeddings do the same thing, with two twists:**\n\n- Instead of three dimensions (warm, alive, big), modern models use hundreds or thousands. Nobody names the dimensions anymore. They just emerge from the data.\n- The \"coordinates\" are decimals between -1 and 1, not nice round numbers.\n\nWhat matters is the **distance** between them. A sentence like \"I loved that movie\" sits close to \"The film was fantastic,\" far from \"This movie was terrible.\" The model never reads a dictionary definition — it just learned the geometry of meaning by watching billions of sentences.\n\nSo an embedding is really just **a coordinate on a map of meaning**. Two things that mean similar things have similar coordinates. And that's why you can search, cluster, or compare text by doing math on numbers instead of reading words.\n\n---\n\nDoes that click? If it does, the next natural question is usually \"so how do I actually *use* one of these things\" — happy to go there if you like."
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "scenario": "brainstorm",
+      "ttfb_ms": 2869.127000000095,
+      "ttft_ms": 5055.9882080000825,
+      "total_ms": 20186.929125000024,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_module",
+          "arguments": "{\"slug\": \"google-sheet\"}"
+        },
+        {
+          "name": "read_module",
+          "arguments": "{\"slug\": \"content-finder\"}"
+        }
+      ],
+      "cost_usd": 0.0007372500000000001,
+      "tokens_out": 1042,
+      "tokens_reasoning": 564,
+      "throughput_tps": 52.165206508135164,
+      "providers": [
+        "GMICloud"
+      ],
+      "answer_chars": 1608,
+      "answer": "That's the perfect problem to solve. A few directions you could grow this:\n\n**Option 1: The suggestion board**\nA Google Sheet with a simple form link. Anyone drops a title, author, and a sentence on why they want to read it. No more scrolling through group chat. You open the sheet and see all the candidates in one place.\n\n**Option 2: The suggestion board + AI picker**\nSame sheet, but when it's time to choose, a small AI assistant reads the pile and helps you pick: *\"You have 7 suggestions. Three are thrillers, two are non-fiction, one is a doorstopper. Given your club's last three books were novels, maybe this is the moment for that non-fiction pick.\"* It's like having a friend who read the whole backlog.\n\n**Option 3: The content finder version**\nInstead of members suggesting, a content finder scans for new books that fit your club's taste — reviewed well, right length, matching your genres — and brings you a shortlist each month. Less communal, but great for when the group chat has gone quiet.\n\nI'd lean toward **Option 2** — it keeps the human part (members suggesting books they actually care about) and adds just enough AI to make the decision easier.\n\nIngredients would be:\n- A **Google Sheet** with columns for title, author, suggester, why-one-sentence\n- A **Summarizer** or **Knowledge assistant** that reads the sheet and gives you a pick with a reason\n\nThe first step: create a Google Sheet with those four columns, share the link in your group chat, and collect a few suggestions. That's already 80% of the win.\n\nWant to go with that? Or does one of the other options pull you more?"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "scenario": "brainstorm",
+      "ttfb_ms": 2883.5525419999612,
+      "ttft_ms": 5038.293208000017,
+      "total_ms": 5691.298667000025,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0.00034594,
+      "tokens_out": 226,
+      "tokens_reasoning": 171,
+      "throughput_tps": 40.676745860331174,
+      "providers": [
+        "GMICloud"
+      ],
+      "answer_chars": 223,
+      "answer": "Sounds like a classic case of chat-shaped noise swallowing good ideas. I can already picture a simple fix.\n\nOne question: do you want people to **suggest** books (with a short pitch), or **vote** on a pre-set list, or both?"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "scenario": "brainstorm",
+      "ttfb_ms": 2861.977708999999,
+      "ttft_ms": 5317.509666999918,
+      "total_ms": 6865.83579199994,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0.000356328,
+      "tokens_out": 279,
+      "tokens_reasoning": 179,
+      "throughput_tps": 41.474654377880185,
+      "providers": [
+        "GMICloud"
+      ],
+      "answer_chars": 410,
+      "answer": "That's a perfect little garden project — contained, real, and everyone will actually use it.\n\nOne more question: how do you **want** the picking to work? Two common shapes:\n\n1. **Suggestion pool** — people nominate, then you or the group vote\n2. **Rotating picker** — each person gets a turn to choose, and the tool just reminds everyone whose turn it is\n\nDoes one of those feel right, or is it something else?"
+    },
+    {
+      "model": "qwen/qwen3.7-plus",
+      "scenario": "concept",
+      "ttfb_ms": 1086.4781669999938,
+      "ttft_ms": 38010.68829200009,
+      "total_ms": 42196.833125000005,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\": \"what-is-an-agent\"}"
+        }
+      ],
+      "cost_usd": 0.0050688,
+      "tokens_out": 2227,
+      "tokens_reasoning": 1957,
+      "throughput_tps": 52.969578764598154,
+      "providers": [
+        "Alibaba"
+      ],
+      "answer_chars": 998,
+      "answer": "The short version: traditional automation follows a strict, pre-written script, while an agent decides its own steps to reach a goal.\n\nThink of it like this:\n* **Normal automation** is a rigid recipe. \"Every morning, download the report and email it to Dave.\" If the report's name changes, the script breaks.\n* **An agent** is a goal with hands. You tell it, \"Make sure Dave has the latest report.\" It has tools—like accessing your files or sending emails—looks at the situation, figures out the steps, and adapts if something looks different.\n\nAn agent just runs a simple loop: it *looks* at the goal, *decides* the next step, *acts* using a tool, and *repeats* until the job is done. \n\nIf your task is exactly the same every time, normal automation is best—it is predictable. If you need something that can handle messy exceptions or figure out the steps itself, that is when an agent is the right seed to plant.\n\nIs there a repetitive task in your life or work you are trying to solve right now?"
+    },
+    {
+      "model": "qwen/qwen3.7-plus",
+      "scenario": "concept",
+      "ttfb_ms": 1026.4277920000022,
+      "ttft_ms": 32710.360624999972,
+      "total_ms": 34940.584417000064,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0.00340672,
+      "tokens_out": 1885,
+      "tokens_reasoning": 1756,
+      "throughput_tps": 54.09050474906024,
+      "providers": [
+        "Alibaba"
+      ],
+      "answer_chars": 552,
+      "answer": "Normal automation follows a strict, pre-written script: if X happens, do Y. An AI agent is given a goal and the tools to figure out the steps itself, making decisions along the way when things get unpredictable. \n\n**An agent can figure out the steps to reach a goal; automation only follows a fixed list of steps.**\n\nIf you want to dig into how this actually works, there is a short article here: [What is an agent?](/learning/what-is-an-agent). \n\nIs there a specific task you are wondering if an agent would be good for, or just exploring the concept?"
+    },
+    {
+      "model": "qwen/qwen3.7-plus",
+      "scenario": "concept",
+      "ttfb_ms": 1369.1437500000466,
+      "ttft_ms": 36024.85262500006,
+      "total_ms": 39422.71279100003,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\": \"what-is-an-agent\"}"
+        }
+      ],
+      "cost_usd": 0.00488064,
+      "tokens_out": 2080,
+      "tokens_reasoning": 1853,
+      "throughput_tps": 52.96259516716319,
+      "providers": [
+        "Alibaba"
+      ],
+      "answer_chars": 879,
+      "answer": "Normal automation is a strict set of rules you write ahead of time: *If X happens, do Y.* It works perfectly until something slightly unexpected comes along, and then it breaks.\n\nAn AI agent has a language model (the technology behind ChatGPT) figuring out the steps *as it goes*. It works in a loop toward a goal: looking at what needs to get done, deciding which tool to use next, acting, and repeating until the job is finished.\n\n**Normal automation follows a script, whereas an agent figures out the steps to reach a goal.**\n\nTo use a concrete example: if you were processing grant applications, a normal automation just moves the PDFs into a new folder. An agent would actually read them, pull out the messy budget numbers, and check them against your charity criteria on its own. \n\nIs there a specific task or project you've been seeing the word \"agent\" attached to lately?"
+    },
+    {
+      "model": "qwen/qwen3.7-plus",
+      "scenario": "grounding",
+      "ttfb_ms": 1087.1068330000853,
+      "ttft_ms": 42014.645625000005,
+      "total_ms": 45890.37487499998,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\": \"tokens-embeddings-latent-space\"}"
+        }
+      ],
+      "cost_usd": 0.00534976,
+      "tokens_out": 2431,
+      "tokens_reasoning": 2177,
+      "throughput_tps": 53.201733269138174,
+      "providers": [
+        "Alibaba"
+      ],
+      "answer_chars": 902,
+      "answer": "Think of an embedding as a **GPS coordinate for meaning**.\n\nNormally, a computer just sees symbols. The word \"dog\" is just letters; to a computer, it has no more in common with \"puppy\" than with \"brick.\"\n\nAn embedding translates that word into a long list of numbers—a location on a giant, invisible map inside the AI. The AI learns to group similar things together, so \"dog\" and \"puppy\" end up at coordinates right next to each other. \"Dog\" and \"brick\" end up on opposite sides of the map. Because of this, \"The cat sat on the mat\" and its Dutch translation end up in almost the exact same spot, since they mean the same thing.\n\nThat is why they are so useful: embeddings let a computer search by *meaning* instead of just matching exact letters. A search for \"furry pet\" suddenly matches a document that only says \"golden retriever.\"\n\nDoes that help the idea of a \"map of meaning\" click a bit better?"
+    },
+    {
+      "model": "qwen/qwen3.7-plus",
+      "scenario": "grounding",
+      "ttfb_ms": 981.8198330000741,
+      "ttft_ms": 23500.446750000003,
+      "total_ms": 27813.432583000045,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0.002904,
+      "tokens_out": 1491,
+      "tokens_reasoning": 1246,
+      "throughput_tps": 53.74522384831663,
+      "providers": [
+        "Alibaba"
+      ],
+      "answer_chars": 1031,
+      "answer": "Think of embeddings as **a map of meaning**.\n\nTo a computer, the words \"apple\" and \"banana\" are just completely different jumbles of letters. But to you, they are both fruits. Embeddings are the trick we use to teach the computer that connection.\n\nWe do this by turning every word—and even whole sentences or images—into a list of numbers, like GPS coordinates. Then we drop those coordinates onto a giant, invisible map. On this map, things with similar meanings end up sitting next to each other. \"Apple\" and \"banana\" are neighbors. \"Apple\" and \"car engine\" are very far apart. \n\nThis is how an AI figures out that \"dog\" and \"puppy\" are related, or how it knows that \"time flies like an arrow\" and \"fruit flies like a banana\" mean two very different things.\n\nThe article [Tokens, embeddings, and latent space](/learning/tokens-embeddings-latent-space) walks through this with a few more examples if you want to see the whole picture.\n\nDoes thinking of them as a set of coordinates on a giant map help the idea click a bit better?"
+    },
+    {
+      "model": "qwen/qwen3.7-plus",
+      "scenario": "grounding",
+      "ttfb_ms": 1198.579999999958,
+      "ttft_ms": 32681.516042000032,
+      "total_ms": 37462.03366700001,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0,
+      "tokens_out": 0,
+      "tokens_reasoning": 0,
+      "throughput_tps": null,
+      "providers": [],
+      "answer_chars": 1115,
+      "answer": "Think of a regular map. Cities are dots, and their position tells you something: London and Paris are close, so they share traits; London and Tokyo are far apart. \n\nEmbeddings do exactly this, but for text. \n\nTo an AI, the word \"dog\" is just a jumble of letters. It doesn't know what it means. So, the AI turns every piece of text into a specific list of numbers—giving it a coordinate in a giant digital map. Words with similar meanings get coordinates that are very close to each other. In this map, \"dog\" and \"puppy\" are practically neighbors, while \"dog\" and \"taxes\" are on opposite sides of the world.\n\n**An embedding is a list of numbers that gives a piece of text an address in a map of meaning.** It’s how the AI actually \"reads\" concepts, letting it know that a question about *canines* is looking for a text about *dogs*.\n\nWe have an article that dives a bit deeper into how this works: [Tokens, embeddings, and latent space](/learning/tokens-embeddings-latent-space). \n\nDoes the map analogy help it click, or would it be clearer to talk about how the AI uses this map to actually fetch the right answers?"
+    },
+    {
+      "model": "qwen/qwen3.7-plus",
+      "scenario": "brainstorm",
+      "ttfb_ms": 1034.807458999916,
+      "ttft_ms": 18648.677792000002,
+      "total_ms": 20219.76891699992,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0.00237536,
+      "tokens_out": 1066,
+      "tokens_reasoning": 975,
+      "throughput_tps": 52.94526671302275,
+      "providers": [
+        "Alibaba"
+      ],
+      "answer_chars": 385,
+      "answer": "You absolutely can. A simple web page where anyone in the club can drop a title and see the pile would solve the \"lost in chat\" problem instantly. As a nice touch, it could even automatically pull the book cover and a short blurb so the list is actually readable.\n\nHow does the club usually make the final pick once you have a shortlist—do you take a vote, or does someone just decide?"
+    },
+    {
+      "model": "qwen/qwen3.7-plus",
+      "scenario": "brainstorm",
+      "ttfb_ms": 1041.6646669999463,
+      "ttft_ms": 16447.19299999997,
+      "total_ms": 19290.30700000003,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0,
+      "tokens_out": 0,
+      "tokens_reasoning": 0,
+      "throughput_tps": null,
+      "providers": [],
+      "answer_chars": 673,
+      "answer": "That is a perfect fit for a little tool. The \"lost in the group chat\" problem is exactly what we solve here.\n\nWe could build a simple nomination board. People add the book title, the author, and maybe a one-sentence pitch for why to read it.\n\nTo hold all that info, we could use a [Google Sheet](/garden/modules/google-sheet) as the backbone. Then, we could wrap it in a simple [Web app](/garden/modules/web-app) so your friends can just tap a link on their phones to add their suggestions, without ever needing to look at a spreadsheet.\n\nWould you want this tool to handle the actual voting too, or just keep a neat list of nominations before you vote in the regular chat?"
+    },
+    {
+      "model": "qwen/qwen3.7-plus",
+      "scenario": "brainstorm",
+      "ttfb_ms": 1016.9019170000684,
+      "ttft_ms": 17337.509292000206,
+      "total_ms": 19715.689459000016,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0.00234208,
+      "tokens_out": 1040,
+      "tokens_reasoning": 901,
+      "throughput_tps": 52.99363057324841,
+      "providers": [
+        "Alibaba"
+      ],
+      "answer_chars": 595,
+      "answer": "That is a perfect problem to solve. A group chat is a terrible place to keep a list of choices!\n\nYou could easily build a little **book club ballot**. People go to a simple webpage, see the current suggestions, add their own, and vote for their top picks. We could use a **Google Sheet** behind the scenes to store the books and tally the votes, and a **Web app** to display it nicely on everyone's phones.\n\nTo help me picture it better: when someone suggests a book, what information do you want them to include—just the title and author, or maybe a short pitch for why the club should read it?"
+    },
+    {
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "scenario": "concept",
+      "error": "OpenRouter 429: {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"google/gemma-4-26b-a4b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Darkbloom\",\"is_byok"
+    },
+    {
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "scenario": "concept",
+      "ttfb_ms": 8988.813166999957,
+      "ttft_ms": 8988.813666999806,
+      "total_ms": 16224.903541999869,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0,
+      "tokens_out": 379,
+      "tokens_reasoning": 0,
+      "throughput_tps": 23.588722225679966,
+      "providers": [
+        "Darkbloom"
+      ],
+      "answer_chars": 1507,
+      "answer": "It's a great question. The term \"agent\" is definitely being thrown around a lot right now, often without much precision.\n\nThe simplest way to look at it is the difference between a **recipe** and a **chef**.\n\n*   **A normal automation** is like a recipe. It follows a strict, predefined script: \"If *this* happens, then do *that*.\" It’s reliable and fast, but if something unexpected occurs—like an ingredient is missing or the oven temperature is wrong—the automation just breaks or does nothing.\n*   **An AI agent** is like a chef. You give it a goal (like \"make a delicious dinner for four people\") and some constraints, but you don't give it step-by-step instructions. The agent uses reasoning to decide which tools to use, how to handle surprises, and how to adjust its plan if things don't go perfectly.\n\nHere is a quick breakdown of how they differ in practice:\n\n| Feature | Normal Automation | AI Agent |\n| :--- | :--- | :--- |\n| **Logic** | Deterministic (Predictable/Fixed) | Probabilistic (Reasoning-based) |\n| **Instructions** | \"If A, then do B\" | \"Achieve goal X using tools Y and Z\" |\n| **Handling Errors** | Stops or fails when it hits an unknown | Tries a different path or asks for help |\n| **Complexity** | Best for repetitive, simple tasks | Best for messy, multi-step tasks |\n\nYou can read more about this distinction in our guide on [What is an agent?](/learning/what-is-an-agent).\n\nAre you thinking about a specific task you'd like to automate, or are you just curious about the hype?"
+    },
+    {
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "scenario": "concept",
+      "ttfb_ms": 6763.681708000135,
+      "ttft_ms": 6763.686999999918,
+      "total_ms": 21615.632500000065,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0,
+      "tokens_out": 347,
+      "tokens_reasoning": 0,
+      "throughput_tps": 16.127532998698644,
+      "providers": [
+        "Darkbloom"
+      ],
+      "answer_chars": 1413,
+      "answer": "It's a great question—the word \"agent\" is definitely getting tossed around everywhere lately.\n\nThe simplest way to think about it is the difference between a **recipe** and a **chef**.\n\n**Normal automation** is like a recipe. It follows a strict, step-by-step sequence: *If A happens, do B, then do C.* It’s incredibly reliable and efficient, but it can't handle surprises. If the ingredients change slightly, the automation breaks because it doesn't \"know\" how to deviate from the instructions.\n\nAn **AI agent** is more like a chef. You give it a goal—like \"make a delicious dinner with what's in the fridge\"—and it figures out the steps itself. It looks at the ingredients (the data), plans the steps, and can even change its plan if it realizes it's out of salt or the oven is running too hot.\n\nIn technical terms, an agent is what happens [when a language model gets tools and a goal](https://vibe-garden.com/learning/what-is-an-agent). Instead of just predicting the next word, it uses that reasoning ability to:\n1. **Observe:** Look at the current situation.\n2. **Think:** Decide what the next best step is to reach the goal.\n3. **Act:** Use a tool (like searching the web, writing a file, or sending an email) to perform that step.\n4. **Repeat:** Check if the goal was reached and try again if not.\n\nDoes that distinction make sense, or would you like an example of how this might look for a specific task?"
+    },
+    {
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "scenario": "grounding",
+      "ttfb_ms": 12973.470082999906,
+      "ttft_ms": null,
+      "total_ms": 26967.429499999853,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\":\"tokens-embeddings-latent-space\"}"
+        }
+      ],
+      "cost_usd": 0,
+      "tokens_out": 21,
+      "tokens_reasoning": 0,
+      "throughput_tps": 1.6260162601626018,
+      "providers": [
+        "Darkbloom"
+      ],
+      "answer_chars": 0,
+      "answer": ""
+    },
+    {
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "scenario": "grounding",
+      "ttfb_ms": 13173.573416999774,
+      "ttft_ms": null,
+      "total_ms": 13174.418208999792,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0,
+      "tokens_out": 0,
+      "tokens_reasoning": 0,
+      "throughput_tps": null,
+      "providers": [],
+      "answer_chars": 0,
+      "answer": ""
+    },
+    {
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "scenario": "grounding",
+      "ttfb_ms": 13173.280749999918,
+      "ttft_ms": null,
+      "total_ms": 13173.437082999852,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0,
+      "tokens_out": 0,
+      "tokens_reasoning": 0,
+      "throughput_tps": null,
+      "providers": [],
+      "answer_chars": 0,
+      "answer": ""
+    },
+    {
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "scenario": "brainstorm",
+      "ttfb_ms": 7513.156791999936,
+      "ttft_ms": 7513.157374999952,
+      "total_ms": 8971.950916999951,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0,
+      "tokens_out": 114,
+      "tokens_reasoning": 0,
+      "throughput_tps": 12.956017729287419,
+      "providers": [
+        "Darkbloom"
+      ],
+      "answer_chars": 528,
+      "answer": "Definitely. We can turn that chaotic group chat into a organized voting system or a shortlist generator.\n\nInstead of scrolling through hundreds of messages, you could build a little web app where everyone's suggestions are collected in one place, categorized by genre, and then voted on.\n\nTo figure out the best way to build this, tell me: **do you want it to be a simple list where people just click \"vote,\" or something a bit more clever, like an AI that reads the suggestions and suggests a \"theme\" for the next few months?**"
+    },
+    {
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "scenario": "brainstorm",
+      "ttfb_ms": 7074.372667000163,
+      "ttft_ms": 7074.373083000071,
+      "total_ms": 9681.346625000006,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0,
+      "tokens_out": 176,
+      "tokens_reasoning": 0,
+      "throughput_tps": 18.557570645297343,
+      "providers": [
+        "Darkbloom"
+      ],
+      "answer_chars": 767,
+      "answer": "That is a perfect candidate for a project. We can turn that chaotic group chat noise into a structured shortlist.\n\nThink of it like this: we can use AI to read through all those messages and pull out the titles and authors, then save them somewhere organized.\n\nWe could potentially use a few of our building blocks for this:\n* **Summarizer**: To look at a long chat export and pull out just the book names.\n* **Google Sheet**: To act as your \"master list\" where everyone can see the current contenders.\n* **Web app**: If you want a pretty little interface where people can click \"vote\" on their favorite.\n\nTo keep it simple for now, do you want the goal to be just a **list of suggestions** that is easy to read, or a **voting system** where people can pick a winner?"
+    },
+    {
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "scenario": "brainstorm",
+      "ttfb_ms": 10765.836790999863,
+      "ttft_ms": 10765.837415999966,
+      "total_ms": 17772.266832999885,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0,
+      "tokens_out": 132,
+      "tokens_reasoning": 0,
+      "throughput_tps": 7.484690405987752,
+      "providers": [
+        "Darkbloom"
+      ],
+      "answer_chars": 562,
+      "answer": "That is a perfect use case. You could turn that chaotic chat stream into a structured list of options that everyone can vote on.\n\nInstead of scrolling through hundreds of messages, you could have a simple tool where:\n1. It **extracts meaning from text** (pulling book titles and authors out of those messy messages).\n2. It saves them to a **Google Sheet** (a simple list everyone can see).\n3. It presents them in a **Web app** (a clean little dashboard for voting).\n\nTo get a feel for the scale, how many people are in the club and where do you all usually chat?"
+    },
+    {
+      "model": "deepseek/deepseek-v4-pro",
+      "scenario": "concept",
+      "ttfb_ms": 2597.2531249999997,
+      "ttft_ms": 13245.13075,
+      "total_ms": 21664.474875,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\": \"what-is-an-agent\"}"
+        }
+      ],
+      "cost_usd": 0.003771507,
+      "tokens_out": 529,
+      "tokens_reasoning": 138,
+      "throughput_tps": 24.824026278742377,
+      "providers": [
+        "StreamLake"
+      ],
+      "answer_chars": 1443,
+      "answer": "Great question — and the confusion is real, because people slap \"agent\" on everything now.\n\n**The short version: normal automation follows a script. An agent figures out its own next step.**\n\nHere's the difference in practice:\n\n| | Normal automation | Agent |\n|---|---|---|\n| **What it does** | The same sequence every time | Decides what to do as it goes |\n| **When it works** | The problem is predictable | The path isn't known in advance |\n| **Surprises** | Breaks | Handles them (or asks for help) |\n| **Example** | \"Every Friday, email me a report from this spreadsheet\" | \"Find the cheapest flight to Barcelona in June, considering my calendar and budget\" |\n\nNormal automation is a recipe: do step 1, then step 2, then step 3. If the spreadsheet moved, it fails.\n\nAn agent is the same language model you chat with, but wired into a loop: **look at the goal → decide what to do next → use a tool (search, read a file, do math) → check the result → repeat** until the job is done. It can pivot when it hits something unexpected.\n\nThe reason you're hearing \"agent\" everywhere now is that models got good enough at that deciding step, and a standard called MCP made plugging tools into them easy — like USB for AI. What took a team of engineers two years ago is now a weekend project.\n\n**One rule of thumb:** start with the simplest thing that works. A single well-aimed LLM call beats a wobbly five-tool agent. You can always grow it later."
+    },
+    {
+      "model": "deepseek/deepseek-v4-pro",
+      "scenario": "concept",
+      "ttfb_ms": 856.5200000000004,
+      "ttft_ms": 9872.179542000002,
+      "total_ms": 21945.139958000003,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\": \"what-is-an-agent\"}"
+        }
+      ],
+      "cost_usd": 0.001576138,
+      "tokens_out": 633,
+      "tokens_reasoning": 191,
+      "throughput_tps": 30.82091732398481,
+      "providers": [
+        "StreamLake"
+      ],
+      "answer_chars": 1698,
+      "answer": "Ah, that's the right question to ask. The word gets tossed around so loosely it's almost lost its meaning.\n\nHere's the real distinction:\n\n- **Normal automation** is a recipe: *if this happens, do that.* Every step is known in advance. Invoice arrives → save it to a folder. It never has to figure anything out.\n\n- **An agent** is more like sending someone to the store with a shopping list and some money. It has a goal, a set of tools, and it decides the steps as it goes. It might look at what's on sale, remember you're allergic to peanuts, swap in a substitute when they're out of stock — all without you pre-scripting those choices.\n\nThe technical bit that makes this possible is a loop: look at the situation → decide the next move → act (call a tool, search, calculate) → look again → repeat until done. That loop, not the AI itself, is what makes it an agent.\n\nA plain LLM answers a question. An agent **does** something.\n\n---\n\nA practical way to spot the difference:\n\n| Scenario | What it is |\n|---|---|\n| \"Forward every receipt to my accountant\" | Automation |\n| \"Go through my inbox, find receipts, check them against my budget, flag anything over €100\" | Agent |\n\nThe agent makes judgment calls. The automation follows a script.\n\nMost projects here start simpler than they need to — a single LLM call often beats a wobbly multi-step agent — and you can always grow it later. For a deeper dive: [What is an agent?](/learning/what-is-an-agent) walks through the loop and tools, and [What is an LLM, really?](/learning/what-is-an-llm) explains the engine underneath.\n\nAre you mulling this over because you're thinking of building something that *decides* rather than just follows a script?"
+    },
+    {
+      "model": "deepseek/deepseek-v4-pro",
+      "scenario": "concept",
+      "ttfb_ms": 789.8448750000025,
+      "ttft_ms": 6683.989499999996,
+      "total_ms": 16493.902833,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\": \"what-is-an-agent\"}"
+        }
+      ],
+      "cost_usd": 0.001416336,
+      "tokens_out": 521,
+      "tokens_reasoning": 118,
+      "throughput_tps": 32.404527926359,
+      "providers": [
+        "StreamLake"
+      ],
+      "answer_chars": 1568,
+      "answer": "Great question — the confusion is real, because people are slapping \"agent\" on everything right now. Here's the actual difference:\n\n**Normal automation** follows a script. You define every step in advance: *when X happens, do Y, then Z.* It never improvises. Think a Zapier zap that saves email attachments to a Dropbox folder. Reliable, rigid, dumb.\n\n**An AI agent** decides its own next step. You give it a goal and some tools, and it works in a loop: look at the situation → decide what to do → use a tool → look again → repeat until done. Same starting point, different path each time.\n\nConcrete example: \"Let me know if this new research paper is relevant to my project.\"\n\n| | Normal automation | AI agent |\n|---|---|---|\n| What it does | Checks if the paper's title contains a keyword you listed. Misses a relevant paper with a different title. | Reads the paper, compares it to your project notes, and says \"this section on cash transfers is directly relevant, but the rest is about a different context.\" |\n| How it works | Fixed keyword match → alert | Goal (\"judge relevance\") + tools (read paper, read project notes) → reasons → answers |\n\n**The one-line version:** automation is a recipe; an agent is a cook who can read the kitchen.\n\nFor most projects, start simple — a plain LLM call often does the job — and add agency only when the task genuinely needs multi-step reasoning. The article [What is an agent?](/learning/what-is-an-agent) goes deeper if you want the full picture.\n\nIs there a specific task you're wondering whether to automate or agent-ify?"
+    },
+    {
+      "model": "deepseek/deepseek-v4-pro",
+      "scenario": "grounding",
+      "ttfb_ms": 2532.0415420000063,
+      "ttft_ms": 3869.54866700001,
+      "total_ms": 18029.28175000001,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\": \"tokens-embeddings-latent-space\"}"
+        }
+      ],
+      "cost_usd": 0.004318685,
+      "tokens_out": 522,
+      "tokens_reasoning": 216,
+      "throughput_tps": 30.69865913902611,
+      "providers": [
+        "StreamLake"
+      ],
+      "answer_chars": 1050,
+      "answer": "Imagine you have a giant map where every word, every sentence, every idea has a spot. But instead of two directions (north-south, east-west), this map has hundreds of directions — things like \"living-ness,\" \"size,\" \"formality,\" and lots of others that don't have English names.\n\nThat spot is an **embedding**: just a long list of numbers, like coordinates. And here's the clever bit: things that mean similar things get placed near each other. \"Dog\" lands close to \"puppy.\" \"Invoice\" lands close to \"receipt.\" \"The cat sat on the mat\" lands right next to \"De kat zat op de mat,\" because they mean the same thing even though they look nothing alike.\n\nThis is why you can search a pile of notes by meaning instead of by exact words. You take every note, find its coordinates, and store those. Then \"show me everything like this one\" becomes \"what else is nearby on the map?\"\n\n**Embeddings turn meaning into location, and location is something computers are very fast at comparing.**\n\nDoes that click? Or is there a specific part that still feels fuzzy?"
+    },
+    {
+      "model": "deepseek/deepseek-v4-pro",
+      "scenario": "grounding",
+      "ttfb_ms": 2523.637082999994,
+      "ttft_ms": 14746.591624999986,
+      "total_ms": 21424.501165999987,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\": \"tokens-embeddings-latent-space\"}"
+        }
+      ],
+      "cost_usd": 0.003697314,
+      "tokens_out": 444,
+      "tokens_reasoning": 137,
+      "throughput_tps": 21.765772832001566,
+      "providers": [
+        "StreamLake"
+      ],
+      "answer_chars": 1121,
+      "answer": "Here's the short version:\n\n**An embedding is a list of numbers that represents what something *means* — like coordinates on a map of ideas.**\n\nImagine a giant map where every word, sentence, or image has a spot. On this map, \"dog\" sits right next to \"puppy,\" but miles away from \"invoice.\" A Dutch sentence like \"de kat zat op de mat\" lands in almost the exact same spot as \"the cat sat on the mat,\" because they mean the same thing even though the words look completely different.\n\nThat's the surprising part: the map is organized by **meaning**, not by spelling or language. It's one shared space.\n\nPractically, embeddings are what let you search your own stuff by vibe rather than by keyword. You take a pile of notes, recipes, or support emails, turn each one into its embedding (its coordinate), and store them. Then \"find things similar to this one\" becomes as simple as \"find the nearest points on the map.\" That's how semantic search works, and how an AI can pull the right three documents out of your ten thousand.\n\n**It's like giving every idea a GPS pin — and then being able to see which ones are neighbors.**"
+    },
+    {
+      "model": "deepseek/deepseek-v4-pro",
+      "scenario": "grounding",
+      "ttfb_ms": 2228.793875000003,
+      "ttft_ms": 7384.565207999985,
+      "total_ms": 16052.162374999985,
+      "rounds": 2,
+      "tool_calls": [
+        {
+          "name": "read_article",
+          "arguments": "{\"slug\": \"tokens-embeddings-latent-space\"}"
+        }
+      ],
+      "cost_usd": 0.0019100089999999998,
+      "tokens_out": 482,
+      "tokens_reasoning": 103,
+      "throughput_tps": 30.450439067534273,
+      "providers": [
+        "StreamLake"
+      ],
+      "answer_chars": 1395,
+      "answer": "Here's the shortest version: **an embedding is a set of coordinates that captures what something means.**\n\n---\n\nImagine a giant map — not a map of places, but a map of *meaning*. On this map:\n\n- \"Dog\" sits right next to \"puppy.\"\n- \"Invoice\" is somewhere far away, near \"receipt\" and \"payment.\"\n- The Dutch \"hond\" lands in almost the same spot as the English \"dog,\" because they mean the same thing.\n\nAn embedding is just the coordinates of a word (or sentence, or photo) on that map. A long list of numbers, like GPS coordinates, but with hundreds of dimensions instead of two.\n\n---\n\nThree things that make this useful:\n\n1. **\"Find things like this\" becomes easy.** You take your hundred recipes, compute an embedding for each, and now \"find recipes similar to this lasagna\" is just \"find the nearest points on the map.\" No keywords needed — the model understands that \"aubergine\" and \"eggplant\" are the same thing.\n\n2. **It's why search works across languages.** The same map holds Dutch, English, Japanese, whatever — different roads to the same locations.\n\n3. **It's how an AI can look at your documents.** When you ask a question, the system finds the ten files whose embeddings are closest to your question, and feeds those to the model. That's \"semantic search\" — a phrase worth knowing.\n\n---\n\nWas it the \"coordinates in hundreds of dimensions\" part that tripped you up, or something else?"
+    },
+    {
+      "model": "deepseek/deepseek-v4-pro",
+      "scenario": "brainstorm",
+      "ttfb_ms": 1253.175458999991,
+      "ttft_ms": 5693.541417,
+      "total_ms": 7741.476166999986,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0.001261766,
+      "tokens_out": 274,
+      "tokens_reasoning": 194,
+      "throughput_tps": 35.93913955928647,
+      "providers": [
+        "StreamLake"
+      ],
+      "answer_chars": 330,
+      "answer": "Oh, that's a classic one — the group chat is where suggestions go to die. A small tool could totally fix this.\n\nBefore I suggest a shape, one question: do you want people to just submit ideas into a tidy list, or would you also want them to **vote or rank** the suggestions? (Even just a \"I'd read this\" thumbs-up changes things.)"
+    },
+    {
+      "model": "deepseek/deepseek-v4-pro",
+      "scenario": "brainstorm",
+      "ttfb_ms": 838.728208000015,
+      "ttft_ms": 5478.771458000003,
+      "total_ms": 10329.721292000002,
+      "rounds": 1,
+      "tool_calls": [],
+      "cost_usd": 0.00071768,
+      "tokens_out": 362,
+      "tokens_reasoning": 161,
+      "throughput_tps": 35.49715630515787,
+      "providers": [
+        "StreamLake"
+      ],
+      "answer_chars": 892,
+      "answer": "That's such a relatable problem — group chat is where good ideas go to die. And yes, you can absolutely build something for this.\n\nA few directions it could go:\n\n- **A simple suggestion board** — a little web app where people drop a title + author + why they want to read it. Everyone can see the list anytime without scrolling.\n- **A suggestion board + voting** — same idea, but when it's time to pick, each person gets a few votes. Winner rises to the top.\n- **A \"book pitch\" collector** — people submit a short voice note or paragraph making their case, and you compile them into a little packet before voting night.\n\nAll of these are doable with what's on this site.\n\nOne question before we dig further: **how many people are in the club, and are they the kind of crew who'd actually visit a little web page, or would they prefer something that works inside the chat they're already in?**"
+    },
+    {
+      "model": "deepseek/deepseek-v4-pro",
+      "scenario": "brainstorm",
+      "ttfb_ms": 14635.004665999993,
+      "ttft_ms": 20033.638416,
+      "total_ms": 39022.90970799999,
+      "rounds": 3,
+      "tool_calls": [
+        {
+          "name": "read_module",
+          "arguments": "{\"slug\": \"web-app\"}"
+        },
+        {
+          "name": "read_module",
+          "arguments": "{\"slug\": \"google-sheet\"}"
+        },
+        {
+          "name": "visualize_flow",
+          "arguments": "{\"diagram\": \"flowchart LR\\n    A[Club members] -->|visit URL| B[Web app]\\n    B -->|reads suggestions| C[Google Sheet]\\n    A -->|click vote| B\\n    B -->|adds +1 vote| C\\n    D[You] -->|add books, tidy up| C\", \"title\": \"Book club voting flow\"}"
+        }
+      ],
+      "cost_usd": 0.006787323,
+      "tokens_out": 1050,
+      "tokens_reasoning": 537,
+      "throughput_tps": 44.13433651380774,
+      "providers": [
+        "Novita",
+        "StreamLake"
+      ],
+      "answer_chars": 800,
+      "answer": "So here's the picture:\n\n- Members open a link on their phone, see the list of suggested books, tap one to vote.\n- Votes land in the Google Sheet, which you can also open anytime to add new suggestions or clean things up.\n- No more scrolling back through WhatsApp to find who suggested what.\n\n**The idea in one sentence:** a one-page voting site that reads from and writes to a shared Google Sheet so your book club picks its next read without the group chat chaos.\n\n**Ingredients:** Google Sheet + Web app (static page with a tiny dynamic helper for the API key).\n\n**Tiny first step:** create the sheet with three columns — *title, nominated by, votes* — and put a few real suggestions in it. That takes five minutes and the data is ready before you write a line of code.\n\nSound like the right shape?"
+    }
+  ]
+}
