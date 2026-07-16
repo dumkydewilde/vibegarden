@@ -117,6 +117,15 @@ Core landed 2026-07-14, see `docs/plans/2026-07-14-gardener-tools.md`.
       Goodreads export + TalkData, data stories (Pudding, football analysis),
       tools people built (Dot Collector, Clay-replacement post, FlickFlock,
       SelectFrom), cards link out
+- [x] Inspiration datasets, agent-aware (2026-07-16): each dataset card
+      carries a pre-researched `briefing` (concrete structure, how to grab a
+      bounded slice, gotchas, a first question) so "Ask Gardener" no longer
+      makes the model fetch the docs page. `buildDatasetContext` now tells the
+      Gardener to rely on the briefing and to offer in-browser DuckDB analysis
+      (attach the file, query with SQL, chart) instead of pointing at Excel.
+      The full dataset catalog is injected into the system prompt via a new
+      `{{DATASETS}}` placeholder, so the Gardener can suggest a fitting source
+      during any brainstorm.
 - [ ] Inspiration: move curated cards to content files (content-managed)
 
 ## Content (ongoing)

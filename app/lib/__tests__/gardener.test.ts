@@ -14,6 +14,13 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("The Gardener");
   });
 
+  it("includes the inspiration dataset catalog", () => {
+    const prompt = buildSystemPrompt([]);
+    expect(prompt).toContain("Datasets on the inspiration page");
+    expect(prompt).toContain("Open-Meteo weather (Open data");
+    expect(prompt).not.toContain("{{DATASETS}}");
+  });
+
   it("tells the model which page the user is on and not to suggest it", () => {
     const prompt = buildSystemPrompt([], "/learning/what-is-an-llm");
     expect(prompt).toContain('the article "What is an LLM, really?"');
