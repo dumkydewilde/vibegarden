@@ -53,7 +53,7 @@ export function ContextQuote({
   return (
     <figure
       className={cn(
-        "rounded-md border border-l-2 border-l-primary/50 bg-muted/60 px-3 py-2 text-left",
+        "min-w-0 overflow-hidden rounded-md border border-l-2 border-l-primary/50 bg-muted/60 px-3 py-2 text-left",
         className,
       )}
     >
@@ -74,7 +74,7 @@ export function ContextQuote({
         )}
       </figcaption>
       {preview && (
-        <blockquote className="mt-1 line-clamp-3 font-serif text-xs italic leading-relaxed text-foreground/80">
+        <blockquote className="mt-1 line-clamp-3 [overflow-wrap:anywhere] font-serif text-xs italic leading-relaxed text-foreground/80">
           {preview}
         </blockquote>
       )}
