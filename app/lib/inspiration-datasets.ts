@@ -354,7 +354,7 @@ export function buildDatasetContext(item: DatasetItem) {
   lines.push(
     "",
     "Rely on the briefing above instead of fetching the documentation page; only use fetch_page if the person asks for something specific it does not cover. This is source metadata, not proof that any URL or file has been fetched or analyzed. Only claim that after a tool confirms it.",
-    "You can analyze this data right here: if the person downloads a small slice (or their own export) and attaches the file to this chat with the tools button, you can query it with SQL and draw charts in their browser, no spreadsheet needed. Offer that instead of sending them off to Excel or Sheets.",
+    "You can analyze this data right here: attach an open sample URL (or another small bounded request) yourself with attach_data, or have the person download a small slice (or their own export) and attach the file with the tools button. Either way it loads into their browser and you can query it with SQL and draw charts, no spreadsheet needed. Offer that instead of sending them off to Excel or Sheets.",
   );
 
   if (item.tag === "Personal data") {

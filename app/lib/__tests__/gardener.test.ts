@@ -39,6 +39,7 @@ describe("buildSystemPrompt", () => {
     expect(withTools).toContain("read_article(slug)");
     expect(withTools).toContain("read_module(slug)");
     expect(withTools).toContain("fetch_page(url)");
+    expect(withTools).toContain("attach_data(url)");
     expect(withTools).toContain("visualize_flow(title, diagram)");
     expect(withTools).toContain("directly in the chat");
     expect(withTools).toContain("google-sheet");
@@ -95,6 +96,40 @@ describe("trimHistory", () => {
     ]);
     expect(trimmed[0].content).toBe("Sure.\n\nHere it is.");
     expect(trimmed[1].content).toBe("[[tool:article:keep-me]]");
+  });
+
+  it("gives query and attach data messages their own instructions", () => {
+    const query = trimHistory([
+      {
+        role: "data",
+        content: JSON.stringify({
+          status: "ok",
+          columns: ["n"],
+          rows: [[1]],
+          rowCount: 1,
+          truncated: false,
+        }),
+      },
+    ]);
+    expect(query[0].role).toBe("user");
+    expect(query[0].content).toContain("<query_results>");
+
+    const attach = trimHistory([
+      {
+        role: "data",
+        content: JSON.stringify({
+          kind: "attach",
+          status: "ok",
+          name: "forecast",
+          label: "forecast.json",
+          rowCount: 48,
+          summary: 'Table "forecast" (48 rows)',
+        }),
+      },
+    ]);
+    expect(attach[0].role).toBe("user");
+    expect(attach[0].content).toContain("<attach_result>");
+    expect(attach[0].content).toContain("attach_data");
   });
 });
 

@@ -40,6 +40,26 @@ export const RESULT_MAX_CHARS = 4_000;
 export const MAX_CONTINUATIONS = 3;
 export const MAX_DATASETS = 5;
 export const DATASET_SUMMARY_MAX_CHARS = 2_000;
+export const ATTACH_URL_MAX_CHARS = 2_000;
+
+/**
+ * The result of an attach_data call, produced in the browser and sent back
+ * as a `data` message for a continuation turn (the attach twin of
+ * QueryResultEnvelope). The `kind` field tells the two apart server-side.
+ */
+export type AttachResultEnvelope =
+  | {
+      kind: "attach";
+      status: "ok";
+      /** DuckDB view name the model can now query. */
+      name: string;
+      /** Human label: file name or URL basename. */
+      label: string;
+      rowCount: number;
+      /** The datasetSummary() schema block. */
+      summary: string;
+    }
+  | { kind: "attach"; status: "error"; error: string };
 
 const CHART_TYPES: ChartType[] = ["line", "scatter", "bar"];
 
@@ -80,6 +100,74 @@ export function parseQueryRequest(
     };
   }
   return { value: { sql, chart: parseChartSpec(args.chart) } };
+}
+
+/** Model arguments for attach_data; returns an error string when unusable. */
+export function parseAttachRequest(
+  args: Record<string, unknown>,
+): { value: { url: string }; error?: never } | { value?: never; error: string } {
+  if (typeof args.url !== "string" || !args.url.trim()) {
+    return { error: "Error: url is required." };
+  }
+  const raw = args.url.trim();
+  if (raw.length > ATTACH_URL_MAX_CHARS) {
+    return {
+      error: `Error: url must be ${ATTACH_URL_MAX_CHARS} characters or fewer.`,
+    };
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return { error: `Error: "${raw.slice(0, 200)}" is not a valid URL.` };
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return { error: "Error: only http(s) URLs can be attached." };
+  }
+  return { value: { url: parsed.toString() } };
+}
+
+/** Parse an attach envelope defensively (it crosses the client boundary). */
+export function parseAttachEnvelope(raw: string): AttachResultEnvelope | null {
+  try {
+    const parsed = JSON.parse(raw) as Partial<AttachResultEnvelope>;
+    if (parsed.kind !== "attach") return null;
+    if (parsed.status === "error") {
+      return typeof parsed.error === "string"
+        ? { kind: "attach", status: "error", error: parsed.error.slice(0, 1_000) }
+        : null;
+    }
+    if (
+      parsed.status === "ok" &&
+      typeof parsed.name === "string" &&
+      parsed.name.trim() &&
+      typeof parsed.summary === "string" &&
+      typeof parsed.rowCount === "number"
+    ) {
+      return {
+        kind: "attach",
+        status: "ok",
+        name: parsed.name,
+        label:
+          typeof parsed.label === "string" && parsed.label
+            ? parsed.label.slice(0, 200)
+            : parsed.name,
+        rowCount: parsed.rowCount,
+        summary: parsed.summary.slice(0, DATASET_SUMMARY_MAX_CHARS),
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** One line summarizing an attach result, for model-bound history. */
+export function attachSummaryLine(envelope: AttachResultEnvelope): string {
+  if (envelope.status === "error") {
+    return `[attach failed: ${envelope.error.slice(0, 200)}]`;
+  }
+  return `[attached dataset "${envelope.name}" (${envelope.rowCount} rows) from ${envelope.label}]`;
 }
 
 /** Make any value JSON- and prose-safe: numbers stay numbers, rest strings. */

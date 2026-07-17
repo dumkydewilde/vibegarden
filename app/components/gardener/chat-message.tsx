@@ -1,4 +1,4 @@
-import { Blocks, BookOpen, Globe, Sprout } from "lucide-react";
+import { Blocks, BookOpen, Database, Globe, Sprout } from "lucide-react";
 import Markdown from "react-markdown";
 import { ContextQuote } from "./context-quote";
 import { DataToolResult } from "./data-tool-result";
@@ -7,6 +7,7 @@ import { MermaidToolResult } from "./mermaid-tool-result";
 import { ContentCard, ContentLink } from "~/components/content-link";
 import { getArticle } from "~/lib/content";
 import { getModule } from "~/lib/modules";
+import type { AttachResultEnvelope } from "~/lib/query-tool";
 import {
   splitToolNotes,
   stripToolEcho,
@@ -14,10 +15,58 @@ import {
 } from "~/lib/tool-notes";
 import { cn } from "~/lib/utils";
 
+const noteWrapper =
+  "flex max-w-full items-center gap-1.5 rounded-lg bg-muted/60 px-2.5 py-1.5 text-xs italic text-muted-foreground";
+
 function ActivityBubble({ label }: { label: string }) {
   return (
     <div className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
       <span className="shimmer">{label}</span>
+    </div>
+  );
+}
+
+/** The little chip for a model-initiated data attachment and its outcome. */
+function AttachToolNote({
+  url,
+  result,
+  running,
+}: {
+  url: string;
+  result?: AttachResultEnvelope;
+  running: boolean;
+}) {
+  let host = url;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    // Keep the raw string; the server validated it, so this is unlikely.
+  }
+  if (!result) {
+    return running ? (
+      <ActivityBubble label={`Loading data from ${host}...`} />
+    ) : (
+      <div className={noteWrapper}>
+        <Database className="size-3.5 shrink-0" />
+        <span className="truncate">loading data from {host}</span>
+      </div>
+    );
+  }
+  if (result.status === "error") {
+    return (
+      <div className={noteWrapper}>
+        <Database className="size-3.5 shrink-0" />
+        <span className="truncate">could not load data from {host}</span>
+      </div>
+    );
+  }
+  return (
+    <div className={noteWrapper}>
+      <Database className="size-3.5 shrink-0" />
+      <span className="truncate">attached {result.name}</span>
+      <span className="shrink-0 not-italic">
+        {result.rowCount.toLocaleString()} {result.rowCount === 1 ? "row" : "rows"}
+      </span>
     </div>
   );
 }
@@ -45,8 +94,7 @@ function ToolNoteBubble({
 }) {
   if (active) return <ActivityBubble label={toolActivityLabel(segment)} />;
 
-  const wrapper =
-    "flex max-w-full items-center gap-1.5 rounded-lg bg-muted/60 px-2.5 py-1.5 text-xs italic text-muted-foreground";
+  const wrapper = noteWrapper;
 
   if (segment.kind === "article") {
     const article = getArticle(segment.value);
@@ -123,10 +171,13 @@ export function ChatMessageBubble({
     isStreaming && !message.error && segments.at(-1)?.type === "tool"
       ? segments.length - 1
       : -1;
-  // Between the browser finishing a query and the narration streaming in,
-  // the answer ends on a result: show that the Gardener is still at work.
+  // Between the browser finishing a query or attach and the narration
+  // streaming in, the answer ends on a result: show the Gardener at work.
+  const lastSegmentType = segments.at(-1)?.type;
   const readingResults =
-    isStreaming && !message.error && segments.at(-1)?.type === "queryresult";
+    isStreaming &&
+    !message.error &&
+    (lastSegmentType === "queryresult" || lastSegmentType === "attachresult");
   return (
     <div
       className={cn(
@@ -192,6 +243,21 @@ export function ChatMessageBubble({
                 );
               }
               if (segment.type === "queryresult") return null; // consumed above
+              if (segment.type === "attach") {
+                // Its result, when present, is the very next segment.
+                const next = segments[i + 1];
+                return (
+                  <AttachToolNote
+                    key={i}
+                    url={segment.url}
+                    result={
+                      next?.type === "attachresult" ? next.result : undefined
+                    }
+                    running={isStreaming && !message.error}
+                  />
+                );
+              }
+              if (segment.type === "attachresult") return null; // consumed above
               return (
                 <ToolNoteBubble
                   key={i}

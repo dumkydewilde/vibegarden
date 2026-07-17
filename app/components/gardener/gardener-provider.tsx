@@ -14,9 +14,16 @@ import { defaultModel, findModel, type Model } from "~/lib/models";
 import {
   datasetSummary,
   MAX_CONTINUATIONS,
+  MAX_DATASETS,
+  type AttachResultEnvelope,
   type DatasetInfo,
+  type QueryResultEnvelope,
 } from "~/lib/query-tool";
-import { queryResultNote, splitToolNotes } from "~/lib/tool-notes";
+import {
+  attachResultNote,
+  queryResultNote,
+  splitToolNotes,
+} from "~/lib/tool-notes";
 
 export type ContextItem = {
   id: string;
@@ -252,6 +259,55 @@ export function GardenerProvider({
     }
   }, [addContext]);
 
+  /**
+   * The model asked to attach a URL (an attach marker ended its turn). Same
+   * browser-side load as a user-initiated attach, but the outcome reports
+   * back to the model as an envelope instead of a toast; the chat bubble
+   * shows what happened. Never throws.
+   */
+  const attachForModel = useCallback(
+    async (url: string): Promise<AttachResultEnvelope> => {
+      const okEnvelope = (info: DatasetInfo): AttachResultEnvelope => ({
+        kind: "attach",
+        status: "ok",
+        name: info.name,
+        label: info.label,
+        rowCount: info.rowCount,
+        summary: datasetSummary(info),
+      });
+      const existing = datasetsRef.current.find((d) => d.sourceUrl === url);
+      if (existing) return okEnvelope(existing);
+      if (datasetsRef.current.length >= MAX_DATASETS) {
+        return {
+          kind: "attach",
+          status: "error",
+          error: `There are already ${MAX_DATASETS} datasets attached; ask the person to remove one from the tools menu first.`,
+        };
+      }
+      try {
+        const { registerDataset } = await import("~/lib/duckdb.client");
+        const info = await registerDataset({ kind: "url", url });
+        // Sync the ref now so the continuation request lists the new
+        // dataset's schema (and offers query_data) to the model.
+        const next = [
+          ...datasetsRef.current.filter((x) => x.name !== info.name),
+          info,
+        ];
+        datasetsRef.current = next;
+        setDatasets(next);
+        return okEnvelope(info);
+      } catch (e) {
+        return {
+          kind: "attach",
+          status: "error",
+          error:
+            e instanceof Error ? e.message : "The data could not be loaded.",
+        };
+      }
+    },
+    [],
+  );
+
   const ask = useCallback(async (question: string) => {
     const sentContext = contextRef.current.map(
       ({ kind, label, content }) => ({ kind, label, content }),
@@ -353,21 +409,27 @@ export function GardenerProvider({
       return;
     }
 
-    // The turn may end on a query marker: run the SQL in the browser,
-    // fold the result into the same bubble, and let the model narrate it
-    // in a hidden continuation turn. Capped so a stubborn model cannot
-    // loop query after query.
+    // The turn may end on a query or attach marker: run the SQL (or load
+    // the URL) in the browser, fold the result into the same bubble, and
+    // let the model react in a hidden continuation turn. Capped so a
+    // stubborn model cannot loop marker after marker.
     try {
       for (let i = 0; i < MAX_CONTINUATIONS; i++) {
         const last = splitToolNotes(text).at(-1);
-        if (last?.type !== "query") break;
-        // The assistant turn sent as history stops at the query marker; the
+        if (last?.type !== "query" && last?.type !== "attach") break;
+        // The assistant turn sent as history stops at the marker; the
         // result travels only in the data message, so the model is not fed
         // a pre-summarized result line it would otherwise parrot back.
         const historyText = text;
-        const { runQuery } = await import("~/lib/duckdb.client");
-        const envelope = await runQuery(last.sql);
-        append(`\n\n${queryResultNote(envelope)}\n\n`);
+        let envelope: QueryResultEnvelope | AttachResultEnvelope;
+        if (last.type === "query") {
+          const { runQuery } = await import("~/lib/duckdb.client");
+          envelope = await runQuery(last.sql);
+          append(`\n\n${queryResultNote(envelope)}\n\n`);
+        } else {
+          envelope = await attachForModel(last.url);
+          append(`\n\n${attachResultNote(envelope)}\n\n`);
+        }
         await streamTurn(
           [
             ...wireMessages,
@@ -391,6 +453,16 @@ export function GardenerProvider({
             ? "\n\nThat query did not run against your data. Want me to try a different angle?"
             : "\n\nThe table above has your answer.",
         );
+      } else if (tail?.type === "attach") {
+        append(
+          "\n\nI tried to load that data link but ran out of room to finish. Ask me about it again?",
+        );
+      } else if (tail?.type === "attachresult") {
+        append(
+          tail.result.status === "error"
+            ? "\n\nThat link could not be loaded in your browser. You could download the file and attach it with the tools button instead."
+            : "\n\nThe data is attached; ask me anything about it.",
+        );
       }
     } catch (e) {
       console.error("query continuation failed", e);
@@ -400,7 +472,7 @@ export function GardenerProvider({
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [attachForModel]);
 
   const askFresh = useCallback(
     async (

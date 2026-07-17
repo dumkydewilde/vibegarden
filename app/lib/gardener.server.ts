@@ -4,6 +4,7 @@ import { getModule, getModules, modules } from "./modules";
 import {
   DATASET_SUMMARY_MAX_CHARS,
   MAX_DATASETS,
+  parseAttachEnvelope,
   RESULT_MAX_ROWS,
 } from "./query-tool";
 import { toModelText } from "./tool-notes";
@@ -102,6 +103,7 @@ function buildToolsRule(
       ".",
     "- fetch_page(url): the text of a public web page. Use it when the person shares a link.",
     "- visualize_flow(title, diagram): render a Mermaid flow, sequence, decision path, or relationship directly in the chat. Use it only when the visual is clearer than prose, keep it small, and follow it with a short explanation. Never use it to chart data: numeric results get the chart option of query_data instead.",
+    `- attach_data(url): fetch a public data link (CSV, JSON, Parquet, Excel, or an API URL returning one of those) in the person's browser and register it as a queryable DuckDB table. Use it when a concrete data URL worth analyzing comes up: one the person mentions, one from a page you fetched, or a sample URL from a dataset briefing. The schema comes back in a follow-up message and query_data becomes available; at most ${MAX_DATASETS} datasets fit in one conversation. If the site blocks the browser download, ask the person to download the file and attach it with the tools button instead. For a person's own exports (Spotify, Strava, Goodreads) there is no URL to attach: they must always upload the file themselves.`,
     ...(freshReads
       ? [
           "- fresh_reads(topic?, content_type?): recent well-scored news, opinion pieces, and tutorials about AI and building things, from a curated reading feed. Use it when something current would enrich the answer, and share the best one or two as markdown links.",
@@ -165,7 +167,7 @@ export function buildSystemPrompt(
     const blocks = datasets
       .map((d) => d.summary.slice(0, DATASET_SUMMARY_MAX_CHARS))
       .join("\n\n");
-    prompt += `\n\nThe person attached these datasets. They live only in their browser as DuckDB tables; the query_data tool is the only way to read them:\n\n${blocks}`;
+    prompt += `\n\nThese datasets are attached to the conversation (by the person, or by your attach_data calls). They live only in their browser as DuckDB tables; the query_data tool is the only way to read them:\n\n${blocks}`;
   }
 
   if (contextItems.length > 0) {
@@ -189,9 +191,16 @@ export function buildSystemPrompt(
 export function trimHistory(messages: WireMessage[]): WireMessage[] {
   return messages.slice(-HISTORY_LIMIT).map((m) => {
     if (m.role === "data") {
+      const content = m.content.slice(0, MESSAGE_MAX_CHARS);
+      if (parseAttachEnvelope(m.content)) {
+        return {
+          role: "user" as const,
+          content: `<attach_result>\n${content}\n</attach_result>\nThis is the result of your attach_data call, run in the person's browser. If the status is ok, the dataset is attached: a confirmation chip is already shown on their screen, the schema summary above is what you know about the table, and query_data can now read it. Briefly say in plain language what arrived (what one row is, which columns look interesting), then either run one obvious first query_data call or ask what they want to explore; do not restate the whole schema. If the status is an error, say so simply, do NOT claim the data is attached, and suggest they download the file and attach it with the tools button instead.`,
+        };
+      }
       return {
         role: "user" as const,
-        content: `<query_results>\n${m.content.slice(0, MESSAGE_MAX_CHARS)}\n</query_results>\nThese are the results of your query_data call, run in the person's browser. The result table, and the chart if you asked for one, are ALREADY displayed on their screen, so your job now is only to talk about them. Reply in plain conversational prose, quoting the actual values (real numbers, names, dates). Do NOT re-run or restate the query, do NOT output SQL, "chart=", brackets, "query result", or any tool syntax, and do NOT offer to draw a chart that is already shown. If the result is an error, briefly say so and call query_data again with corrected SQL; otherwise do not query again.`,
+        content: `<query_results>\n${content}\n</query_results>\nThese are the results of your query_data call, run in the person's browser. The result table, and the chart if you asked for one, are ALREADY displayed on their screen, so your job now is only to talk about them. Reply in plain conversational prose, quoting the actual values (real numbers, names, dates). Do NOT re-run or restate the query, do NOT output SQL, "chart=", brackets, "query result", or any tool syntax, and do NOT offer to draw a chart that is already shown. If the result is an error, briefly say so and call query_data again with corrected SQL; otherwise do not query again.`,
       };
     }
     return {
