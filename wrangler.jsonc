@@ -30,6 +30,7 @@
 	/**
 	 * Secrets (via `wrangler secret put` in production, .dev.vars locally):
 	 * - SESSION_SECRET: HMAC key for session cookies
+	 * - DEV_LOGIN_TOKEN: optional credential for development-only automatic admin login
 	 * - RESEND_API_KEY: optional, enables OTP email sending
 	 * - GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET: optional, enables Google login
 	 * - OPENROUTER_API_KEY: phase 3, the Gardener's LLM access

@@ -48,6 +48,20 @@ and gets the admin role; everyone else needs an invite created in `/admin`.
 Without `RESEND_API_KEY` the login screen shows the code inline instead of
 emailing it.
 
+### Development auto-login
+
+For browser automation, set a local secret in `.dev.vars` (do not deploy this
+secret):
+
+```sh
+DEV_LOGIN_TOKEN=use-a-long-random-value
+```
+
+Then open `/dev/login?token=<url-encoded-token>&next=/garden`. It signs in as
+`ADMIN_EMAIL`, creates the same session as the normal login flow, and redirects
+to `next` so the token is removed from the address bar. The route returns 404
+when the token is missing or invalid; `next` only accepts an in-app path.
+
 ## Database
 
 Local D1 runs automatically in dev. Schema lives in `app/db/schema.ts`.

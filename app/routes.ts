@@ -32,6 +32,7 @@ export default [
   route("api/thread", "routes/api.thread.ts"),
   route("api/feedback", "routes/api.feedback.ts"),
   route("login", "routes/login.tsx"),
+  route("dev/login", "routes/dev.login.tsx"),
   route("logout", "routes/logout.tsx"),
   route("auth/google", "routes/auth.google.tsx"),
   route("auth/google/callback", "routes/auth.google.callback.tsx"),
