@@ -265,15 +265,17 @@ export function stripToolNotes(text: string): string {
 
 /**
  * Strip stray tool-echo fragments a model sometimes parrots back from the
- * compacted history: `[ran query_data: ...]`, `[query result: ...]`, and a
- * bare `chart={...}` line. These never occur in real prose, and the single
- * brackets never match the double-bracket `[[tool:...]]` markers. Applied
- * both to displayed text and to model-bound history (so it cannot re-prime).
+ * compacted history: `[ran query_data: ...]`, `[query result: ...]`, a
+ * bracketed chart description, and a bare `chart={...}` line. These never
+ * occur in real prose, and the single brackets never match the double-bracket
+ * `[[tool:...]]` markers. Applied both to displayed text and to model-bound
+ * history (so it cannot re-prime).
  */
 export function stripToolEcho(text: string): string {
   return text
     .replace(/\[ran query_data:[^\]]*\]/gi, "")
     .replace(/\[query results?:[^\]]*\]/gi, "")
+    .replace(/\[chart\b[^\]]*\](?!\()/gi, "")
     .replace(/^\s*chart\s*=\s*\{[^}]*\}\s*$/gim, "")
     .replace(/[ \t]{2,}/g, " ")
     .replace(/\n{3,}/g, "\n\n")

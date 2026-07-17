@@ -305,6 +305,20 @@ describe("toModelText", () => {
     expect(stripToolEcho("[[tool:query:abc]]")).toBe("[[tool:query:abc]]");
   });
 
+  it("strips bracketed descriptions of an already-rendered chart", () => {
+    expect(
+      stripToolEcho(
+        "And here's the tableau of averages over time: [chart of avg_lifeExp by year]",
+      ),
+    ).toBe("And here's the tableau of averages over time:");
+  });
+
+  it("keeps markdown links whose text starts with chart", () => {
+    expect(
+      stripToolEcho("See [chart types explained](/garden/modules/charts)."),
+    ).toBe("See [chart types explained](/garden/modules/charts).");
+  });
+
   it("summarizes error envelopes", () => {
     const err: QueryResultEnvelope = {
       status: "error",
