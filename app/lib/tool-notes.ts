@@ -8,11 +8,17 @@
  * Data queries use a marker pair: `[[tool:query:...]]` carries the SQL the
  * model wants to run (the browser executes it), and `[[tool:queryresult:...]]`
  * carries the capped result the browser produced, appended right after it.
+ * Model-initiated data attachments work the same way: `[[tool:attach:...]]`
+ * carries the URL the browser should load, `[[tool:attachresult:...]]` what
+ * came of it.
  */
 
 import {
+  attachSummaryLine,
   envelopeSummaryLine,
+  parseAttachEnvelope,
   parseChartSpec,
+  type AttachResultEnvelope,
   type ChartSpec,
   type QueryResultEnvelope,
 } from "./query-tool";
@@ -31,17 +37,26 @@ export type QueryPayload = {
   chart?: ChartSpec;
 };
 
+export type AttachPayload = {
+  version: 1;
+  url: string;
+};
+
 export type ToolNoteSegment =
   | { type: "text"; text: string }
   | { type: "tool"; kind: ToolNoteKind; value: string }
   | { type: "diagram"; title: string; diagram: string }
   | { type: "query"; sql: string; chart?: ChartSpec }
-  | { type: "queryresult"; result: QueryResultEnvelope };
+  | { type: "queryresult"; result: QueryResultEnvelope }
+  | { type: "attach"; url: string }
+  | { type: "attachresult"; result: AttachResultEnvelope };
 
 const NOTE_LINE = /^\[\[tool:(article|module|web|note):(.+?)\]\]$/;
 const DIAGRAM_LINE = /^\[\[tool:diagram:(.+?)\]\]$/;
 const QUERY_LINE = /^\[\[tool:query:(.+?)\]\]$/;
 const QUERY_RESULT_LINE = /^\[\[tool:queryresult:(.+?)\]\]$/;
+const ATTACH_LINE = /^\[\[tool:attach:(.+?)\]\]$/;
+const ATTACH_RESULT_LINE = /^\[\[tool:attachresult:(.+?)\]\]$/;
 
 export function toolNote(kind: ToolNoteKind, value: string): string {
   return `[[tool:${kind}:${value}]]`;
@@ -63,6 +78,16 @@ export function queryNote(payload: Omit<QueryPayload, "version">): string {
 
 export function queryResultNote(result: QueryResultEnvelope): string {
   return `[[tool:queryresult:${encodeURIComponent(JSON.stringify(result))}]]`;
+}
+
+export function attachNote(payload: Omit<AttachPayload, "version">): string {
+  return `[[tool:attach:${encodeURIComponent(
+    JSON.stringify({ version: 1, ...payload } satisfies AttachPayload),
+  )}]]`;
+}
+
+export function attachResultNote(result: AttachResultEnvelope): string {
+  return `[[tool:attachresult:${encodeURIComponent(JSON.stringify(result))}]]`;
 }
 
 function decodeDiagram(value: string): DiagramPayload | null {
@@ -88,6 +113,27 @@ function decodeQuery(value: string): QueryPayload | null {
     return parsed.version === 1 && typeof parsed.sql === "string" && parsed.sql
       ? { version: 1, sql: parsed.sql, chart: parseChartSpec(parsed.chart) }
       : null;
+  } catch {
+    return null;
+  }
+}
+
+function decodeAttach(value: string): AttachPayload | null {
+  try {
+    const parsed = JSON.parse(
+      decodeURIComponent(value),
+    ) as Partial<AttachPayload>;
+    return parsed.version === 1 && typeof parsed.url === "string" && parsed.url
+      ? { version: 1, url: parsed.url }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function decodeAttachResult(value: string): AttachResultEnvelope | null {
+  try {
+    return parseAttachEnvelope(decodeURIComponent(value));
   } catch {
     return null;
   }
@@ -169,6 +215,30 @@ export function splitToolNotes(text: string): ToolNoteSegment[] {
       continue;
     }
 
+    const attachResultMatch = trimmed.match(ATTACH_RESULT_LINE);
+    if (attachResultMatch) {
+      const payload = decodeAttachResult(attachResultMatch[1]);
+      if (payload) {
+        flush();
+        segments.push({ type: "attachresult", result: payload });
+      } else {
+        buffer.push(line);
+      }
+      continue;
+    }
+
+    const attachMatch = trimmed.match(ATTACH_LINE);
+    if (attachMatch) {
+      const payload = decodeAttach(attachMatch[1]);
+      if (payload) {
+        flush();
+        segments.push({ type: "attach", url: payload.url });
+      } else {
+        buffer.push(line);
+      }
+      continue;
+    }
+
     const noteMatch = trimmed.match(NOTE_LINE);
     if (noteMatch) {
       flush();
@@ -195,15 +265,17 @@ export function stripToolNotes(text: string): string {
 
 /**
  * Strip stray tool-echo fragments a model sometimes parrots back from the
- * compacted history: `[ran query_data: ...]`, `[query result: ...]`, and a
- * bare `chart={...}` line. These never occur in real prose, and the single
- * brackets never match the double-bracket `[[tool:...]]` markers. Applied
- * both to displayed text and to model-bound history (so it cannot re-prime).
+ * compacted history: `[ran query_data: ...]`, `[query result: ...]`, a
+ * bracketed chart description, and a bare `chart={...}` line. These never
+ * occur in real prose, and the single brackets never match the double-bracket
+ * `[[tool:...]]` markers. Applied both to displayed text and to model-bound
+ * history (so it cannot re-prime).
  */
 export function stripToolEcho(text: string): string {
   return text
     .replace(/\[ran query_data:[^\]]*\]/gi, "")
     .replace(/\[query results?:[^\]]*\]/gi, "")
+    .replace(/\[chart\b[^\]]*\](?!\()/gi, "")
     .replace(/^\s*chart\s*=\s*\{[^}]*\}\s*$/gim, "")
     .replace(/[ \t]{2,}/g, " ")
     .replace(/\n{3,}/g, "\n\n")
@@ -226,6 +298,10 @@ export function toModelText(text: string): string {
         return `[ran query_data: ${s.sql.replace(/\s+/g, " ").slice(0, 300)}]`;
       }
       if (s.type === "queryresult") return envelopeSummaryLine(s.result);
+      if (s.type === "attach") {
+        return `[ran attach_data: ${s.url.slice(0, 300)}]`;
+      }
+      if (s.type === "attachresult") return attachSummaryLine(s.result);
       return null;
     })
     .filter(Boolean)

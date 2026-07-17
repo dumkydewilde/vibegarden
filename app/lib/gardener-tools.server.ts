@@ -5,8 +5,12 @@ import {
   FRESH_READ_TYPES,
   queryFreshReads,
 } from "./motherduck.server";
-import { parseQueryRequest, QUERY_SQL_MAX_CHARS } from "./query-tool";
-import { diagramNote, queryNote, toolNote } from "./tool-notes";
+import {
+  parseAttachRequest,
+  parseQueryRequest,
+  QUERY_SQL_MAX_CHARS,
+} from "./query-tool";
+import { attachNote, diagramNote, queryNote, toolNote } from "./tool-notes";
 
 /**
  * First-party tools the Gardener can call mid-conversation. Definitions are
@@ -106,6 +110,25 @@ const queryDataDefinition = {
   },
 };
 
+const attachDataDefinition = {
+  type: "function" as const,
+  function: {
+    name: "attach_data",
+    description:
+      "Attach a public data link as a queryable dataset: a CSV, JSON, Parquet, or Excel file, or an API URL returning one of those. The person's browser fetches it (never a server) and registers it as a DuckDB table; the schema arrives in a follow-up message, after which query_data can read it. Use it when a concrete data URL worth analyzing comes up. Sites that block cross-origin downloads make it fail; then ask the person to download the file and attach it with the tools button.",
+    parameters: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "Full http(s) URL of the data file or API endpoint.",
+        },
+      },
+      required: ["url"],
+    },
+  },
+};
+
 const baseDefinitions = [
   {
     type: "function" as const,
@@ -162,11 +185,13 @@ const baseDefinitions = [
     },
   },
   visualizeFlowDefinition,
+  attachDataDefinition,
 ];
 
 /**
  * fresh_reads only exists when a MotherDuck token is configured;
  * query_data only when the conversation has attached datasets.
+ * attach_data is always on: it is how a conversation gets its first dataset.
  */
 export function toolDefinitions(env: Env, opts: { queryData?: boolean } = {}) {
   return [
@@ -331,6 +356,11 @@ export async function executeTool(call: ToolCall, env: Env): Promise<string> {
       const parsed = parseQueryRequest(args);
       return parsed.error ?? "Error: query_data ran out of band.";
     }
+    case "attach_data": {
+      // Same out-of-band pattern as query_data: only invalid calls land here.
+      const parsed = parseAttachRequest(args);
+      return parsed.error ?? "Error: attach_data ran out of band.";
+    }
     default:
       return `Error: unknown tool "${call.name}".`;
   }
@@ -371,6 +401,9 @@ export function toolNoteFor(call: ToolCall): string | null {
           : "looking for fresh reads",
       );
     }
+    case "attach_data":
+      // Valid calls became an attach marker before reaching here.
+      return toolNote("note", "attaching a data link");
     case "visualize_flow": {
       const flow = validateFlow(args);
       return flow.error ? null : diagramNote(flow.value);
@@ -393,4 +426,17 @@ export function queryMarkerFor(call: ToolCall): string | null {
   return parsed.value
     ? queryNote({ sql: parsed.value.sql, chart: parsed.value.chart })
     : null;
+}
+
+/**
+ * A valid attach_data call becomes a `[[tool:attach:...]]` marker: the
+ * browser fetches the URL, registers it as a dataset, and sends the schema
+ * back in a continuation turn. Same out-of-band contract as queryMarkerFor.
+ */
+export function attachMarkerFor(call: ToolCall): string | null {
+  if (call.name !== "attach_data") return null;
+  const args = parseArgs(call.arguments);
+  if (!args) return null;
+  const parsed = parseAttachRequest(args);
+  return parsed.value ? attachNote({ url: parsed.value.url }) : null;
 }

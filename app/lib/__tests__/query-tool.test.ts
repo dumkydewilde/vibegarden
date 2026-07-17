@@ -1,19 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
+  attachSummaryLine,
   capResult,
   datasetSummary,
   envelopeSummaryLine,
   extractDataUrls,
   normalizeCell,
+  parseAttachEnvelope,
+  parseAttachRequest,
   stripDataUrls,
   parseChartSpec,
   parseEnvelope,
   parseQueryRequest,
+  DATASET_SUMMARY_MAX_CHARS,
   RESULT_MAX_ROWS,
   tableNameFor,
+  type AttachResultEnvelope,
   type QueryResultEnvelope,
 } from "~/lib/query-tool";
 import {
+  attachNote,
+  attachResultNote,
   queryNote,
   queryResultNote,
   splitToolNotes,
@@ -123,6 +130,78 @@ describe("parseEnvelope", () => {
   });
 });
 
+describe("parseAttachRequest", () => {
+  it("accepts and normalizes an http(s) url", () => {
+    const parsed = parseAttachRequest({
+      url: " https://example.com/data.csv ",
+    });
+    expect(parsed.value).toEqual({ url: "https://example.com/data.csv" });
+  });
+
+  it("rejects missing, malformed, non-http, and oversized urls", () => {
+    expect(parseAttachRequest({}).error).toMatch(/url is required/);
+    expect(parseAttachRequest({ url: "not a url" }).error).toMatch(
+      /not a valid URL/,
+    );
+    expect(parseAttachRequest({ url: "file:///etc/passwd" }).error).toMatch(
+      /only http\(s\)/,
+    );
+    expect(
+      parseAttachRequest({ url: `https://x.co/${"a".repeat(2_000)}` }).error,
+    ).toMatch(/characters or fewer/);
+  });
+});
+
+describe("parseAttachEnvelope", () => {
+  const ok: AttachResultEnvelope = {
+    kind: "attach",
+    status: "ok",
+    name: "forecast",
+    label: "forecast.json",
+    rowCount: 48,
+    summary: 'Table "forecast" (48 rows, from forecast.json)',
+  };
+
+  it("round-trips ok and error envelopes", () => {
+    expect(parseAttachEnvelope(JSON.stringify(ok))).toEqual(ok);
+    const err: AttachResultEnvelope = {
+      kind: "attach",
+      status: "error",
+      error: "The link responded with status 403.",
+    };
+    expect(parseAttachEnvelope(JSON.stringify(err))).toEqual(err);
+  });
+
+  it("re-caps oversized client payloads", () => {
+    const huge = { ...ok, summary: "x".repeat(10_000) };
+    const parsed = parseAttachEnvelope(JSON.stringify(huge));
+    expect(parsed?.status).toBe("ok");
+    if (parsed?.status === "ok") {
+      expect(parsed.summary.length).toBe(DATASET_SUMMARY_MAX_CHARS);
+    }
+  });
+
+  it("rejects query envelopes, garbage, and malformed shapes", () => {
+    expect(parseAttachEnvelope("not json")).toBeNull();
+    // A query envelope has no kind field and must not parse as an attach.
+    expect(
+      parseAttachEnvelope(JSON.stringify(capResult(["a"], [[1]]))),
+    ).toBeNull();
+    expect(
+      parseAttachEnvelope(JSON.stringify({ kind: "attach", status: "ok" })),
+    ).toBeNull();
+  });
+
+  it("summarizes both outcomes for model-bound history", () => {
+    expect(attachSummaryLine(ok)).toBe(
+      '[attached dataset "forecast" (48 rows) from forecast.json]',
+    );
+    expect(
+      attachSummaryLine({ kind: "attach", status: "error", error: "CORS" }),
+    ).toBe("[attach failed: CORS]");
+  });
+});
+
 describe("query markers", () => {
   const query = {
     sql: "SELECT year(hire_date) AS y, count(*) AS n FROM employees GROUP BY 1",
@@ -144,6 +223,54 @@ describe("query markers", () => {
     expect(splitToolNotes("[[tool:query:not-json]]")).toEqual([
       { type: "text", text: "[[tool:query:not-json]]" },
     ]);
+  });
+});
+
+describe("attach markers", () => {
+  const url = "https://api.open-meteo.com/v1/forecast?daily=rain";
+  const envelope: AttachResultEnvelope = {
+    kind: "attach",
+    status: "ok",
+    name: "forecast",
+    label: "forecast",
+    rowCount: 48,
+    summary: 'Table "forecast" (48 rows)',
+  };
+
+  it("round-trips an attach and its result through the stream format", () => {
+    const text = `On it.\n\n${attachNote({ url })}\n\n${attachResultNote(envelope)}\n\nAttached.`;
+    expect(splitToolNotes(text)).toEqual([
+      { type: "text", text: "On it." },
+      { type: "attach", url },
+      { type: "attachresult", result: envelope },
+      { type: "text", text: "Attached." },
+    ]);
+  });
+
+  it("keeps malformed attach markers as text", () => {
+    expect(splitToolNotes("[[tool:attach:not-json]]")).toEqual([
+      { type: "text", text: "[[tool:attach:not-json]]" },
+    ]);
+    expect(splitToolNotes("[[tool:attachresult:not-json]]")).toEqual([
+      { type: "text", text: "[[tool:attachresult:not-json]]" },
+    ]);
+  });
+
+  it("compacts attach pairs to one-liners in model-bound history", () => {
+    const text = [
+      "Let me load that.",
+      attachNote({ url }),
+      attachResultNote(envelope),
+      "It has 48 rows.",
+    ].join("\n\n");
+    expect(toModelText(text)).toBe(
+      [
+        "Let me load that.",
+        `[ran attach_data: ${url}]`,
+        '[attached dataset "forecast" (48 rows) from forecast]',
+        "It has 48 rows.",
+      ].join("\n\n"),
+    );
   });
 });
 
@@ -176,6 +303,20 @@ describe("toModelText", () => {
     expect(stripToolEcho('chart={"type":"line","x":"a","y":"b"}')).toBe("");
     // Real double-bracket markers are untouched.
     expect(stripToolEcho("[[tool:query:abc]]")).toBe("[[tool:query:abc]]");
+  });
+
+  it("strips bracketed descriptions of an already-rendered chart", () => {
+    expect(
+      stripToolEcho(
+        "And here's the tableau of averages over time: [chart of avg_lifeExp by year]",
+      ),
+    ).toBe("And here's the tableau of averages over time:");
+  });
+
+  it("keeps markdown links whose text starts with chart", () => {
+    expect(
+      stripToolEcho("See [chart types explained](/garden/modules/charts)."),
+    ).toBe("See [chart types explained](/garden/modules/charts).");
   });
 
   it("summarizes error envelopes", () => {

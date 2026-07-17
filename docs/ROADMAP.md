@@ -95,6 +95,21 @@ Core landed 2026-07-14, see `docs/plans/2026-07-14-gardener-tools.md`.
       a successful continuation is text-only (no tools) so the model
       narrates instead of re-querying or wandering into unrelated reads;
       and parroted tool-echo fragments are stripped from the narration
+- [x] Model-initiated data attachment: `attach_data(url)` tool (2026-07-16).
+      When the Gardener discovers a data URL itself (a fetched page, a
+      dataset briefing's sample URL, or one the person mentions without
+      pasting a recognizable data link), it can attach it: the call becomes
+      a `[[tool:attach:...]]` marker that ends the turn, the browser
+      fetches the URL and registers it as a DuckDB view (same
+      `registerDataset` path as user attaches, CORS rules apply), and an
+      attach envelope (`kind: "attach"`, schema summary + row count) rides
+      a hidden continuation back so the model can immediately query with
+      `query_data`. Attach continuations keep tools (unlike successful
+      query ones); dedupe by sourceUrl and the 5-dataset cap return
+      friendly error envelopes; the chat shows a small database chip
+      ("attached forecast, 24 rows" or the failure). Keeps the invariant
+      that data only ever loads in the participant's browser; the server
+      still only sees markers and capped envelopes.
 - [ ] MotherDuck MCP for shared/persistent datasets across participants.
       Note: MotherDuck supports agent-created accounts that a user can later
       claim by POSTing to new.motherduck.com, so the Gardener can provision

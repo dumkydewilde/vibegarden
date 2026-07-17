@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  attachMarkerFor,
   executeTool,
   htmlToText,
   toolDefinitions,
@@ -132,6 +133,27 @@ describe("executeTool", () => {
     });
     expect(await executeTool(flow, env)).toContain("is ready");
     expect(toolNoteFor(flow)).toContain("[[tool:diagram:");
+  });
+});
+
+describe("attachMarkerFor", () => {
+  it("is always offered, no env requirements", () => {
+    const names = toolDefinitions(env).map((d) => d.function.name);
+    expect(names).toContain("attach_data");
+  });
+
+  it("turns a valid attach_data call into a browser marker", () => {
+    const marker = attachMarkerFor(
+      call("attach_data", { url: "https://example.com/data.csv" }),
+    );
+    expect(marker).toContain("[[tool:attach:");
+  });
+
+  it("returns null for invalid calls, which then error via executeTool", async () => {
+    const bad = call("attach_data", { url: "ftp://example.com/data.csv" });
+    expect(attachMarkerFor(bad)).toBeNull();
+    expect(await executeTool(bad, env)).toContain("only http(s)");
+    expect(attachMarkerFor(call("query_data", { sql: "SELECT 1" }))).toBeNull();
   });
 });
 

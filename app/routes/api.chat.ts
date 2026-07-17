@@ -12,13 +12,18 @@ import {
   type WireMessage,
 } from "~/lib/gardener.server";
 import {
+  attachMarkerFor,
   executeTool,
   queryMarkerFor,
   toolDefinitions,
   toolNoteFor,
 } from "~/lib/gardener-tools.server";
-import { MAX_DATASETS, parseEnvelope } from "~/lib/query-tool";
-import { queryResultNote } from "~/lib/tool-notes";
+import {
+  MAX_DATASETS,
+  parseAttachEnvelope,
+  parseEnvelope,
+} from "~/lib/query-tool";
+import { attachResultNote, queryResultNote } from "~/lib/tool-notes";
 import { findModel, defaultModel } from "~/lib/models";
 import {
   appendToLastAssistantMessage,
@@ -86,10 +91,18 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
   const continuation = body.continuation === true;
   const lastMessage = body.messages[body.messages.length - 1];
+  // Re-cap the envelope server-side; the client is not trusted with sizes.
+  // An attach error envelope also parses as a query error envelope, so the
+  // attach parse (discriminated by its `kind` field) must run first.
+  const attachEnvelope = continuation
+    ? parseAttachEnvelope(lastMessage.content)
+    : null;
+  const envelope =
+    continuation && !attachEnvelope ? parseEnvelope(lastMessage.content) : null;
   if (continuation) {
-    if (lastMessage.role !== "data" || !parseEnvelope(lastMessage.content)) {
+    if (lastMessage.role !== "data" || (!envelope && !attachEnvelope)) {
       return Response.json(
-        { error: "A continuation needs a valid query-result envelope." },
+        { error: "A continuation needs a valid result envelope." },
         { status: 400 },
       );
     }
@@ -111,8 +124,6 @@ export async function action({ request, context }: Route.ActionArgs) {
         typeof d?.summary === "string",
     )
     .slice(0, MAX_DATASETS);
-  // Re-cap the envelope server-side; the client is not trusted with sizes.
-  const envelope = continuation ? parseEnvelope(lastMessage.content)! : null;
 
   const db = getDb(env);
   const thread = await ensureThread(db, user.id);
@@ -140,16 +151,19 @@ export async function action({ request, context }: Route.ActionArgs) {
   // After a successful query the model should only narrate, so its
   // continuation turn gets no tools at all (otherwise it wanders into
   // reading unrelated articles or re-fetching). An error continuation keeps
-  // tools so it can repair the SQL with query_data.
+  // tools so it can repair the SQL with query_data. Attach continuations
+  // also keep tools: after a successful attach the model should be able to
+  // run a first query against the new dataset.
   const narrateOnly = continuation && envelope?.status === "ok";
   const toolsAllowed = model.tools && !narrateOnly;
   const offerQueryData = datasets.length > 0 && !narrateOnly;
 
   // The model sees the re-capped envelope, not the client's raw payload.
-  const historyMessages = envelope
+  const recappedEnvelope = envelope ?? attachEnvelope;
+  const historyMessages = recappedEnvelope
     ? [
         ...body.messages.slice(0, -1),
-        { role: "data" as const, content: JSON.stringify(envelope) },
+        { role: "data" as const, content: JSON.stringify(recappedEnvelope) },
       ]
     : body.messages;
 
@@ -224,14 +238,14 @@ export async function action({ request, context }: Route.ActionArgs) {
             })),
           });
           for (const call of result.toolCalls) {
-            // A valid query_data ends this turn: the SQL travels to the
-            // browser as a marker, and the browser sends the result back
-            // in a continuation request. Invalid calls fall through to
-            // executeTool so the model hears what was wrong.
-            const queryMarker = queryMarkerFor(call);
-            if (queryMarker) {
+            // A valid query_data or attach_data ends this turn: the SQL or
+            // URL travels to the browser as a marker, and the browser sends
+            // the result back in a continuation request. Invalid calls fall
+            // through to executeTool so the model hears what was wrong.
+            const browserMarker = queryMarkerFor(call) ?? attachMarkerFor(call);
+            if (browserMarker) {
               emit(
-                `${full && !full.endsWith("\n\n") ? "\n\n" : ""}${queryMarker}`,
+                `${full && !full.endsWith("\n\n") ? "\n\n" : ""}${browserMarker}`,
               );
               break outer;
             }
@@ -267,13 +281,16 @@ export async function action({ request, context }: Route.ActionArgs) {
       }
 
       try {
-        if (envelope) {
+        if (envelope || attachEnvelope) {
           // Same visual answer: result marker plus narration are appended
-          // onto the assistant row that ended with the query marker.
+          // onto the assistant row that ended with the query/attach marker.
+          const resultNote = envelope
+            ? queryResultNote(envelope)
+            : attachResultNote(attachEnvelope!);
           await appendToLastAssistantMessage(
             db,
             thread,
-            `\n\n${queryResultNote(envelope)}${full ? `\n\n${full}` : ""}`,
+            `\n\n${resultNote}${full ? `\n\n${full}` : ""}`,
           );
         } else if (full) {
           await saveMessage(db, thread, "assistant", full);
