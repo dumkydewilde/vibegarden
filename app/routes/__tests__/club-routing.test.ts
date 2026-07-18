@@ -3,7 +3,8 @@ import routes from "../../routes";
 import * as home from "../home";
 import { action as threadAction } from "../api.thread";
 import { loader as legacyLoader } from "../legacy.$section.$";
-import { listUserClubs } from "~/lib/clubs.server";
+import { legacyClientDestination } from "~/components/legacy-club-redirect";
+import { listUserClubs, requireClubContext } from "~/lib/clubs.server";
 import { requireUser } from "~/lib/auth.server";
 
 vi.mock("~/lib/auth.server", () => ({ requireUser: vi.fn() }));
@@ -14,6 +15,7 @@ vi.mock("~/lib/clubs.server", () => ({
 
 const mockedRequireUser = vi.mocked(requireUser);
 const mockedListUserClubs = vi.mocked(listUserClubs);
+const mockedRequireClubContext = vi.mocked(requireClubContext);
 
 function loaderArgs() {
   return {
@@ -117,21 +119,44 @@ describe("canonical club routing", () => {
     });
   });
 
-  it("redirects only supported legacy workspace paths to WOTF", async () => {
-    let response: Response | undefined;
-    try {
-      await legacyLoader({
-        request: new Request("https://example.com/garden/projects/p-1?view=all#notes"),
+  it("preserves canonical alias redirects from club APIs", async () => {
+    mockedRequireUser.mockResolvedValue({ id: "user-1" } as never);
+    mockedRequireClubContext.mockRejectedValue(
+      new Response(null, {
+        status: 302,
+        headers: {
+          Location: "https://example.com/clubs/current/api/thread",
+        },
+      }),
+    );
+
+    await expect(
+      threadAction({
+        request: new Request("https://example.com/clubs/old/api/thread", {
+          method: "POST",
+        }),
+        context: { get: () => ({ env: {} as Env }) },
+        params: { clubSlug: "old" },
+      } as never),
+    ).rejects.toMatchObject({
+      status: 302,
+      headers: expect.any(Headers),
+    });
+  });
+
+  it("defers a supported legacy redirect to the client for hash preservation", async () => {
+    await expect(
+      legacyLoader({
+        request: new Request("https://example.com/garden/projects/p-1?view=all"),
         context: { get: () => ({ env: {} as Env }) },
         params: { section: "garden", "*": "projects/p-1" },
-      } as never);
-    } catch (error) {
-      expect(error).toBeInstanceOf(Response);
-      response = error as Response;
-    }
-
-    expect(response?.headers.get("location")).toBe(
-      "/clubs/wotf/garden/projects/p-1?view=all#notes",
-    );
+      } as never),
+    ).resolves.toEqual({ destination: "/clubs/wotf/garden/projects/p-1?view=all" });
+    expect(
+      legacyClientDestination(
+        "/clubs/wotf/garden/projects/p-1?view=all",
+        "#notes",
+      ),
+    ).toBe("/clubs/wotf/garden/projects/p-1?view=all#notes");
   });
 });

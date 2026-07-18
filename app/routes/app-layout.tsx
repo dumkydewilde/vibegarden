@@ -32,6 +32,10 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     context: parseContext(m.context),
   }));
   return {
+    club: {
+      id: club.club.id,
+      slug: club.club.slug,
+    },
     user: {
       email: user.email,
       name: user.name,
@@ -51,11 +55,9 @@ export type AppUser = Awaited<ReturnType<typeof loader>>["user"];
 export default function AppLayout({ loaderData }: Route.ComponentProps) {
   return (
     <GardenerProvider
-      // No key here on purpose: the provider must survive navigations, even
-      // when the loader revalidates with a new active thread id (the first
-      // message of a session creates one). Thread switches ("continue",
-      // clear, plant) already update the sidebar client-side; a remount
-      // would cut off a streaming reply.
+      // Keep state across navigations in one club, but never carry a thread,
+      // model preference, or attached dataset into a different club.
+      key={loaderData.club.id}
       initialMessages={loaderData.gardener.messages}
       initialModelId={loaderData.gardener.modelId}
     >
