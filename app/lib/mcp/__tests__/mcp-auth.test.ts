@@ -151,6 +151,23 @@ describe("MCP tool auth wrapper", () => {
     expect(historyLimit).not.toHaveBeenCalled();
   });
 
+  it("allows a tool to require either approved read scope", async () => {
+    mockMcpAuthContext({
+      props: { userId: "user-a", scopes: ["content:read"] },
+    });
+
+    const result = await runMcpTool({
+      env: env(),
+      toolName: "search",
+      requestId: "request-1",
+      requiredScope: ["projects:read", "content:read"],
+      limiter: "general",
+    }, async () => ({ results: [] }));
+
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toEqual({ results: [] });
+  });
+
   it("returns retry guidance when a limiter rejects a request", async () => {
     generalLimit.mockResolvedValue({ success: false });
 

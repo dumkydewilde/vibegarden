@@ -3,11 +3,12 @@ import { McpPublicError } from "~/lib/mcp/errors.server";
 
 type CursorKind = string;
 type UpdatedAtPosition = { updatedAt: number; id: string };
+type CreatedAtPosition = { createdAt: number; id: string };
 type OffsetPosition = { offset: number };
 
 export type CursorPayload = {
   kind: CursorKind;
-  position: UpdatedAtPosition | OffsetPosition;
+  position: UpdatedAtPosition | CreatedAtPosition | OffsetPosition;
 };
 
 type SerializedCursor = CursorPayload & { version: 1 };
@@ -44,11 +45,18 @@ function decodeBase64Url(value: string): string | null {
   }
 }
 
-function isPosition(value: unknown): value is UpdatedAtPosition | OffsetPosition {
+function isPosition(
+  value: unknown,
+): value is UpdatedAtPosition | CreatedAtPosition | OffsetPosition {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const position = value as Record<string, unknown>;
-  if ("updatedAt" in position || "id" in position) {
+  if ("updatedAt" in position) {
     return Number.isFinite(position.updatedAt)
+      && typeof position.id === "string"
+      && position.id.length > 0;
+  }
+  if ("createdAt" in position) {
+    return Number.isFinite(position.createdAt)
       && typeof position.id === "string"
       && position.id.length > 0;
   }

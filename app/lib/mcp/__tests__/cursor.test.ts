@@ -19,6 +19,18 @@ describe("MCP cursors", () => {
     });
   });
 
+  it("round-trips a conversation message position", async () => {
+    const encoded = await encodeCursor(secret, {
+      kind: "conversation_messages",
+      position: { createdAt: 42, id: "message-2" },
+    });
+
+    await expect(decodeCursor(secret, "conversation_messages", encoded)).resolves.toEqual({
+      kind: "conversation_messages",
+      position: { createdAt: 42, id: "message-2" },
+    });
+  });
+
   it("rejects tampering and malformed payloads", async () => {
     const encoded = await encodeCursor(secret, {
       kind: "content",

@@ -84,7 +84,7 @@ type McpToolOptions = {
   env: Env;
   toolName: string;
   requestId: string;
-  requiredScope: McpScope;
+  requiredScope: McpScope | McpScope[];
   /** Kept at call sites to make the intended tool category explicit. */
   limiter: "general" | "history";
 };
@@ -147,7 +147,15 @@ export async function runMcpTool(
   try {
     const principal = getMcpPrincipal();
     userHash = await hashMcpUser(options.env, principal.userId);
-    requireScope(principal, options.requiredScope);
+    const requiredScopes = Array.isArray(options.requiredScope)
+      ? options.requiredScope
+      : [options.requiredScope];
+    if (!requiredScopes.some((scope) => principal.scopes.includes(scope))) {
+      throw new McpPublicError(
+        "insufficient_scope",
+        "The required scope is missing.",
+      );
+    }
 
     const limiter = options.toolName === "get_conversation"
       ? options.env.MCP_HISTORY_LIMITER
@@ -183,7 +191,9 @@ export async function runMcpTool(
       }));
     }
     const challenge = publicError.code === "insufficient_scope"
-      ? oauthChallenge(options.env, [options.requiredScope], "insufficient_scope")
+      ? oauthChallenge(options.env, Array.isArray(options.requiredScope)
+        ? options.requiredScope
+        : [options.requiredScope], "insufficient_scope")
       : undefined;
     return toMcpErrorResult(publicError, challenge);
   } finally {
