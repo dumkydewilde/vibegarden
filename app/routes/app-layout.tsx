@@ -8,10 +8,13 @@ import {
 } from "~/components/gardener/gardener-provider";
 import { AppShell } from "~/components/shell/app-shell";
 import { requireUser } from "~/lib/auth.server";
-import { requireClubContext } from "~/lib/clubs.server";
+import {
+  listActiveClubs,
+  listUserClubs,
+  requireClubContext,
+} from "~/lib/clubs.server";
 import { clubPath } from "~/lib/club-path";
 import { activeThread, parseContext } from "~/lib/threads.server";
-import { listUserClubs } from "~/lib/clubs.server";
 import { models } from "~/lib/models";
 
 export type AppClub = {
@@ -35,6 +38,14 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     throw redirect(clubPath(club.club.slug, "welcome"));
   }
   const memberships = await listUserClubs(env, user.id);
+  const activeClubs = club.isSuperAdmin
+    ? await listActiveClubs(env)
+    : memberships
+        .filter((entry) => entry.club.status === "active")
+        .map((entry) => entry.club);
+  const explicitRoles = new Map(
+    memberships.map((entry) => [entry.club.id, entry.membership.role]),
+  );
   const { threadId, messages: history } = await activeThread(env, {
     clubId: club.club.id,
     userId: user.id,
@@ -53,13 +64,11 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     },
     explicitRole: club.membership?.role ?? null,
     effectiveRole: club.effectiveRole,
-    clubs: memberships
-      .filter((entry) => entry.club.status === "active")
-      .map((entry) => ({
-        name: entry.club.name,
-        slug: entry.club.slug,
-        role: entry.membership.role,
-      })),
+    clubs: activeClubs.map((activeClub) => ({
+      name: activeClub.name,
+      slug: activeClub.slug,
+      role: explicitRoles.get(activeClub.id) ?? "admin",
+    })),
     allowedModels: models
       .filter((model) => club.club.modelPolicy === "all_models" || model.id.endsWith(":free"))
       .map((model) => model.id),

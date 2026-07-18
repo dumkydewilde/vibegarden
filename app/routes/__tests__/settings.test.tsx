@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import Settings, { action } from "../settings";
 import { createClub, listUserClubs } from "~/lib/clubs.server";
 import { requireUser } from "~/lib/auth.server";
+import { leaveClub } from "~/lib/memberships.server";
 
 vi.mock("~/lib/auth.server", () => ({ requireUser: vi.fn() }));
 vi.mock("~/lib/clubs.server", async (importOriginal) => ({
@@ -136,5 +137,21 @@ describe("global settings", () => {
       error: "Choose a valid club URL.",
       intent: "create-club",
     });
+  });
+
+  it("rejects an owner leave request before calling membership lifecycle code", async () => {
+    vi.mocked(requireUser).mockResolvedValue({ id: "user-1" } as never);
+    vi.mocked(listUserClubs).mockResolvedValue([
+      {
+        club: { id: "owned", name: "Owned Club", slug: "owned", status: "active" },
+        membership: { userId: "user-1", role: "owner" },
+      },
+    ] as never);
+    const data = new FormData();
+    data.set("intent", "leave-club");
+    data.set("clubId", "owned");
+
+    await expect(action(actionArgs(data))).rejects.toMatchObject({ status: 409 });
+    expect(vi.mocked(leaveClub)).not.toHaveBeenCalled();
   });
 });

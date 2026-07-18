@@ -77,6 +77,11 @@ export async function action({ request, context }: Route.ActionArgs) {
     const memberships = await listUserClubs(env, user.id);
     const match = memberships.find((entry) => entry.club.id === clubId);
     if (!match) throw new Response("Not found", { status: 404 });
+    if (match.membership.role === "owner") {
+      throw new Response("Transfer ownership before leaving this club.", {
+        status: 409,
+      });
+    }
     await leaveClub(env, {
       club: match.club,
       membership: match.membership,

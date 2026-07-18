@@ -140,6 +140,14 @@ export async function listUserClubs(env: Env, userId: string) {
     .where(eq(clubMemberships.userId, userId));
 }
 
+/** Every active club a platform super admin can administer implicitly. */
+export async function listActiveClubs(env: Env) {
+  return getDb(env)
+    .select()
+    .from(clubs)
+    .where(eq(clubs.status, "active"));
+}
+
 export async function requireClubContext(
   env: Env,
   request: Request,
