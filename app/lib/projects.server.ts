@@ -27,7 +27,7 @@ function ownedLike(column: typeof projects.title, term: string) {
 }
 
 function escapedLikeTerm(query: string) {
-  return `%${query.trim().toLowerCase().replace(/[\\%_]/g, "\\\\$&")}%`;
+  return `%${query.trim().toLowerCase().replace(/[\\%_]/g, "\\$&")}%`;
 }
 
 export async function listProjects(env: Env, scope: ClubUserScope) {

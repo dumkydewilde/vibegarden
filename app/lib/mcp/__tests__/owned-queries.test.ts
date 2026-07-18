@@ -131,4 +131,20 @@ describe("owned MCP D1 queries", () => {
     expect(recordedBindings.flat()).toContain("club-a");
     expect(recordedBindings.flat()).toContain(20);
   });
+
+  it.each([
+    ["percent", "%", "%\\%%"],
+    ["underscore", "_", "%\\_%"],
+    ["backslash", "\\", "%\\\\%"],
+  ])(
+    "binds a single SQLite escape for a literal %s search",
+    async (_name, query, expectedTerm) => {
+      const env = makeEnv();
+
+      await searchOwnedProjects(env, "user-a", query, 20);
+      await searchOwnedThreads(env, "user-a", query, 20);
+
+      expect(recordedBindings.flat().filter((binding) => binding === expectedTerm)).toHaveLength(4);
+    },
+  );
 });

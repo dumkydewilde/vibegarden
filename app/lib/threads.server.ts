@@ -33,7 +33,7 @@ function ownedLike(
 }
 
 function escapedLikeTerm(query: string) {
-  return `%${query.trim().toLowerCase().replace(/[\\%_]/g, "\\\\$&")}%`;
+  return `%${query.trim().toLowerCase().replace(/[\\%_]/g, "\\$&")}%`;
 }
 
 /** Stored context JSON on a message row, parsed defensively. */
