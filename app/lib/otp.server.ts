@@ -116,21 +116,43 @@ export async function verifyLoginCode(
   return { ok: true, user };
 }
 
-/** Creates the global identity on first login. Club access is invitation-based. */
-export async function upsertUser(env: Env, email: string): Promise<User> {
+/**
+ * Creates the global identity on first login. When specified, the forced
+ * legacy role also clears platform-admin access for the isolated reviewer.
+ */
+export async function upsertUser(
+  env: Env,
+  email: string,
+  forcedRole?: User["role"],
+): Promise<User> {
   const db = getDb(env);
   const existing = await db.query.users.findFirst({
     where: eq(users.email, email),
   });
-  if (existing) return existing;
+  if (existing) {
+    if (
+      forcedRole
+      && (existing.role !== forcedRole || existing.platformRole !== "user")
+    ) {
+      await db
+        .update(users)
+        .set({ role: forcedRole, platformRole: "user" })
+        .where(eq(users.id, existing.id));
+      return { ...existing, role: forcedRole, platformRole: "user" };
+    }
+    return existing;
+  }
 
   const user = {
     id: crypto.randomUUID(),
     email,
     name: null,
-    role: isAdminEmail(env, email) ? ("admin" as const) : ("user" as const),
+    role: forcedRole ?? (isAdminEmail(env, email) ? ("admin" as const) : ("user" as const)),
     stage: "invited" as const,
     modelPref: null,
+    platformRole: "user" as const,
+    themePref: null,
+    lastClubId: null,
     createdAt: Date.now(),
   };
   await db.insert(users).values(user);

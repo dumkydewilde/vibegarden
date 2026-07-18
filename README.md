@@ -23,6 +23,51 @@ npm test           # vitest
 npm run typecheck  # react-router typegen + tsc
 ```
 
+## MCP connection
+
+Vibe Garden exposes a read-only remote MCP server at
+`https://vibegarden.dumky.net/mcp`. Setup details are public at `/connect` and
+data-use information at `/privacy/mcp`. People can revoke a connected app from
+`/settings/connections` after signing in.
+
+For local OAuth development, put these overrides and the normal session secret
+in `.dev.vars`; the resource and issuer must match the Vite Worker origin
+exactly:
+
+```dotenv
+SESSION_SECRET=replace-with-a-local-secret
+APP_ORIGIN=http://localhost:5173
+MCP_RESOURCE_URL=http://localhost:5173/mcp
+```
+
+Create the OAuth KV namespace and bind it as `OAUTH_KV` in `wrangler.jsonc`
+before deploying the MCP server. The production Worker also needs the
+`MCP_GENERAL_LIMITER` and `MCP_HISTORY_LIMITER` bindings shown there.
+
+```sh
+npm run test:mcp       # Worker/OAuth integration suite
+npm run mcp:inspect    # inspect a running MCP endpoint
+```
+
+Deploy in this order: create D1 and apply migrations, create and bind OAuth KV
+and rate limiters, set `SESSION_SECRET` plus any reviewer secrets, then deploy
+the Worker. Do not put production secrets in `.dev.vars` or source control.
+
+### Reviewer data
+
+Set `MCP_REVIEW_EMAIL` and `MCP_REVIEW_PASSWORD` as Worker secrets to enable
+the isolated `/review/login` page. It creates a normal user session only. To
+load the deterministic reviewer sample after deployment, run:
+
+```sh
+MCP_REVIEW_EMAIL=reviewer@example.test node scripts/seed-mcp-reviewer.mjs
+```
+
+The seeder is idempotent and uses `--remote`; it writes only its deterministic
+reviewer user, projects, conversations, and messages. Review the target
+environment before running it. Do not run it as part of local development or
+tests.
+
 ## Content
 
 Learning articles are MDX files in `content/learning/`. Drop in a file with
