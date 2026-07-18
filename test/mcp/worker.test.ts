@@ -129,19 +129,32 @@ async function seedPrivateRecords() {
     env.DB.prepare("INSERT INTO projects (id, user_id, club_id, title, one_liner, modules, status, thread_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '[]', 'seed', ?, ?, ?)")
       .bind(projectId, owner, ownerClub, projectTitle, messageBody, conversationId, now, now),
   ]);
-  return { attacker, attackerClub, projectId, conversationId, projectTitle, messageBody };
+  return {
+    owner,
+    ownerClub,
+    attacker,
+    attackerClub,
+    projectId,
+    conversationId,
+    projectTitle,
+    messageBody,
+  };
 }
 
-async function seedOwnedProject(userId: string) {
+async function seedOwnedProject(userId: string, clubId = "test-club") {
   const suffix = crypto.randomUUID();
   const projectId = `owned-project-${suffix}`;
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare("INSERT OR IGNORE INTO users (id, email, name, role, stage, created_at) VALUES (?, ?, ?, 'user', 'exploring', ?)")
       .bind(userId, `${userId}@example.test`, "OAuth user", now),
+    env.DB.prepare("INSERT OR IGNORE INTO clubs (id, name, slug, model_policy, status, created_by, created_at, updated_at) VALUES (?, 'Test Club', ?, 'all_models', 'active', ?, ?, ?)")
+      .bind(clubId, clubId, userId, now, now),
+    env.DB.prepare("INSERT OR IGNORE INTO club_memberships (club_id, user_id, role, onboarding_stage, joined_at, updated_at) VALUES (?, ?, 'member', 'exploring', ?, ?)")
+      .bind(clubId, userId, now, now),
     env.DB.prepare(
-      "INSERT INTO projects (id, user_id, title, one_liner, modules, status, created_at, updated_at) VALUES (?, ?, ?, ?, '[]', 'seed', ?, ?)",
-    ).bind(projectId, userId, `Owned project ${suffix}`, "A project owned by the OAuth user.", now, now),
+      "INSERT INTO projects (id, user_id, club_id, title, one_liner, modules, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '[]', 'seed', ?, ?)",
+    ).bind(projectId, userId, clubId, `Owned project ${suffix}`, "A project owned by the OAuth user.", now, now),
   ]);
   return projectId;
 }
@@ -325,11 +338,49 @@ describe("Gardener MCP Worker", () => {
       arguments: { query: privateRecords.projectTitle },
     });
     expect(search.status).toBe(200);
-    expect(JSON.stringify(await mcpJson(search))).not.toContain(privateRecords.projectTitle);
+    const searchBody = await mcpJson(search);
+    const searchResult = searchBody.result as {
+      structuredContent?: unknown;
+      content?: unknown;
+    };
+    expect(searchResult.structuredContent).toEqual({ results: [] });
+    expect(searchResult.content).toEqual([{ type: "text", text: JSON.stringify({ results: [] }) }]);
+    expect(JSON.stringify(searchBody)).not.toContain(privateRecords.projectTitle);
+    expect(JSON.stringify(searchBody)).not.toContain(privateRecords.messageBody);
     expectPrivateNotFound(await mcpJson(await mcpRpc(token, "tools/call", {
       name: "fetch",
       arguments: { id: `conversation:${privateRecords.conversationId}` },
     })), secrets);
+  });
+
+  it("returns an owned private project resource through the HTTP MCP transport", async () => {
+    const privateRecords = await seedPrivateRecords();
+    const token = await accessTokenFor(
+      privateRecords.owner,
+      undefined,
+      privateRecords.ownerClub,
+    );
+
+    const response = await mcpRpc(token, "resources/read", {
+      uri: `vibegarden://project/${privateRecords.projectId}`,
+    });
+
+    expect(response.status).toBe(200);
+    const body = await mcpJson(response);
+    expect(body).toMatchObject({
+      result: {
+        contents: [expect.objectContaining({
+          uri: `vibegarden://project/${privateRecords.projectId}`,
+          mimeType: "application/json",
+        })],
+      },
+    });
+    const text = ((body.result as { contents: Array<{ text: string }> }).contents[0]).text;
+    expect(JSON.parse(text)).toMatchObject({
+      id: privateRecords.projectId,
+      title: privateRecords.projectTitle,
+      one_liner: privateRecords.messageBody,
+    });
   });
 
   it("keeps concurrent OAuth MCP requests isolated by their request props", async () => {

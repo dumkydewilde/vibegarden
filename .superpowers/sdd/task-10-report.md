@@ -123,3 +123,24 @@ git diff --check                                            # passed
 
 - The workerd suite continues to emit upstream MCP SDK missing-source-map warnings and the intentional CIMD-disabled notice; neither is produced by the application code and all checks pass.
 - The production Worker does not proxy or alter environment bindings. The `MOTHERDUCK_TOKEN` omission is fixture-only so the requested no-token catalog behavior can be asserted despite locally loaded development secrets.
+
+## Final clarification: search privacy semantics and successful resource reads
+
+### Test-first coverage
+
+- Added the workerd assertions before changing any production code. The approved cross-user `search` behavior was already implemented: a query for another user's private project returns the normal exact `{ results: [] }` payload (both structured content and text content), rather than a synthetic `not_found` result. The test also verifies neither the private title nor private message body appears anywhere in the HTTP response.
+- Added a real authenticated `resources/read` success case for an owner-seeded private project. It asserts the HTTP MCP response has the requested `vibegarden://project/{id}` URI, `application/json` MIME type, and the seeded project ID, title, and one-line content in its returned resource text.
+- No production change was required: the test-first checks were green because the runtime already implemented the clarified contract. The change preserves the correct test contract and guards it against regression.
+
+### Verification
+
+```text
+npm run test:all   # 42 JS test files / 240 tests; 2 workerd files / 15 tests
+npm run typecheck  # passed
+npm run build      # passed
+git diff --check   # passed
+```
+
+### Concerns
+
+- Workerd continues to print upstream MCP SDK source-map warnings and the intentional CIMD-disabled notice; the suites pass and neither warning is from this change.
