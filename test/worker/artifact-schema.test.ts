@@ -389,7 +389,7 @@ describe("artifact persistence schema", () => {
     ]);
   });
 
-  it("enforces pending upload project ownership and restricts artifact project deletion", async () => {
+  it("enforces upload project ownership and restricts artifact project deletion", async () => {
     await env.DB.batch([
       env.DB.prepare(
         "INSERT INTO users (id, email, role, stage, created_at) VALUES (?, ?, 'user', 'invited', ?)",
@@ -421,6 +421,15 @@ describe("artifact persistence schema", () => {
         "artifact-delete-only-project",
         "artifact-upload-owner",
         "Artifact-only project",
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        "INSERT INTO projects (id, user_id, title, status, created_at, updated_at) VALUES (?, ?, ?, 'seed', ?, ?)",
+      ).bind(
+        "artifact-upload-only-project",
+        "artifact-upload-owner",
+        "Upload-only project",
         now,
         now,
       ),
@@ -473,13 +482,13 @@ describe("artifact persistence schema", () => {
           created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, 'html', ?, '[]', 'web', 'failed', ?, ?, ?, ?)`,
       ).bind(
-        "artifact-upload-other-failed",
+        "artifact-upload-only-reference",
         "artifact-upload-owner",
-        "artifact-upload-other-artifact",
-        "artifact-upload-other-version",
-        "artifact-upload-other-project",
-        "Failed upload",
-        "artifact-upload-other-key",
+        "artifact-upload-only-artifact",
+        "artifact-upload-only-version",
+        "artifact-upload-only-project",
+        "Upload-only failed upload",
+        "artifact-upload-only-key",
         now + 60_000,
         now,
         now,
@@ -509,7 +518,26 @@ describe("artifact persistence schema", () => {
       "UPDATE artifact_uploads SET project_id = 'artifact-upload-other-project' WHERE id = 'artifact-upload-owner-pending'",
     );
     await expectConstraint(
-      "UPDATE artifact_uploads SET status = 'pending' WHERE id = 'artifact-upload-other-failed'",
+      `INSERT INTO artifact_uploads (
+        id, user_id, artifact_id, version_id, project_id, type, title,
+        allowed_data_origins, source, status, idempotency_key, expires_at,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, 'html', ?, '[]', 'web', 'failed', ?, ?, ?, ?)`,
+      [
+        "artifact-upload-cross-owner-failed",
+        "artifact-upload-owner",
+        "artifact-upload-cross-owner-failed-artifact",
+        "artifact-upload-cross-owner-failed-version",
+        "artifact-upload-other-project",
+        "Cross-owner failed upload",
+        "artifact-upload-cross-owner-failed-key",
+        now + 60_000,
+        now,
+        now,
+      ],
+    );
+    await expectConstraint(
+      "UPDATE projects SET user_id = 'artifact-upload-other' WHERE id = 'artifact-upload-only-project'",
     );
     await expectConstraint(
       "DELETE FROM projects WHERE id = 'artifact-delete-only-project'",
