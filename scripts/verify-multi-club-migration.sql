@@ -41,7 +41,9 @@ WHERE EXISTS (
   )
 )
 UNION ALL
-SELECT 'violation:bootstrap_admin_email_mismatch'
+-- D1 SQL cannot read deployed Worker variables. The focused source test keeps
+-- this fixed WOTF bootstrap identity synchronized with wrangler.jsonc ADMIN_EMAIL.
+SELECT 'violation:expected_wotf_owner_missing'
 WHERE NOT EXISTS (
   SELECT 1 FROM users
   WHERE lower(email) = 'dumky@motherduck.com'

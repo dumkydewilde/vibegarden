@@ -243,20 +243,24 @@ export const otpCodes = sqliteTable("otp_codes", {
   createdAt: integer("created_at").notNull(),
 });
 
-export const chatThreads = sqliteTable("chat_threads", {
-  id: text("id").primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  title: text("title"),
-  /** Set when the conversation belongs to a project in the Idea Garden. */
-  projectId: text("project_id"),
-  /** Nullable until the multi-club contract migration. */
-  clubId: text("club_id").references(() => clubs.id),
-  createdAt: integer("created_at").notNull(),
-  /** Bumped on every message and on "continue"; newest thread is active. */
-  updatedAt: integer("updated_at").notNull().default(0),
-});
+export const chatThreads = sqliteTable(
+  "chat_threads",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: text("title"),
+    /** Set when the conversation belongs to a project in the Idea Garden. */
+    projectId: text("project_id"),
+    /** Nullable until the multi-club contract migration. */
+    clubId: text("club_id").references(() => clubs.id),
+    createdAt: integer("created_at").notNull(),
+    /** Bumped on every message and on "continue"; newest thread is active. */
+    updatedAt: integer("updated_at").notNull().default(0),
+  },
+  (table) => [index("chat_threads_club_id_idx").on(table.clubId)],
+);
 
 export const chatMessages = sqliteTable("chat_messages", {
   id: text("id").primaryKey(),
@@ -282,71 +286,86 @@ export const questionnaireResponses = sqliteTable(
     answers: text("answers").notNull(),
     createdAt: integer("created_at").notNull(),
   },
-  (table) => [primaryKey({ columns: [table.clubId, table.userId] })],
+  (table) => [
+    primaryKey({ columns: [table.clubId, table.userId] }),
+    index("questionnaire_responses_club_id_idx").on(table.clubId),
+  ],
 );
 
-export const projects = sqliteTable("projects", {
-  id: text("id").primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  /** Nullable until the multi-club contract migration. */
-  clubId: text("club_id").references(() => clubs.id),
-  title: text("title").notNull(),
-  oneLiner: text("one_liner"),
-  /** JSON array of module names from app/lib/modules.ts */
-  modules: text("modules"),
-  status: text("status", { enum: ["seed", "growing", "bloomed"] })
-    .notNull()
-    .default("seed"),
-  threadId: text("thread_id").references(() => chatThreads.id, {
-    onDelete: "set null",
-  }),
-  createdAt: integer("created_at").notNull(),
-  updatedAt: integer("updated_at").notNull(),
-});
+export const projects = sqliteTable(
+  "projects",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Nullable until the multi-club contract migration. */
+    clubId: text("club_id").references(() => clubs.id),
+    title: text("title").notNull(),
+    oneLiner: text("one_liner"),
+    /** JSON array of module names from app/lib/modules.ts */
+    modules: text("modules"),
+    status: text("status", { enum: ["seed", "growing", "bloomed"] })
+      .notNull()
+      .default("seed"),
+    threadId: text("thread_id").references(() => chatThreads.id, {
+      onDelete: "set null",
+    }),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [index("projects_club_id_idx").on(table.clubId)],
+);
 
 /**
  * Participant-visible discussion attached to a target by string, not FK:
  * articles are file-based (slug), inspiration cards live in code. `parentId`
  * is reserved for one-level replies; nothing writes it yet.
  */
-export const comments = sqliteTable("comments", {
-  id: text("id").primaryKey(),
-  targetType: text("target_type", {
-    enum: ["article", "inspiration", "artifact"],
-  }).notNull(),
-  targetId: text("target_id").notNull(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  /** Nullable until the multi-club contract migration. */
-  clubId: text("club_id").references(() => clubs.id),
-  parentId: text("parent_id"),
-  body: text("body").notNull(),
-  status: text("status", { enum: ["visible", "hidden"] })
-    .notNull()
-    .default("visible"),
-  createdAt: integer("created_at").notNull(),
-  updatedAt: integer("updated_at").notNull(),
-});
+export const comments = sqliteTable(
+  "comments",
+  {
+    id: text("id").primaryKey(),
+    targetType: text("target_type", {
+      enum: ["article", "inspiration", "artifact"],
+    }).notNull(),
+    targetId: text("target_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Nullable until the multi-club contract migration. */
+    clubId: text("club_id").references(() => clubs.id),
+    parentId: text("parent_id"),
+    body: text("body").notNull(),
+    status: text("status", { enum: ["visible", "hidden"] })
+      .notNull()
+      .default("visible"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [index("comments_club_id_idx").on(table.clubId)],
+);
 
 /** Private feedback to the admin, not attached to any target. */
-export const siteFeedback = sqliteTable("site_feedback", {
-  id: text("id").primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  /** Nullable until the multi-club contract migration. */
-  clubId: text("club_id").references(() => clubs.id),
-  /** Path the feedback was sent from, e.g. "/learning/what-is-an-agent". */
-  page: text("page"),
-  body: text("body").notNull(),
-  status: text("status", { enum: ["new", "read", "resolved"] })
-    .notNull()
-    .default("new"),
-  createdAt: integer("created_at").notNull(),
-});
+export const siteFeedback = sqliteTable(
+  "site_feedback",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Nullable until the multi-club contract migration. */
+    clubId: text("club_id").references(() => clubs.id),
+    /** Path the feedback was sent from, e.g. "/learning/what-is-an-agent". */
+    page: text("page"),
+    body: text("body").notNull(),
+    status: text("status", { enum: ["new", "read", "resolved"] })
+      .notNull()
+      .default("new"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [index("site_feedback_club_id_idx").on(table.clubId)],
+);
 
 export type User = typeof users.$inferSelect;
 export type Invite = typeof invites.$inferSelect;
