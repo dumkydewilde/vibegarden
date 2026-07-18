@@ -20,6 +20,39 @@ BEGIN
   SELECT RAISE(ABORT, 'artifact project must belong to artifact user');
 END;
 --> statement-breakpoint
+CREATE TRIGGER `projects_owner_matches_artifacts_on_update`
+BEFORE UPDATE OF `user_id` ON `projects`
+FOR EACH ROW WHEN EXISTS (
+  SELECT 1
+  FROM `artifacts`
+  WHERE `project_id` = OLD.`id` AND `user_id` IS NOT NEW.`user_id`
+)
+BEGIN
+  SELECT RAISE(ABORT, 'project owner must match attached artifact users');
+END;
+--> statement-breakpoint
+CREATE TRIGGER `artifact_uploads_project_owner_on_insert`
+BEFORE INSERT ON `artifact_uploads`
+FOR EACH ROW WHEN NEW.`status` = 'pending' AND NEW.`project_id` IS NOT NULL AND NOT EXISTS (
+  SELECT 1
+  FROM `projects`
+  WHERE `id` = NEW.`project_id` AND `user_id` = NEW.`user_id`
+)
+BEGIN
+  SELECT RAISE(ABORT, 'pending upload project must belong to upload user');
+END;
+--> statement-breakpoint
+CREATE TRIGGER `artifact_uploads_project_owner_on_update`
+BEFORE UPDATE OF `user_id`, `project_id`, `status` ON `artifact_uploads`
+FOR EACH ROW WHEN NEW.`status` = 'pending' AND NEW.`project_id` IS NOT NULL AND NOT EXISTS (
+  SELECT 1
+  FROM `projects`
+  WHERE `id` = NEW.`project_id` AND `user_id` = NEW.`user_id`
+)
+BEGIN
+  SELECT RAISE(ABORT, 'pending upload project must belong to upload user');
+END;
+--> statement-breakpoint
 CREATE TRIGGER `artifacts_private_on_insert`
 BEFORE INSERT ON `artifacts`
 FOR EACH ROW WHEN NEW.`visibility` != 'private'
