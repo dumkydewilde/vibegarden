@@ -26,7 +26,7 @@ export default [
       "routes/admin.conversations.$id.tsx",
     ),
   ]),
-  route("join", "routes/join.tsx"),
+  route("join/:token", "routes/join.tsx"),
   route("welcome", "routes/welcome.tsx"),
   route("api/chat", "routes/api.chat.ts"),
   route("api/thread", "routes/api.thread.ts"),
