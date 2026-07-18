@@ -14,4 +14,15 @@ describe("hashMcpUser", () => {
     expect(firstHash).toMatch(/^[0-9a-f]{24}$/);
     expect(firstHash).not.toContain(rawUserId);
   });
+
+  it.each([undefined, ""])(
+    "rejects a missing SESSION_SECRET (%s)",
+    async (sessionSecret) => {
+      const env = { SESSION_SECRET: sessionSecret } as Env;
+
+      await expect(hashMcpUser(env, "user-a")).rejects.toThrow(
+        /SESSION_SECRET is not set/,
+      );
+    },
+  );
 });
