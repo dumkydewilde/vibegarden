@@ -3,9 +3,11 @@ import { createRoutesStub } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AdminConversation, { loader } from "../admin.conversations.$id";
 import { requireAdmin } from "~/lib/auth.server";
+import { requireClubContext } from "~/lib/clubs.server";
 import { getAdminThread } from "~/lib/threads.server";
 
 vi.mock("~/lib/auth.server", () => ({ requireAdmin: vi.fn() }));
+vi.mock("~/lib/clubs.server", () => ({ requireClubContext: vi.fn() }));
 vi.mock("~/lib/threads.server", () => ({
   getAdminThread: vi.fn(),
   parseContext: (raw: string | null) =>
@@ -21,6 +23,7 @@ vi.mock("~/lib/threads.server", () => ({
 }));
 
 const mockedRequireAdmin = vi.mocked(requireAdmin);
+const mockedRequireClubContext = vi.mocked(requireClubContext);
 const mockedGetAdminThread = vi.mocked(getAdminThread);
 
 const transcript = {
@@ -49,6 +52,7 @@ const transcript = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  mockedRequireClubContext.mockResolvedValue({ club: { id: "club-wotf" } } as never);
 });
 
 describe("Admin conversation loader", () => {
@@ -79,7 +83,7 @@ describe("Admin conversation loader", () => {
       participant: transcript.participant,
     });
     expect(mockedRequireAdmin).toHaveBeenCalledOnce();
-    expect(mockedGetAdminThread).toHaveBeenCalledWith({}, "thread-1");
+    expect(mockedGetAdminThread).toHaveBeenCalledWith({}, "club-wotf", "thread-1");
   });
 
   it("does not query a transcript when the requester is not an admin", async () => {

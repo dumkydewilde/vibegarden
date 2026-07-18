@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "./db.server";
 import { isModuleName } from "./modules";
-import { projects, type Project } from "~/db/schema";
+import { chatThreads, projects, type Project } from "~/db/schema";
 
 export type ClubUserScope = { clubId: string; userId: string };
 
@@ -58,6 +58,22 @@ export async function createProject(
   },
 ): Promise<Project> {
   const now = Date.now();
+  const db = getDb(env);
+  const threadId = input.threadId
+    ? (
+        await db
+          .select({ id: chatThreads.id })
+          .from(chatThreads)
+          .where(
+            and(
+              eq(chatThreads.id, input.threadId),
+              eq(chatThreads.clubId, scope.clubId),
+              eq(chatThreads.userId, scope.userId),
+            ),
+          )
+          .limit(1)
+      )[0]?.id ?? null
+    : null;
   const project: Project = {
     id: crypto.randomUUID(),
     userId: scope.userId,
@@ -66,11 +82,11 @@ export async function createProject(
     oneLiner: input.oneLiner?.trim().slice(0, 300) || null,
     modules: JSON.stringify((input.modules ?? []).filter(isModuleName)),
     status: "seed",
-    threadId: input.threadId ?? null,
+    threadId,
     createdAt: now,
     updatedAt: now,
   };
-  await getDb(env).insert(projects).values(project);
+  await db.insert(projects).values(project);
   return project;
 }
 

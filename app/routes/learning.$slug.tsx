@@ -12,6 +12,7 @@ import {
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { requireUser } from "~/lib/auth.server";
+import { requireClubContext } from "~/lib/clubs.server";
 import {
   createComment,
   deleteComment,
@@ -26,19 +27,24 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   }
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
-  const comments = await listComments(env, "article", params.slug, user.id);
-  return { comments, canModerate: user.role === "admin" };
+  const club = await requireClubContext(env, request, "wotf");
+  const comments = await listComments(env, club.club.id, "article", params.slug, user.id);
+  return {
+    comments,
+    canModerate: club.effectiveRole === "admin" || club.effectiveRole === "owner",
+  };
 }
 
 export async function action({ params, request, context }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
+  const club = await requireClubContext(env, request, "wotf");
   const form = await request.formData();
   const intent = form.get("intent");
 
   if (intent === "comment") {
     // Target is fixed by the route, not trusted from the form.
-    await createComment(env, user.id, {
+    await createComment(env, { clubId: club.club.id, userId: user.id }, {
       targetType: "article",
       targetId: params.slug,
       body: String(form.get("body") ?? ""),
@@ -46,7 +52,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     return { ok: true };
   }
   if (intent === "delete-comment") {
-    await deleteComment(env, user, String(form.get("commentId") ?? ""));
+    await deleteComment(env, { user, club }, String(form.get("commentId") ?? ""));
     return { ok: true };
   }
   return { ok: false };

@@ -87,7 +87,9 @@ export async function ensureThread(db: Db, scope: ClubUserScope) {
 }
 
 export async function newThread(env: Env, scope: ClubUserScope, projectId?: string) {
-  return createThread(getDb(env), scope, projectId);
+  const db = getDb(env);
+  const project = projectId ? await findProject(db, scope, projectId) : null;
+  return createThread(db, scope, project?.id);
 }
 
 /** Marks a thread as belonging to a project (first project wins). */
@@ -99,6 +101,7 @@ export async function tagThreadWithProject(
 ) {
   const db = getDb(env);
   if (!(await findProject(db, scope, projectId))) return false;
+  if (!(await findThread(db, scope, threadId))) return false;
   await db
     .update(chatThreads)
     .set({ projectId })

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import type { Route } from "./+types/api.chat";
 import { cloudflareContext } from "~/lib/context";
 import { requireUser } from "~/lib/auth.server";
+import { requireClubContext } from "~/lib/clubs.server";
 import { getDb } from "~/lib/db.server";
 import {
   buildSystemPrompt,
@@ -72,6 +73,8 @@ const MAX_TOOL_ROUNDS = 3;
 export async function action({ request, context }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
+  const club = await requireClubContext(env, request, "wotf");
+  const scope = { clubId: club.club.id, userId: user.id };
 
   if (!env.OPENROUTER_API_KEY) {
     return Response.json(
@@ -126,15 +129,16 @@ export async function action({ request, context }: Route.ActionArgs) {
     .slice(0, MAX_DATASETS);
 
   const db = getDb(env);
-  const thread = await ensureThread(db, user.id);
+  const thread = await ensureThread(db, scope);
   if (typeof body.projectId === "string") {
-    await tagThreadWithProject(env, user.id, thread.id, body.projectId);
+    await tagThreadWithProject(env, scope, thread.id, body.projectId);
   }
   // The envelope is not a person's message: it is persisted as a marker on
   // the assistant answer instead (below), keeping one row per visual bubble.
   if (!continuation) {
     await saveMessage(
       db,
+      scope,
       thread,
       "user",
       lastMessage.content,
@@ -289,11 +293,12 @@ export async function action({ request, context }: Route.ActionArgs) {
             : attachResultNote(attachEnvelope!);
           await appendToLastAssistantMessage(
             db,
+            scope,
             thread,
             `\n\n${resultNote}${full ? `\n\n${full}` : ""}`,
           );
         } else if (full) {
-          await saveMessage(db, thread, "assistant", full);
+          await saveMessage(db, scope, thread, "assistant", full);
         }
       } catch (e) {
         console.error("failed to persist assistant message", e);

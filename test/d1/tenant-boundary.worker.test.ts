@@ -17,6 +17,7 @@ import {
   setFeedbackStatus,
 } from "../../app/lib/feedback.server";
 import {
+  createProject,
   deleteProject,
   getProject,
   updateProject,
@@ -26,6 +27,7 @@ import {
   appendToLastAssistantMessage,
   getAdminThread,
   getThread,
+  newThread,
   saveMessage,
   tagThreadWithProject,
   touchThread,
@@ -98,8 +100,8 @@ beforeEach(async () => {
     env.DB.prepare("DELETE FROM chat_messages WHERE id LIKE 'tenant-%'"),
     env.DB.prepare("DELETE FROM site_feedback WHERE id LIKE 'tenant-%'"),
     env.DB.prepare("DELETE FROM comments WHERE id LIKE 'tenant-%'"),
-    env.DB.prepare("DELETE FROM projects WHERE id LIKE 'tenant-%'"),
-    env.DB.prepare("DELETE FROM chat_threads WHERE id LIKE 'tenant-%'"),
+    env.DB.prepare("DELETE FROM projects WHERE user_id LIKE 'tenant-%'"),
+    env.DB.prepare("DELETE FROM chat_threads WHERE user_id LIKE 'tenant-%'"),
     env.DB.prepare("DELETE FROM questionnaire_responses WHERE user_id LIKE 'tenant-%'"),
     env.DB.prepare("DELETE FROM club_memberships WHERE user_id LIKE 'tenant-%'"),
     env.DB.prepare("DELETE FROM clubs WHERE id LIKE 'tenant-%'"),
@@ -227,8 +229,12 @@ describe("tenant-explicit data services", () => {
 
     await expect(getThread(testEnv, fixture.firstScope, "tenant-thread-b")).resolves.toBeNull();
     await touchThread(testEnv, fixture.firstScope, "tenant-thread-b");
-    await tagThreadWithProject(testEnv, fixture.firstScope, "tenant-thread-a", "tenant-project-b");
-    await tagThreadWithProject(testEnv, fixture.firstScope, "tenant-thread-b", "tenant-project-a");
+    await expect(
+      tagThreadWithProject(testEnv, fixture.firstScope, "tenant-thread-a", "tenant-project-b"),
+    ).resolves.toBe(false);
+    await expect(
+      tagThreadWithProject(testEnv, fixture.firstScope, "tenant-thread-b", "tenant-project-a"),
+    ).resolves.toBe(false);
     const foreignThread = (await getThread(testEnv, fixture.secondScope, "tenant-thread-b"))!;
     await saveMessage(db, fixture.firstScope, foreignThread.thread, "user", "Leaked message");
     await appendToLastAssistantMessage(db, fixture.firstScope, foreignThread.thread, " leaked");
@@ -239,6 +245,16 @@ describe("tenant-explicit data services", () => {
     expect(await getThread(testEnv, fixture.firstScope, "tenant-thread-a")).toMatchObject({
       thread: { projectId: null },
     });
+    await expect(newThread(testEnv, fixture.firstScope, "tenant-project-b")).resolves.toMatchObject({
+      clubId: fixture.firstClub.id,
+      projectId: null,
+    });
+    await expect(
+      createProject(testEnv, fixture.firstScope, {
+        title: "Scoped project",
+        threadId: "tenant-thread-b",
+      }),
+    ).resolves.toMatchObject({ clubId: fixture.firstClub.id, threadId: null });
 
     await env.DB
       .prepare("UPDATE questionnaire_responses SET answers = ? WHERE club_id = ? AND user_id = ?")
@@ -330,5 +346,43 @@ describe("tenant-explicit data services", () => {
         .bind(fixture.secondClub.id, member.id)
         .first(),
     ).toEqual({ onboarding_stage: "invited" });
+  });
+
+  it("does not reopen onboarding after the membership has progressed", async () => {
+    const fixture = await insertFixture();
+    const request = new Request(
+      `https://vibegarden.test/clubs/${fixture.firstClub.slug}/welcome`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Cookie: (await createSessionCookie(
+            testEnv,
+            new Request("https://vibegarden.test"),
+            member.id,
+          )).split(";", 1)[0],
+        },
+        body: new URLSearchParams({
+          subscription: "chatgpt",
+          budget: "",
+          devices: "laptop",
+          expectations: "This must not overwrite the answer",
+        }),
+      },
+    );
+
+    await expect(
+      completeOnboarding({
+        request,
+        context: { get: () => ({ env: testEnv, ctx: {} }) },
+        params: { clubSlug: fixture.firstClub.slug },
+      } as never),
+    ).rejects.toMatchObject({ status: 302 });
+    expect(
+      await env.DB
+        .prepare("SELECT answers FROM questionnaire_responses WHERE club_id = ? AND user_id = ?")
+        .bind(fixture.firstClub.id, member.id)
+        .first(),
+    ).toEqual({ answers: '{"club":"first"}' });
   });
 });

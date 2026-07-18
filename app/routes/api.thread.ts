@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { Route } from "./+types/api.thread";
 import { cloudflareContext } from "~/lib/context";
 import { requireUser } from "~/lib/auth.server";
+import { requireClubContext } from "~/lib/clubs.server";
 import { getDb } from "~/lib/db.server";
 import { newThread, touchThread } from "~/lib/threads.server";
 import { projects } from "~/db/schema";
@@ -15,6 +16,8 @@ import { projects } from "~/db/schema";
 export async function action({ request, context }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
+  const club = await requireClubContext(env, request, "wotf");
+  const scope = { clubId: club.club.id, userId: user.id };
 
   let threadId: string | undefined;
   let projectId: string | undefined;
@@ -30,16 +33,22 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   if (threadId) {
-    await touchThread(env, user.id, threadId);
+    await touchThread(env, scope, threadId);
     return Response.json({ ok: true, threadId });
   }
 
-  const thread = await newThread(env, user.id, projectId);
+  const thread = await newThread(env, scope, projectId);
   if (projectId) {
     await getDb(env)
       .update(projects)
       .set({ threadId: thread.id, updatedAt: Date.now() })
-      .where(and(eq(projects.id, projectId), eq(projects.userId, user.id)));
+      .where(
+        and(
+          eq(projects.id, projectId),
+          eq(projects.clubId, scope.clubId),
+          eq(projects.userId, scope.userId),
+        ),
+      );
   }
   return Response.json({ ok: true, threadId: thread.id });
 }

@@ -30,6 +30,7 @@ import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { useGardener } from "~/components/gardener/gardener-provider";
 import { requireUser } from "~/lib/auth.server";
+import { requireClubContext } from "~/lib/clubs.server";
 import { modules } from "~/lib/modules";
 import {
   deleteProject,
@@ -47,11 +48,13 @@ export function meta({ data }: Route.MetaArgs) {
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
-  const project = await getProject(env, user.id, params.id);
+  const club = await requireClubContext(env, request, "wotf");
+  const scope = { clubId: club.club.id, userId: user.id };
+  const project = await getProject(env, scope, params.id);
   if (!project) throw new Response("Project not found", { status: 404 });
   const conversations = await listProjectThreads(
     env,
-    user.id,
+    scope,
     project.id,
     project.threadId,
   );
@@ -61,16 +64,18 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
 export async function action({ request, context, params }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
+  const club = await requireClubContext(env, request, "wotf");
+  const scope = { clubId: club.club.id, userId: user.id };
   const form = await request.formData();
   const intent = form.get("intent");
 
   if (intent === "delete") {
-    await deleteProject(env, user.id, params.id);
+    await deleteProject(env, scope, params.id);
     return redirect("/garden");
   }
 
   if (intent === "save") {
-    await updateProject(env, user.id, params.id, {
+    await updateProject(env, scope, params.id, {
       title: String(form.get("title") ?? ""),
       oneLiner: String(form.get("oneLiner") ?? ""),
       status: String(form.get("status") ?? ""),

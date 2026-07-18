@@ -8,6 +8,7 @@ import { useGardener } from "~/components/gardener/gardener-provider";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { requireUser } from "~/lib/auth.server";
+import { requireClubContext } from "~/lib/clubs.server";
 import { createProject } from "~/lib/projects.server";
 import {
   getThread,
@@ -26,7 +27,9 @@ export function meta({ data }: Route.MetaArgs) {
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
-  const result = await getThread(env, user.id, params.id);
+  const club = await requireClubContext(env, request, "wotf");
+  const scope = { clubId: club.club.id, userId: user.id };
+  const result = await getThread(env, scope, params.id);
   if (!result) throw new Response("Conversation not found", { status: 404 });
   return {
     threadId: result.thread.id,
@@ -44,13 +47,15 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
 export async function action({ request, context, params }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
-  const thread = await getThread(env, user.id, params.id);
+  const club = await requireClubContext(env, request, "wotf");
+  const scope = { clubId: club.club.id, userId: user.id };
+  const thread = await getThread(env, scope, params.id);
   if (!thread) throw new Response("Conversation not found", { status: 404 });
-  const project = await createProject(env, user.id, {
+  const project = await createProject(env, scope, {
     title: thread.thread.title ?? "A budding idea",
     threadId: thread.thread.id,
   });
-  await tagThreadWithProject(env, user.id, thread.thread.id, project.id);
+  await tagThreadWithProject(env, scope, thread.thread.id, project.id);
   return redirect(`/garden/projects/${project.id}`);
 }
 

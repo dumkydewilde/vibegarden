@@ -17,12 +17,13 @@ describe("listAdminThreads", () => {
       },
     };
 
-    await listAdminThreads({ DB: d1 } as Env);
+    await listAdminThreads({ DB: d1 } as Env, "club-1");
 
     expect(sql).toMatch(/inner join "users"/i);
     expect(sql).toMatch(/inner join "chat_messages"/i);
     expect(sql).not.toMatch(/(?:where|and) "users"\."role"/i);
-    expect(bindings).toEqual([]);
+    expect(bindings).toEqual(["club-1"]);
+    expect(sql).toMatch(/where "chat_threads"\."club_id" = \?/i);
     expect(sql).toMatch(/count\("chat_messages"\."id"\)/i);
     expect(sql).toMatch(
       /group by "chat_threads"\."id", "users"\."id"/i,
@@ -43,9 +44,11 @@ describe("listAdminThreads", () => {
       },
     };
 
-    await expect(getAdminThread({ DB: d1 } as Env, "thread-1")).resolves.toBeNull();
+    await expect(
+      getAdminThread({ DB: d1 } as Env, "club-1", "thread-1"),
+    ).resolves.toBeNull();
 
-    expect(sql).toMatch(/where \(?"chat_threads"\."id" = \?/i);
+    expect(sql).toMatch(/where \(?\("chat_threads"\."id" = \? and "chat_threads"\."club_id" = \?\)/i);
     expect(sql).not.toMatch(/(?:where|and) "users"\."role"/i);
   });
 });

@@ -25,6 +25,7 @@ import {
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { requireUser } from "~/lib/auth.server";
+import { requireClubContext } from "~/lib/clubs.server";
 import {
   getModuleRaw,
   getModulesByCategory,
@@ -42,9 +43,11 @@ export function meta({}: Route.MetaArgs) {
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
+  const club = await requireClubContext(env, request, "wotf");
+  const scope = { clubId: club.club.id, userId: user.id };
   const [conversations, projects] = await Promise.all([
-    listThreads(env, user.id),
-    listProjects(env, user.id),
+    listThreads(env, scope),
+    listProjects(env, scope),
   ]);
   return { conversations, projects };
 }
@@ -52,13 +55,14 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 export async function action({ request, context }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
+  const club = await requireClubContext(env, request, "wotf");
   const form = await request.formData();
   if (form.get("intent") !== "create") {
     return { error: "Unknown action." };
   }
   const title = String(form.get("title") ?? "").trim();
   if (!title) return { error: "Give your idea a name, even a silly one." };
-  const project = await createProject(env, user.id, {
+  const project = await createProject(env, { clubId: club.club.id, userId: user.id }, {
     title,
     oneLiner: String(form.get("oneLiner") ?? ""),
     modules: form.getAll("modules").map(String),

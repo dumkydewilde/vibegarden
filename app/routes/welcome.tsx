@@ -35,7 +35,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
 export async function action({ request, context, params }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
   const club = await requireClubContext(env, request, clubSlug(params));
-  if (!club.membership) {
+  if (!club.membership || club.membership.onboardingStage !== "invited") {
     throw redirect(clubPath(club.club.slug));
   }
   const form = await request.formData();

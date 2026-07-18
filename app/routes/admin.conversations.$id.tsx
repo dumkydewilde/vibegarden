@@ -5,6 +5,7 @@ import { cloudflareContext } from "~/lib/context";
 import { ChatMessageBubble } from "~/components/gardener/chat-message";
 import { PageHeader } from "~/components/shell/page-header";
 import { requireAdmin } from "~/lib/auth.server";
+import { requireClubContext } from "~/lib/clubs.server";
 import { getAdminThread, parseContext } from "~/lib/threads.server";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -18,7 +19,8 @@ export function meta({ data }: Route.MetaArgs) {
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   await requireAdmin(env, request);
-  const result = await getAdminThread(env, params.id);
+  const club = await requireClubContext(env, request, "wotf");
+  const result = await getAdminThread(env, club.club.id, params.id);
   if (!result) throw new Response("Conversation not found", { status: 404 });
 
   return {

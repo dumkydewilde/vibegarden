@@ -16,6 +16,7 @@ import {
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { requireAdmin } from "~/lib/auth.server";
+import { requireClubContext } from "~/lib/clubs.server";
 import { getDb } from "~/lib/db.server";
 import { isFeedbackStatus } from "~/lib/feedback";
 import { listFeedback, setFeedbackStatus } from "~/lib/feedback.server";
@@ -32,13 +33,17 @@ export function meta({}: Route.MetaArgs) {
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   await requireAdmin(env, request);
+  const club = await requireClubContext(env, request, "wotf");
   const db = getDb(env);
   const [allUsers, allInvites, responses, feedback, conversations] = await Promise.all([
     db.select().from(users).orderBy(desc(users.createdAt)),
     db.select().from(invites).orderBy(desc(invites.createdAt)),
-    db.select().from(questionnaireResponses),
-    listFeedback(env),
-    listAdminThreads(env),
+    db
+      .select()
+      .from(questionnaireResponses)
+      .where(eq(questionnaireResponses.clubId, club.club.id)),
+    listFeedback(env, club.club.id),
+    listAdminThreads(env, club.club.id),
   ]);
   const summaries = new Map(
     responses.map((r) => {
@@ -63,6 +68,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 export async function action({ request, context }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
   const admin = await requireAdmin(env, request);
+  const club = await requireClubContext(env, request, "wotf");
   const db = getDb(env);
   const form = await request.formData();
   const intent = form.get("intent");
@@ -111,7 +117,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     const id = String(form.get("id") ?? "");
     const status = form.get("status");
     if (id && isFeedbackStatus(status)) {
-      await setFeedbackStatus(env, id, status);
+      await setFeedbackStatus(env, club.club.id, id, status);
     }
     return { ok: true };
   }
