@@ -29,9 +29,17 @@ function requireSameOrigin(request: Request) {
   }
 }
 
+/** OAuth grants are valid only for this Worker’s protected MCP resource. */
+function requireMcpResource(env: Env, resource: string | string[] | undefined) {
+  if (resource !== env.MCP_RESOURCE_URL) {
+    throw new Response("Invalid OAuth resource", { status: 400 });
+  }
+}
+
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   const oauthRequest = await env.OAUTH_PROVIDER.parseAuthRequest(request);
+  requireMcpResource(env, oauthRequest.resource);
   const user = await getUser(env, request);
   if (!user) {
     const current = new URL(request.url);
@@ -64,6 +72,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   const oauthRequest = await env.OAUTH_PROVIDER.parseAuthRequest(request);
+  requireMcpResource(env, oauthRequest.resource);
   const client = await env.OAUTH_PROVIDER.lookupClient(oauthRequest.clientId);
   if (!client) throw new Response("Invalid OAuth client", { status: 400 });
 

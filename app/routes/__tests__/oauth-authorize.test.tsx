@@ -15,6 +15,7 @@ const oauthRequest = {
   redirectUri: "https://client.example/callback",
   scope: ["projects:read", "content:read", "admin:write"],
   state: "client-state",
+  resource: "https://vibegarden.test/mcp",
 };
 
 function args(request: Request, env: Env) {
@@ -45,6 +46,7 @@ describe("OAuth authorization consent", () => {
     getUser.mockResolvedValue({ id: "user-1" });
     const data = await loader(
       args(new Request("https://vibegarden.test/authorize?client_id=test-client"), {
+        MCP_RESOURCE_URL: "https://vibegarden.test/mcp",
         OAUTH_PROVIDER: provider,
       } as unknown as Env),
     );
@@ -86,7 +88,10 @@ describe("OAuth authorization consent", () => {
           headers: { Origin: "https://vibegarden.test" },
           body: form,
         }),
-        { OAUTH_PROVIDER: provider } as unknown as Env,
+        {
+          MCP_RESOURCE_URL: "https://vibegarden.test/mcp",
+          OAUTH_PROVIDER: provider,
+        } as unknown as Env,
       ),
     );
 
@@ -138,5 +143,22 @@ describe("OAuth authorization consent", () => {
     ).rejects.toEqual(
       redirect("/login?next=%2Fauthorize%3Fclient_id%3Dtest-client%26state%3Dxyz"),
     );
+  });
+
+  it("rejects authorization requests for a resource other than MCP", async () => {
+    const provider = oauthProvider();
+    provider.parseAuthRequest.mockResolvedValue({
+      ...oauthRequest,
+      resource: "https://evil.example/mcp",
+    });
+    getUser.mockResolvedValue({ id: "user-1" });
+
+    await expect(
+      loader(args(new Request("https://vibegarden.test/authorize?client_id=test-client"), {
+        APP_ORIGIN: "https://vibegarden.test",
+        MCP_RESOURCE_URL: "https://vibegarden.test/mcp",
+        OAUTH_PROVIDER: provider,
+      } as unknown as Env)),
+    ).rejects.toMatchObject({ status: 400 });
   });
 });
