@@ -10,6 +10,7 @@ import { requireClubPermission } from "~/lib/club-permissions";
 import { renameClub, renameClubDisplayName, requireClubContext } from "~/lib/clubs.server";
 import { clubPath } from "~/lib/club-path";
 import { archiveClub } from "~/lib/memberships.server";
+import { setClubCredentialDisabled } from "~/lib/club-ai.server";
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
@@ -19,7 +20,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context, params }: Route.ActionArgs) {
-  const { env } = context.get(cloudflareContext);
+  const { env, ctx } = context.get(cloudflareContext);
   const club = await requireClubContext(env, request, params.clubSlug ?? "");
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
@@ -56,6 +57,11 @@ export async function action({ request, context, params }: Route.ActionArgs) {
       return { error: "Type the club name exactly to archive it.", intent };
     }
     await archiveClub(env, club);
+    if (ctx) {
+      ctx.waitUntil(setClubCredentialDisabled(env, club.club.id, true).catch((error) => {
+        console.error("club AI archival disable failed", error);
+      }));
+    }
     return redirect("/settings");
   }
   throw new Response("Invalid club settings action", { status: 400 });

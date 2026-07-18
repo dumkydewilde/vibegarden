@@ -47,14 +47,17 @@ function Probe() {
   );
 }
 
-function renderHarness(context?: Omit<ContextItem, "id">[]) {
+function renderHarness(
+  context?: Omit<ContextItem, "id">[],
+  apiBase?: string,
+) {
   return render(
     <MemoryRouter initialEntries={["/clubs/wotf"]}>
       <Routes>
         <Route
           path="/clubs/:clubSlug/*"
           element={
-            <GardenerProvider>
+            <GardenerProvider apiBase={apiBase}>
               <GardenerHarness context={context} />
             </GardenerProvider>
           }
@@ -133,6 +136,19 @@ afterEach(() => {
 });
 
 describe("GardenerProvider askFresh", () => {
+  it("uses the supplied canonical API base", async () => {
+    const fetchMock = mockFreshConversation();
+    renderHarness(undefined, "/clubs/canonical/api");
+
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/clubs/canonical/api/thread",
+      "/clubs/canonical/api/chat",
+    ]);
+  });
+
   it("attaches seeded dataset context to the first sent message", async () => {
     const fetchMock = mockFreshConversation();
     const datasetContext = {

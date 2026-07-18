@@ -28,7 +28,11 @@ import {
   parseEnvelope,
 } from "~/lib/query-tool";
 import { attachResultNote, queryResultNote } from "~/lib/tool-notes";
-import { findModel, defaultModel } from "~/lib/models";
+import { resolveClubModel } from "~/lib/models";
+import {
+  clubCredentialNeedsProvisioning,
+  getClubChatCredential,
+} from "~/lib/club-ai.server";
 import {
   appendToLastAssistantMessage,
   ensureThread,
@@ -85,13 +89,6 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   }
   const scope = { clubId: club.club.id, userId: user.id };
 
-  if (!env.OPENROUTER_API_KEY) {
-    return Response.json(
-      { error: "The Gardener has no OPENROUTER_API_KEY configured." },
-      { status: 503 },
-    );
-  }
-
   let body: ChatRequest;
   try {
     body = (await request.json()) as ChatRequest;
@@ -125,7 +122,36 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     );
   }
 
-  const model = findModel(body.model) ?? defaultModel;
+  const model = resolveClubModel(
+    club.club.modelPolicy,
+    body.model,
+    club.membership?.modelPref,
+  );
+  // An explicit model outside the club policy is not a stale preference: it
+  // is an untrusted request and must never reach a decrypted provider key.
+  if (typeof body.model === "string" && model.id !== body.model) {
+    return Response.json({ error: "That model is not available for this club." }, { status: 400 });
+  }
+  let apiKey: string;
+  try {
+    apiKey = await getClubChatCredential(env, club.club.id);
+  } catch {
+    // The legacy shared key is a deliberately narrow migration bridge. Do
+    // not widen it: every club other than WOTF remains fail-closed.
+    if (
+      club.club.id === "club_wotf" &&
+      env.ALLOW_WOTF_LEGACY_KEY === "true" &&
+      env.OPENROUTER_API_KEY &&
+      await clubCredentialNeedsProvisioning(env, club.club.id).catch(() => false)
+    ) {
+      apiKey = env.OPENROUTER_API_KEY;
+    } else {
+      return Response.json(
+        { error: "The Gardener is not ready for this club yet." },
+        { status: 503 },
+      );
+    }
+  }
   const contextItems = (body.context ?? []).slice(0, 8);
   const webSearch = body.web === true;
   const datasets = (body.datasets ?? [])
@@ -200,7 +226,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         "X-Title": "Vibe Garden",
       },

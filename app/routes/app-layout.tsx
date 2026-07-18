@@ -15,7 +15,7 @@ import {
 } from "~/lib/clubs.server";
 import { clubPath } from "~/lib/club-path";
 import { activeThread, parseContext } from "~/lib/threads.server";
-import { models } from "~/lib/models";
+import { modelsForPolicy } from "~/lib/models";
 
 export type AppClub = {
   id: string;
@@ -69,9 +69,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
       slug: activeClub.slug,
       role: explicitRoles.get(activeClub.id) ?? "admin",
     })),
-    allowedModels: models
-      .filter((model) => club.club.modelPolicy === "all_models" || model.id.endsWith(":free"))
-      .map((model) => model.id),
+    allowedModels: modelsForPolicy(club.club.modelPolicy).map((model) => model.id),
     user: {
       email: user.email,
       name: user.name,
@@ -95,6 +93,8 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
       key={loaderData.club.id}
       initialMessages={loaderData.gardener.messages}
       initialModelId={loaderData.gardener.modelId}
+      allowedModelIds={loaderData.allowedModels}
+      apiBase={clubPath(loaderData.club.slug, "api")}
     >
       <AppShell
         club={loaderData.club}

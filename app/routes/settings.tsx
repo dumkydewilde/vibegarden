@@ -11,6 +11,7 @@ import { clubPath, normalizeClubSlug } from "~/lib/club-path";
 import { createClub, listUserClubs } from "~/lib/clubs.server";
 import { cloudflareContext } from "~/lib/context";
 import { leaveClub } from "~/lib/memberships.server";
+import { provisionClubAi } from "~/lib/club-ai.server";
 
 const themes = ["system", "light", "dark"] as const;
 type Theme = (typeof themes)[number];
@@ -30,7 +31,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { env } = context.get(cloudflareContext);
+  const { env, ctx } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
   const formData = await request.formData();
   const intent = String(formData.get("intent") ?? "");
@@ -60,6 +61,11 @@ export async function action({ request, context }: Route.ActionArgs) {
         name: String(formData.get("name") ?? "").trim(),
         slug: String(formData.get("slug") ?? ""),
       });
+      if (ctx) {
+        ctx.waitUntil(provisionClubAi(env, club.id).catch((error) => {
+          console.error("club AI provisioning failed", error);
+        }));
+      }
       return redirect(clubPath(club.slug));
     } catch (error) {
       if (error instanceof Response && error.status === 400) {
