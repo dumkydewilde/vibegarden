@@ -78,9 +78,17 @@ export async function handleGoogleCallback(
 
   const cookie = request.headers.get("Cookie") ?? "";
   const match = cookie.match(new RegExp(`(?:^|;\\s*)${STATE_COOKIE}=([^;]+)`));
-  const stored = match
-    ? await verifyValue(decodeURIComponent(match[1]), env.SESSION_SECRET)
-    : null;
+  let stored: string | null = null;
+  if (match) {
+    try {
+      stored = await verifyValue(
+        decodeURIComponent(match[1]),
+        env.SESSION_SECRET,
+      );
+    } catch {
+      return { ok: false, error: "bad-state" };
+    }
+  }
   if (!stored) return { ok: false, error: "bad-state" };
   let storedState: { state?: string; next?: string };
   try {
