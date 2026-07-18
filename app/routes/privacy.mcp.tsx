@@ -10,9 +10,11 @@ export default function McpPrivacy() {
         <h2 className="text-xl font-medium">Data returned to a connected app</h2>
         <p>
           With your approved scopes, Vibe Garden can return your projects and conversations, plus learning articles,
-          modules, and curated reads. Returned project fields include titles, summaries, status, selected modules,
-          and timestamps; conversation fields include titles, messages, and timestamps. Articles, modules, and
-          curated reads include their titles, summaries, URLs or slugs, and published content.
+          modules, and curated reads. Projects return id, title, one_liner, status, building_blocks, updated_at, and
+          url. Conversations return conversation id, title, updated_at, message_count, url, message role, content,
+          user-authored context label and source, and created_at. Articles return kind, slug, title, description,
+          category, level, url, and body. Modules return kind, slug, title, description, category, url, and body.
+          Fresh reads return title, summary, content_type, source_url, and optional key_insight.
         </p>
         <p>
           Tool arguments are explicit. Vibe Garden does not receive your surrounding Claude or ChatGPT conversation.

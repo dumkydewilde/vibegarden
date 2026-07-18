@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const createSessionCookie = vi.hoisted(() => vi.fn());
 const upsertUser = vi.hoisted(() => vi.fn());
@@ -18,6 +18,11 @@ describe("MCP reviewer login", () => {
     MCP_REVIEW_PASSWORD: "correct",
     MCP_GENERAL_LIMITER: { limit: vi.fn().mockResolvedValue({ success: true }) },
   } as unknown as Env;
+
+  beforeEach(() => {
+    createSessionCookie.mockReset();
+    upsertUser.mockReset();
+  });
 
   it("renders a form on GET without authenticating", async () => {
     expect(await loader(args(new Request("https://garden.test/review/login"), env))).toEqual({});
@@ -39,7 +44,46 @@ describe("MCP reviewer login", () => {
     expect(response.headers.get("Location")).toBe("/");
     expect(response.headers.get("Location")).not.toContain("correct");
     expect(response.headers.get("Set-Cookie")).toBe("vg_session=signed");
-    expect(upsertUser).toHaveBeenCalledWith(env, "review@example.test", "user");
+    expect(upsertUser).toHaveBeenCalledWith(
+      env,
+      "review@example.test",
+      "user",
+      "476a9495-bcec-58a9-a9cf-10eb4d580e4a",
+    );
+  });
+
+  it.each(["GET", "PUT", "DELETE"])("rejects %s credential submissions", async (method) => {
+    await expect(action(args(new Request("https://garden.test/review/login", { method }), env)))
+      .rejects.toMatchObject({ status: 405 });
+    expect(upsertUser).not.toHaveBeenCalled();
+  });
+
+  it("hashes both submitted secrets even when the email is wrong", async () => {
+    const digest = vi.spyOn(crypto.subtle, "digest");
+    const form = new FormData();
+    form.set("email", "wrong@example.test");
+    form.set("password", "wrong");
+
+    await action(args(new Request("https://garden.test/review/login", {
+      method: "POST", body: form,
+    }), env));
+
+    expect(digest).toHaveBeenCalledTimes(4);
+    digest.mockRestore();
+  });
+
+  it("does the same comparison work when reviewer configuration is missing", async () => {
+    const digest = vi.spyOn(crypto.subtle, "digest");
+    const form = new FormData();
+    form.set("email", "wrong@example.test");
+    form.set("password", "wrong");
+
+    await action(args(new Request("https://garden.test/review/login", {
+      method: "POST", body: form,
+    }), {} as Env));
+
+    expect(digest).toHaveBeenCalledTimes(4);
+    digest.mockRestore();
   });
 
   it("gives missing configuration and wrong credentials the same error", async () => {

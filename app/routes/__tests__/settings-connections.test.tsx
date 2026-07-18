@@ -13,6 +13,15 @@ function args(request: Request, env: Env) {
 }
 
 describe("MCP connections", () => {
+  it.each(["GET", "PUT", "DELETE"])("rejects %s revocation requests", async (method) => {
+    const provider = { revokeGrant: vi.fn() };
+
+    await expect(action(args(new Request("https://garden.test/settings/connections", { method }), {
+      OAUTH_PROVIDER: provider,
+    } as unknown as Env))).rejects.toMatchObject({ status: 405 });
+    expect(provider.revokeGrant).not.toHaveBeenCalled();
+  });
+
   it("lists only the signed-in user's grants", async () => {
     const provider = {
       listUserGrants: vi.fn().mockResolvedValue({

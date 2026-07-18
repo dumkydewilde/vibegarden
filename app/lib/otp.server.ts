@@ -124,6 +124,7 @@ export async function upsertUser(
   env: Env,
   email: string,
   forcedRole?: User["role"],
+  forcedId?: string,
 ): Promise<User> {
   const db = getDb(env);
   const existing = await db.query.users.findFirst({
@@ -144,7 +145,7 @@ export async function upsertUser(
   }
 
   const user = {
-    id: crypto.randomUUID(),
+    id: forcedId ?? crypto.randomUUID(),
     email,
     name: null,
     role: forcedRole ?? (isAdminEmail(env, email) ? ("admin" as const) : ("user" as const)),

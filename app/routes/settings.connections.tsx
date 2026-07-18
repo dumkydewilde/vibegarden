@@ -32,6 +32,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
+  if (request.method !== "POST") {
+    throw new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST" } });
+  }
   requireSameOrigin(request);
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);

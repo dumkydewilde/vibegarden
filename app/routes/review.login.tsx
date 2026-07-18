@@ -5,6 +5,7 @@ import { Input } from "~/components/ui/input";
 import { createSessionCookie } from "~/lib/auth.server";
 import { cloudflareContext } from "~/lib/context";
 import { normalizeEmail, upsertUser } from "~/lib/otp.server";
+import { reviewerUserId } from "~/lib/reviewer.server";
 
 const encoder = new TextEncoder();
 
@@ -26,6 +27,9 @@ export async function loader({}: Route.LoaderArgs) {
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
+  if (request.method !== "POST") {
+    throw new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST" } });
+  }
   const { env } = context.get(cloudflareContext);
   const limited = await env.MCP_GENERAL_LIMITER?.limit({ key: "review-login" });
   if (limited && !limited.success) return { error: "Invalid reviewer credentials" };
@@ -48,7 +52,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     return { error: "Invalid reviewer credentials" };
   }
 
-  const user = await upsertUser(env, configuredEmail, "user");
+  const user = await upsertUser(env, configuredEmail, "user", await reviewerUserId(configuredEmail));
   const cookie = await createSessionCookie(env, request, user.id);
   return redirect("/", { headers: { "Set-Cookie": cookie } });
 }

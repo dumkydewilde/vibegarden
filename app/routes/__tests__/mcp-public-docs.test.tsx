@@ -16,7 +16,11 @@ describe("MCP public documentation", () => {
 
   it("publishes data-use and revocation disclosures", () => {
     const page = renderToStaticMarkup(<Privacy />);
-    expect(page).toContain("projects and conversations");
+    expect(page).toContain("id, title, one_liner, status, building_blocks, updated_at, and url");
+    expect(page).toContain("conversation id, title, updated_at, message_count, url, message role, content, user-authored context label and source, and created_at");
+    expect(page).toContain("Articles return kind, slug, title, description, category, level, url, and body");
+    expect(page).toContain("Modules return kind, slug, title, description, category, url, and body");
+    expect(page).toContain("Fresh reads return title, summary, content_type, source_url, and optional key_insight");
     expect(page).toContain("tool name, outcome, latency");
     expect(page).toContain("does not receive your surrounding Claude or ChatGPT conversation");
     expect(page).toContain("Revoke access");
