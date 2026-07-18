@@ -385,4 +385,81 @@ describe("artifact persistence schema", () => {
       ).bind("artifact-owner-1-version", "artifact-owner-1"),
     ]);
   });
+
+  it("rejects raw updates to finalized artifact versions and files", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO users (id, email, role, stage, created_at) VALUES (?, ?, 'user', 'invited', ?)",
+      ).bind("artifact-immutable-user", "artifact-immutable@example.com", now),
+      env.DB.prepare(
+        "INSERT INTO projects (id, user_id, title, status, created_at, updated_at) VALUES (?, ?, ?, 'seed', ?, ?)",
+      ).bind(
+        "artifact-immutable-project",
+        "artifact-immutable-user",
+        "Immutable project",
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        `INSERT INTO artifacts (
+          id, user_id, project_id, type, title, visibility, created_at, updated_at
+        ) VALUES (?, ?, ?, 'html', ?, 'private', ?, ?)`,
+      ).bind(
+        "artifact-immutable",
+        "artifact-immutable-user",
+        "artifact-immutable-project",
+        "Immutable artifact",
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        `INSERT INTO artifact_versions (
+          id, artifact_id, version_number, source, entry_path, external_url,
+          allowed_data_origins, file_count, total_bytes, created_by, created_at
+        ) VALUES (?, ?, 1, 'web', ?, ?, '[]', 1, 10, ?, ?)`,
+      ).bind(
+        "artifact-immutable-version",
+        "artifact-immutable",
+        "index.html",
+        "https://example.com/original",
+        "artifact-immutable-user",
+        now,
+      ),
+      env.DB.prepare(
+        `INSERT INTO artifact_files (
+          version_id, path, r2_key, mime_type, byte_size, sha256, created_at
+        ) VALUES (?, ?, ?, ?, 10, ?, ?)`,
+      ).bind(
+        "artifact-immutable-version",
+        "index.html",
+        "artifacts/artifact-immutable/versions/artifact-immutable-version/index.html",
+        "text/html",
+        "a".repeat(64),
+        now,
+      ),
+    ]);
+
+    for (const statement of [
+      "UPDATE artifact_versions SET entry_path = 'other.html' WHERE id = 'artifact-immutable-version'",
+      "UPDATE artifact_versions SET external_url = 'https://example.com/other' WHERE id = 'artifact-immutable-version'",
+      "UPDATE artifact_versions SET allowed_data_origins = '[\"https://api.example.com\"]' WHERE id = 'artifact-immutable-version'",
+      "UPDATE artifact_versions SET file_count = 2 WHERE id = 'artifact-immutable-version'",
+      "UPDATE artifact_versions SET total_bytes = 20 WHERE id = 'artifact-immutable-version'",
+      "UPDATE artifact_files SET r2_key = 'artifacts/other/index.html' WHERE r2_key = 'artifacts/artifact-immutable/versions/artifact-immutable-version/index.html'",
+      "UPDATE artifact_files SET mime_type = 'application/octet-stream' WHERE r2_key = 'artifacts/artifact-immutable/versions/artifact-immutable-version/index.html'",
+      "UPDATE artifact_files SET byte_size = 20 WHERE r2_key = 'artifacts/artifact-immutable/versions/artifact-immutable-version/index.html'",
+      "UPDATE artifact_files SET sha256 = 'b' WHERE r2_key = 'artifacts/artifact-immutable/versions/artifact-immutable-version/index.html'",
+    ]) {
+      await expectConstraint(statement);
+    }
+
+    await env.DB.batch([
+      env.DB.prepare(
+        "UPDATE artifacts SET current_version_id = ? WHERE id = ?",
+      ).bind("artifact-immutable-version", "artifact-immutable"),
+      env.DB.prepare(
+        "UPDATE artifacts SET gallery_version_id = ? WHERE id = ?",
+      ).bind("artifact-immutable-version", "artifact-immutable"),
+    ]);
+  });
 });

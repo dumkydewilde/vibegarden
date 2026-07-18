@@ -84,3 +84,17 @@ FOR EACH ROW WHEN NEW.`gallery_version_id` IS NOT NULL AND NOT EXISTS (
 BEGIN
   SELECT RAISE(ABORT, 'gallery version must belong to artifact');
 END;
+--> statement-breakpoint
+CREATE TRIGGER `artifact_versions_immutable`
+BEFORE UPDATE ON `artifact_versions`
+FOR EACH ROW
+BEGIN
+  SELECT RAISE(ABORT, 'artifact versions are immutable');
+END;
+--> statement-breakpoint
+CREATE TRIGGER `artifact_files_immutable`
+BEFORE UPDATE ON `artifact_files`
+FOR EACH ROW
+BEGIN
+  SELECT RAISE(ABORT, 'artifact files are immutable');
+END;
