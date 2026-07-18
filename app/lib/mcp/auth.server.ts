@@ -1,4 +1,5 @@
 import { getMcpAuthContext } from "agents/mcp";
+import { getMcpRequestProps } from "~/lib/mcp/request-context.server";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   MCP_SCOPES,
@@ -47,8 +48,7 @@ function isMcpScope(scope: unknown): scope is McpScope {
 
 /** Reads identity exclusively from OAuth-provider-issued MCP request props. */
 export function getMcpPrincipal(): McpPrincipal {
-  const context = getMcpAuthContext();
-  const props = context?.props;
+  const props = getMcpRequestProps() ?? getMcpAuthContext()?.props;
   if (!props || typeof props.userId !== "string" || !props.userId.trim()
     || typeof props.clubId !== "string" || !props.clubId.trim()
     || !Array.isArray(props.scopes)) {

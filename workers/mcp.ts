@@ -1,4 +1,4 @@
-import { createMcpHandler } from "agents/mcp";
+import { WorkerTransport } from "agents/mcp";
 import { z } from "zod";
 import {
   fetchInput,
@@ -15,6 +15,7 @@ import {
 import { McpPublicError, toMcpErrorResult } from "../app/lib/mcp/errors.server";
 import { oauthChallenge } from "../app/lib/mcp/auth.server";
 import { createGardenerMcpServer } from "../app/lib/mcp/server.server";
+import { runWithMcpRequestProps } from "../app/lib/mcp/request-context.server";
 
 type RpcEnvelope = {
   jsonrpc?: unknown;
@@ -104,29 +105,37 @@ function requestId(request: Request): Promise<RpcEnvelope["id"]> {
     .catch(() => null);
 }
 
+function logTransportError(request: Request) {
+  console.info(JSON.stringify({
+    event: "mcp_transport_error",
+    errorClass: "unexpected_error",
+    method: request.method,
+    path: new URL(request.url).pathname,
+  }));
+}
+
 /**
- * `agents/mcp` logs raw thrown values before returning its 500 response. Keep
- * that implementation detail behind this boundary: logs contain only fixed,
- * approved fields and clients receive the same generic public failure shape.
+ * Dispatch through the public transport API instead of createMcpHandler:
+ * that helper logs raw caught errors through the isolate-global console. The
+ * transport and request props are created per request, so concurrent calls do
+ * not share server, logger, or authentication state.
  */
 async function runSafeMcpTransport(
-  handler: (request: Request, env: Env, ctx: ExecutionContext) => Promise<Response>,
   request: Request,
   env: Env,
   ctx: ExecutionContext,
 ) {
-  const originalConsoleError = console.error;
-  console.error = () => {
-    console.info(JSON.stringify({
-      event: "mcp_transport_error",
-      errorClass: "unexpected_error",
-      method: request.method,
-      path: new URL(request.url).pathname,
-    }));
-  };
+  const server = createGardenerMcpServer(env);
+  const transport = new WorkerTransport();
+  server.server.onerror = () => logTransportError(request);
   try {
-    const transportResponse = await handler(request, env, ctx);
+    await server.connect(transport);
+    const transportResponse = await runWithMcpRequestProps(
+      (ctx.props ?? {}) as Record<string, unknown>,
+      () => transport.handleRequest(request),
+    );
     if (transportResponse.status < 500) return transportResponse;
+    logTransportError(request);
     return response(
       await requestId(request),
       new McpPublicError("internal_error", "The request could not be completed."),
@@ -134,20 +143,13 @@ async function runSafeMcpTransport(
       500,
     );
   } catch {
-    console.info(JSON.stringify({
-      event: "mcp_transport_error",
-      errorClass: "unexpected_error",
-      method: request.method,
-      path: new URL(request.url).pathname,
-    }));
+    logTransportError(request);
     return response(
       await requestId(request),
       new McpPublicError("internal_error", "The request could not be completed."),
       undefined,
       500,
     );
-  } finally {
-    console.error = originalConsoleError;
   }
 }
 
@@ -203,8 +205,7 @@ export const mcpHandler = {
     if (!mcpOriginAllowed(request, env)) return mcpOriginRejectedResponse();
     const preflightFailure = await preflightMcpRequest(request, env, ctx);
     if (preflightFailure) return preflightFailure;
-    // A fresh server is mandatory: the stateless transport allows one connection per server.
-    const server = createGardenerMcpServer(env);
-    return runSafeMcpTransport(createMcpHandler(server, { route: "/mcp" }), request, env, ctx);
+    // A fresh server and transport are mandatory for stateless MCP dispatch.
+    return runSafeMcpTransport(request, env, ctx);
   },
 } satisfies ExportedHandler<Env>;

@@ -77,10 +77,19 @@ export default {
     const providerEnv = expiresInOneSecond
       ? { ...env, OAUTH_KV: retainOneSecondTokenRecord(env.OAUTH_KV) }
       : env;
+    // Workerd loads local .dev.vars for this fixture. Remove the optional
+    // production secret so the runtime suite can prove the catalog is safe
+    // when fresh_reads is not configured.
+    const mcpEnv = new Proxy(providerEnv, {
+      get(target, property, receiver) {
+        if (property === "MOTHERDUCK_TOKEN") return undefined;
+        return Reflect.get(target, property, receiver);
+      },
+    }) as Env;
     return createOAuthProvider(
-      providerEnv,
+      mcpEnv,
       defaultHandler,
       expiresInOneSecond ? { accessTokenTTL: 1 } : undefined,
-    ).fetch(request, providerEnv, ctx);
+    ).fetch(request, mcpEnv, ctx);
   },
 } satisfies ExportedHandler<Env>;

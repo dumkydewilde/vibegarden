@@ -97,3 +97,29 @@ git diff --check   # passed
 
 - The workerd suite still emits upstream MCP SDK missing-source-map warnings and the intentional CIMD-disabled warning. They are dependency/runtime configuration noise; all tests pass.
 - Provider 0.8.0 is intentionally pinned, rather than ranged, so future upgrades cannot silently reintroduce the provider's 60-second constructor guard and invalidate the real one-second expiry coverage.
+
+## Final re-review remediation: request-safe transport and runtime success paths
+
+### RED / GREEN record
+
+- **RED:** Added `app/lib/mcp/__tests__/request-context.test.ts`, which imports a new request-scoped context API and runs two deliberately interleaved async calls with different user IDs/scopes. The targeted test failed before implementation because `request-context.server` did not exist.
+- **GREEN:** Added `request-context.server.ts` with `AsyncLocalStorage`; `workers/mcp.ts` now creates a fresh public `WorkerTransport` and `McpServer` for each request, connects them directly, and runs the transport under that request-local context. `auth.server.ts` reads this context before the `agents/mcp` compatibility context. The interleaving test passes and the real workerd suite additionally issues concurrent OAuth `prompts/get` requests for two separately owned projects, asserting neither response contains the other project ID.
+- Removed the isolate-global `console.error` replacement entirely. The previous `createMcpHandler` helper catches errors by writing raw thrown values to the global console. The direct transport path instead sets the per-server error callback to fixed structured `console.info` fields only (`event`, `errorClass`, method, and path), and replaces caught/5xx transport failures with the existing generic `internal_error` JSON-RPC result.
+- **RED:** Extended the real DCR/S256 workerd flow to require a content-only `tools/call`, absence of `fresh_reads`, and a valid owned-project `prompts/get`. The first run found that the test isolate inherited `MOTHERDUCK_TOKEN` from local `.dev.vars`, so the catalog legitimately still contained `fresh_reads`.
+- **GREEN:** The fixture now proxies its environment and exposes every real binding except `MOTHERDUCK_TOKEN`; this preserves provider service bindings while making the no-token runtime condition explicit. The runtime suite now verifies a `content:read` token successfully calls `list_learning_content`, `fresh_reads` is absent, and `continue_project` dispatches successfully with a seeded project owned by the OAuth user.
+
+### Final verification
+
+```text
+npm test -- app/lib/mcp/__tests__/request-context.test.ts  # 1 test passed
+npm run test:mcp                                            # 2 Worker test files / 14 tests passed
+npm run test:all                                            # 42 JS test files / 240 tests; 2 Worker test files / 14 tests passed
+npm run typecheck                                           # passed
+npm run build                                               # passed
+git diff --check                                            # passed
+```
+
+### Final concerns
+
+- The workerd suite continues to emit upstream MCP SDK missing-source-map warnings and the intentional CIMD-disabled notice; neither is produced by the application code and all checks pass.
+- The production Worker does not proxy or alter environment bindings. The `MOTHERDUCK_TOKEN` omission is fixture-only so the requested no-token catalog behavior can be asserted despite locally loaded development secrets.

@@ -132,6 +132,20 @@ async function seedPrivateRecords() {
   return { attacker, attackerClub, projectId, conversationId, projectTitle, messageBody };
 }
 
+async function seedOwnedProject(userId: string) {
+  const suffix = crypto.randomUUID();
+  const projectId = `owned-project-${suffix}`;
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare("INSERT OR IGNORE INTO users (id, email, name, role, stage, created_at) VALUES (?, ?, ?, 'user', 'exploring', ?)")
+      .bind(userId, `${userId}@example.test`, "OAuth user", now),
+    env.DB.prepare(
+      "INSERT INTO projects (id, user_id, title, one_liner, modules, status, created_at, updated_at) VALUES (?, ?, ?, ?, '[]', 'seed', ?, ?)",
+    ).bind(projectId, userId, `Owned project ${suffix}`, "A project owned by the OAuth user.", now, now),
+  ]);
+  return projectId;
+}
+
 async function mcpRpc(token: string, method: string, params: Record<string, unknown> = {}) {
   return SELF.fetch(`${ORIGIN}/mcp`, {
     method: "POST",
@@ -219,10 +233,23 @@ describe("Gardener MCP Worker", () => {
     });
     expect(initialize.status).toBe(200);
 
-    const tools = await mcpRpc(token.body.access_token, "tools/list");
+    const contentOnlyToken = await accessTokenFor("content-only-user", "content:read");
+    const tools = await mcpRpc(contentOnlyToken, "tools/list");
     expect(tools.status).toBe(200);
-    await expect(mcpJson(tools)).resolves.toMatchObject({
+    const toolList = await mcpJson(tools);
+    expect(toolList).toMatchObject({
       result: { tools: expect.arrayContaining([expect.objectContaining({ name: "list_projects" })]) },
+    });
+    expect(JSON.stringify(toolList)).toContain("list_learning_content");
+    expect(JSON.stringify(toolList)).not.toContain("fresh_reads");
+
+    const content = await mcpRpc(contentOnlyToken, "tools/call", {
+      name: "list_learning_content",
+      arguments: {},
+    });
+    expect(content.status).toBe(200);
+    await expect(mcpJson(content)).resolves.toMatchObject({
+      result: { structuredContent: { items: expect.any(Array) } },
     });
 
     const resources = await mcpRpc(token.body.access_token, "resources/templates/list");
@@ -232,6 +259,16 @@ describe("Gardener MCP Worker", () => {
     const prompts = await mcpRpc(token.body.access_token, "prompts/list");
     await expect(mcpJson(prompts)).resolves.toMatchObject({
       result: { prompts: expect.arrayContaining([expect.objectContaining({ name: "continue_project" })]) },
+    });
+
+    const projectId = await seedOwnedProject("oauth-user");
+    const prompt = await mcpRpc(token.body.access_token, "prompts/get", {
+      name: "continue_project",
+      arguments: { project_id: projectId },
+    });
+    expect(prompt.status).toBe(200);
+    await expect(mcpJson(prompt)).resolves.toMatchObject({
+      result: { messages: expect.any(Array) },
     });
   });
 
@@ -293,6 +330,29 @@ describe("Gardener MCP Worker", () => {
       name: "fetch",
       arguments: { id: `conversation:${privateRecords.conversationId}` },
     })), secrets);
+  });
+
+  it("keeps concurrent OAuth MCP requests isolated by their request props", async () => {
+    const firstUser = `concurrent-first-${crypto.randomUUID()}`;
+    const secondUser = `concurrent-second-${crypto.randomUUID()}`;
+    const [firstProject, secondProject] = await Promise.all([
+      seedOwnedProject(firstUser),
+      seedOwnedProject(secondUser),
+    ]);
+    const [firstToken, secondToken] = await Promise.all([
+      accessTokenFor(firstUser, "projects:read"),
+      accessTokenFor(secondUser, "projects:read"),
+    ]);
+
+    const [firstResponse, secondResponse] = await Promise.all([
+      mcpRpc(firstToken, "prompts/get", { name: "continue_project", arguments: { project_id: firstProject } }),
+      mcpRpc(secondToken, "prompts/get", { name: "continue_project", arguments: { project_id: secondProject } }),
+    ]);
+    const [firstBody, secondBody] = await Promise.all([mcpJson(firstResponse), mcpJson(secondResponse)]);
+    expect(JSON.stringify(firstBody)).toContain(firstProject);
+    expect(JSON.stringify(firstBody)).not.toContain(secondProject);
+    expect(JSON.stringify(secondBody)).toContain(secondProject);
+    expect(JSON.stringify(secondBody)).not.toContain(firstProject);
   });
 
   it("enforces general and history limits through real MCP HTTP requests", async () => {
