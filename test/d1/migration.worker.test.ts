@@ -189,3 +189,44 @@ test("expands and backfills a populated single-club database", async () => {
     ).toBe(1);
   }
 });
+
+test("fails the slug-claim migration when a canonical slug conflicts with an alias", async () => {
+  await env.DB.exec(
+    "CREATE TABLE slug_claim_backfill_test (slug text PRIMARY KEY NOT NULL, club_id text NOT NULL, created_at integer NOT NULL)",
+  );
+  await env.DB.prepare(
+    "INSERT INTO slug_claim_backfill_test (slug, club_id, created_at) VALUES (?, ?, ?)",
+  ).bind("canonical-collision", "canonical-club", 10).run();
+
+  await expect(
+    env.DB.prepare(
+      "INSERT INTO slug_claim_backfill_test (slug, club_id, created_at) VALUES (?, ?, ?)",
+    ).bind("canonical-collision", "alias-club", 11).run(),
+  ).rejects.toThrow();
+});
+
+test("keeps slug claims consistent for direct canonical and alias writes", async () => {
+  await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
+  await env.DB.prepare(
+    "INSERT INTO clubs (id, name, slug, model_policy, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).bind("direct-first", "Direct first", "direct-first", "free_only", "active", 20, 20).run();
+  await env.DB.prepare(
+    "INSERT INTO clubs (id, name, slug, model_policy, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).bind("direct-second", "Direct second", "direct-second", "free_only", "active", 21, 21).run();
+
+  expect(
+    await env.DB.prepare("SELECT club_id FROM club_slug_claims WHERE slug = ?")
+      .bind("direct-first")
+      .first(),
+  ).toEqual({ club_id: "direct-first" });
+  await expect(
+    env.DB.prepare(
+      "INSERT INTO club_slug_aliases (slug, club_id, created_at) VALUES (?, ?, ?)",
+    ).bind("direct-first", "direct-second", 22).run(),
+  ).rejects.toThrow();
+  await expect(
+    env.DB.prepare("UPDATE clubs SET slug = ? WHERE id = ?")
+      .bind("direct-first", "direct-second")
+      .run(),
+  ).rejects.toThrow();
+});

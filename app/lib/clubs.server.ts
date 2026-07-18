@@ -101,11 +101,6 @@ export async function createClub(
         ),
       env.DB
         .prepare(
-          "INSERT INTO club_slug_claims (slug, club_id, created_at) VALUES (?, ?, ?)",
-        )
-        .bind(club.slug, club.id, now),
-      env.DB
-        .prepare(
           "INSERT INTO club_memberships (club_id, user_id, role, joined_at, updated_at) VALUES (?, ?, 'owner', ?, ?)",
         )
         .bind(club.id, user.id, now, now),
@@ -152,11 +147,6 @@ export async function renameClub(
   const now = Date.now();
   try {
     await env.DB.batch([
-      env.DB
-        .prepare(
-          "INSERT INTO club_slug_claims (slug, club_id, created_at) VALUES (?, ?, ?)",
-        )
-        .bind(slug, context.club.id, now),
       env.DB
         .prepare(
           "INSERT INTO club_slug_aliases (slug, club_id, created_at) VALUES (?, ?, ?)",
