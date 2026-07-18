@@ -1,4 +1,4 @@
-import { Form, NavLink } from "react-router";
+import { Form, NavLink, useParams } from "react-router";
 import { LogOut, Menu, Sprout } from "lucide-react";
 import { useState } from "react";
 import { useAppUser } from "~/hooks/use-app-user";
@@ -14,12 +14,15 @@ import {
   SheetTrigger,
 } from "~/components/ui/sheet";
 import { cn } from "~/lib/utils";
+import { clubPath } from "~/lib/club-path";
+import { ClubSwitcher, type ClubSwitcherProps } from "./club-switcher";
 
-export function MobileNav() {
+export function MobileNav({ current, clubs }: Pick<ClubSwitcherProps, "current" | "clubs">) {
   const [open, setOpen] = useState(false);
   const user = useAppUser();
+  const { clubSlug } = useParams();
   const items = navItems.filter(
-    (item) => !item.adminOnly || user?.role === "admin",
+    (item) => !item.adminOnly || user?.canManageClub,
   );
 
   return (
@@ -37,12 +40,15 @@ export function MobileNav() {
               Vibe Garden
             </SheetTitle>
           </SheetHeader>
+          <div className="border-b p-2">
+            <ClubSwitcher current={current} clubs={clubs} compact onNavigate={() => setOpen(false)} />
+          </div>
           <ul className="flex flex-col gap-1 p-2">
             {items.map((item) => (
               <li key={item.to}>
                 <NavLink
-                  to={item.to}
-                  end={item.to === "/"}
+                  to={clubPath(clubSlug ?? "", item.to)}
+                  end={item.to === ""}
                   onClick={() => setOpen(false)}
                   className={({ isActive }) =>
                     cn(
@@ -91,7 +97,7 @@ export function MobileNav() {
         </SheetContent>
       </Sheet>
 
-      <NavLink to="/" className="flex items-center gap-2 font-serif text-lg">
+      <NavLink to={clubPath(clubSlug ?? "")} className="flex items-center gap-2 font-serif text-lg">
         <Sprout className="size-5 text-primary" />
         Vibe Garden
       </NavLink>

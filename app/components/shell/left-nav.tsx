@@ -1,4 +1,4 @@
-import { Form, Link, useLocation } from "react-router";
+import { Form, Link, useLocation, useParams } from "react-router";
 import { LogOut, PanelLeftClose, PanelLeftOpen, Sprout } from "lucide-react";
 import { useState } from "react";
 import { useAppUser } from "~/hooks/use-app-user";
@@ -13,13 +13,16 @@ import {
   TooltipTrigger,
 } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
+import { clubPath } from "~/lib/club-path";
+import { ClubSwitcher, type ClubSwitcherProps } from "./club-switcher";
 
-export function LeftNav() {
+export function LeftNav({ current, clubs }: Pick<ClubSwitcherProps, "current" | "clubs">) {
   const [collapsed, setCollapsed] = useState(false);
   const { pathname } = useLocation();
+  const { clubSlug } = useParams();
   const user = useAppUser();
   const items = navItems.filter(
-    (item) => !item.adminOnly || user?.role === "admin",
+    (item) => !item.adminOnly || user?.canManageClub,
   );
 
   return (
@@ -31,26 +34,29 @@ export function LeftNav() {
       )}
     >
       <Link
-        to="/"
+        to={clubPath(clubSlug ?? "")}
         className="flex h-14 items-center gap-2 border-b px-4 font-serif text-lg"
       >
         <Sprout className="size-5 shrink-0 text-primary" />
         {!collapsed && <span>Vibe Garden</span>}
       </Link>
 
+      <ClubSwitcher current={current} clubs={clubs} compact={collapsed} />
+
       <TooltipProvider>
         <ul className="flex flex-1 flex-col gap-1 p-2">
           {items.map((item) => {
+            const to = clubPath(clubSlug ?? "", item.to);
             const isActive =
-              item.to === "/"
-                ? pathname === "/"
-                : pathname.startsWith(item.to);
+              item.to === ""
+                ? pathname === to
+                : pathname.startsWith(to);
             return (
               <li key={item.to}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Link
-                      to={item.to}
+                      to={to}
                       aria-current={isActive ? "page" : undefined}
                       className={cn(
                         "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",

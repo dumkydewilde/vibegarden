@@ -1,4 +1,4 @@
-import { useFetcher, useLocation } from "react-router";
+import { useFetcher, useLocation, useParams } from "react-router";
 import { MessageSquarePlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "~/components/ui/button";
@@ -12,6 +12,7 @@ import {
 } from "~/components/ui/dialog";
 import { Textarea } from "~/components/ui/textarea";
 import { FEEDBACK_MAX } from "~/lib/feedback";
+import { clubPath } from "~/lib/club-path";
 
 /**
  * A "Feedback" button that opens a dialog to send a private note to the admin.
@@ -28,6 +29,7 @@ export function FeedbackDialog({
 }) {
   const fetcher = useFetcher();
   const { pathname } = useLocation();
+  const { clubSlug } = useParams();
   const [open, setOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const sending = fetcher.state !== "idle";
@@ -65,7 +67,7 @@ export function FeedbackDialog({
         <fetcher.Form
           ref={formRef}
           method="post"
-          action="/api/feedback"
+          action={clubPath(clubSlug ?? "", "api/feedback")}
           className="space-y-3"
         >
           <input type="hidden" name="page" value={pathname} />

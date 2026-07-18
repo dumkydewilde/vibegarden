@@ -1,9 +1,108 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { signValue } from "~/lib/auth.server";
+import {
+  googleAuthRedirect,
+  handleGoogleCallback,
+} from "~/lib/google.server";
 import {
   importBulkInvites,
   parseBulkInviteInput,
   saveBulkInvites,
 } from "~/lib/invites.server";
+
+const googleEnv = {
+  SESSION_SECRET: "google-invite-unit-test",
+  GOOGLE_CLIENT_ID: "client-id",
+  GOOGLE_CLIENT_SECRET: "client-secret",
+} as Env;
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("Google invite return path", () => {
+  it("returns a signed same-origin join path after the callback", async () => {
+    const authRequest = new Request(
+      "https://vibegarden.test/auth/google?next=%2Fjoin%2Ftoken-123",
+    );
+    const { url, stateCookie } = await googleAuthRedirect(googleEnv, authRequest);
+    const state = new URL(url).searchParams.get("state");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ access_token: "access-token" })),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              email: "member@example.com",
+              email_verified: true,
+              name: "Member",
+            }),
+          ),
+        ),
+    );
+
+    const result = await handleGoogleCallback(
+      googleEnv,
+      new Request(
+        `https://vibegarden.test/auth/google/callback?code=code&state=${state}`,
+        { headers: { Cookie: stateCookie.split(";")[0] } },
+      ),
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      email: "member@example.com",
+      name: "Member",
+      next: "/join/token-123",
+    });
+  });
+
+  it("treats malformed OAuth cookie encoding as a bad state", async () => {
+    const result = await handleGoogleCallback(
+      googleEnv,
+      new Request(
+        "https://vibegarden.test/auth/google/callback?code=code&state=state",
+        { headers: { Cookie: "vg_oauth_state=%E0%A4%A" } },
+      ),
+    );
+
+    expect(result).toEqual({ ok: false, error: "bad-state" });
+  });
+
+  it("rejects a signed unsafe return path", async () => {
+    const signed = await signValue(
+      JSON.stringify({ state: "state", next: "//example.com" }),
+      googleEnv.SESSION_SECRET,
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ access_token: "access-token" })),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ email: "member@example.com", email_verified: true }),
+          ),
+        ),
+    );
+
+    const result = await handleGoogleCallback(
+      googleEnv,
+      new Request(
+        "https://vibegarden.test/auth/google/callback?code=code&state=state",
+        { headers: { Cookie: `vg_oauth_state=${encodeURIComponent(signed)}` } },
+      ),
+    );
+
+    expect(result).toMatchObject({ ok: true, next: "/" });
+  });
+});
 
 describe("parseBulkInviteInput", () => {
   it("parses supported separators and an optional CSV header", () => {

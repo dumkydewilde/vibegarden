@@ -1,7 +1,11 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Route } from "./+types/api.chat";
 import { cloudflareContext } from "~/lib/context";
 import { requireUser } from "~/lib/auth.server";
+import { requireClubContext } from "~/lib/clubs.server";
+import type { ClubContext } from "~/lib/clubs.server";
+import type { User } from "~/db/schema";
+import { apiAuthorizationError } from "~/lib/api-errors";
 import { getDb } from "~/lib/db.server";
 import {
   buildSystemPrompt,
@@ -24,14 +28,18 @@ import {
   parseEnvelope,
 } from "~/lib/query-tool";
 import { attachResultNote, queryResultNote } from "~/lib/tool-notes";
-import { findModel, defaultModel } from "~/lib/models";
+import { resolveClubModel } from "~/lib/models";
+import {
+  clubCredentialNeedsProvisioning,
+  getClubChatCredential,
+} from "~/lib/club-ai.server";
 import {
   appendToLastAssistantMessage,
   ensureThread,
   saveMessage,
   tagThreadWithProject,
 } from "~/lib/threads.server";
-import { users } from "~/db/schema";
+import { clubMemberships } from "~/db/schema";
 
 type ChatRequest = {
   messages: WireMessage[];
@@ -69,16 +77,17 @@ type UpstreamMessage =
 /** Tool-execution rounds per answer; after the last, tools are withheld. */
 const MAX_TOOL_ROUNDS = 3;
 
-export async function action({ request, context }: Route.ActionArgs) {
+export async function action({ request, context, params }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
-  const user = await requireUser(env, request);
-
-  if (!env.OPENROUTER_API_KEY) {
-    return Response.json(
-      { error: "The Gardener has no OPENROUTER_API_KEY configured." },
-      { status: 503 },
-    );
+  let user: User;
+  let club: ClubContext;
+  try {
+    user = await requireUser(env, request);
+    club = await requireClubContext(env, request, params.clubSlug ?? "");
+  } catch (error) {
+    return apiAuthorizationError(error);
   }
+  const scope = { clubId: club.club.id, userId: user.id };
 
   let body: ChatRequest;
   try {
@@ -113,7 +122,36 @@ export async function action({ request, context }: Route.ActionArgs) {
     );
   }
 
-  const model = findModel(body.model) ?? defaultModel;
+  const model = resolveClubModel(
+    club.club.modelPolicy,
+    body.model,
+    club.membership?.modelPref,
+  );
+  // An explicit model outside the club policy is not a stale preference: it
+  // is an untrusted request and must never reach a decrypted provider key.
+  if (typeof body.model === "string" && model.id !== body.model) {
+    return Response.json({ error: "That model is not available for this club." }, { status: 400 });
+  }
+  let apiKey: string;
+  try {
+    apiKey = await getClubChatCredential(env, club.club.id);
+  } catch {
+    // The legacy shared key is a deliberately narrow migration bridge. Do
+    // not widen it: every club other than WOTF remains fail-closed.
+    if (
+      club.club.id === "club_wotf" &&
+      env.ALLOW_WOTF_LEGACY_KEY === "true" &&
+      env.OPENROUTER_API_KEY &&
+      await clubCredentialNeedsProvisioning(env, club.club.id).catch(() => false)
+    ) {
+      apiKey = env.OPENROUTER_API_KEY;
+    } else {
+      return Response.json(
+        { error: "The Gardener is not ready for this club yet." },
+        { status: 503 },
+      );
+    }
+  }
   const contextItems = (body.context ?? []).slice(0, 8);
   const webSearch = body.web === true;
   const datasets = (body.datasets ?? [])
@@ -126,26 +164,27 @@ export async function action({ request, context }: Route.ActionArgs) {
     .slice(0, MAX_DATASETS);
 
   const db = getDb(env);
-  const thread = await ensureThread(db, user.id);
+  const thread = await ensureThread(db, scope);
   if (typeof body.projectId === "string") {
-    await tagThreadWithProject(env, user.id, thread.id, body.projectId);
+    await tagThreadWithProject(env, scope, thread.id, body.projectId);
   }
   // The envelope is not a person's message: it is persisted as a marker on
   // the assistant answer instead (below), keeping one row per visual bubble.
   if (!continuation) {
     await saveMessage(
       db,
+      scope,
       thread,
       "user",
       lastMessage.content,
       contextItems.length > 0 ? JSON.stringify(contextItems) : undefined,
     );
   }
-  if (user.modelPref !== model.id) {
+  if (club.membership?.modelPref !== model.id) {
     await db
-      .update(users)
+      .update(clubMemberships)
       .set({ modelPref: model.id })
-      .where(eq(users.id, user.id));
+      .where(and(eq(clubMemberships.clubId, club.club.id), eq(clubMemberships.userId, user.id)));
   }
 
   // After a successful query the model should only narrate, so its
@@ -187,7 +226,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         "X-Title": "Vibe Garden",
       },
@@ -206,8 +245,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   // config errors still surface as a JSON 502 instead of a broken stream.
   const first = await callUpstream(toolsAllowed);
   if (!first.ok || !first.body) {
-    const detail = await first.text().catch(() => "");
-    console.error("OpenRouter error", first.status, detail.slice(0, 500));
+    console.error("OpenRouter request failed", first.status, "upstream_rejected");
     return Response.json(
       { error: "The language model is not reachable right now. Try again, or pick another model." },
       { status: 502 },
@@ -265,12 +303,7 @@ export async function action({ request, context }: Route.ActionArgs) {
           // On the last allowed round, withhold tools to force a text answer.
           response = await callUpstream(toolsAllowed && round + 1 < MAX_TOOL_ROUNDS);
           if (!response.ok || !response.body) {
-            const detail = await response.text().catch(() => "");
-            console.error(
-              "OpenRouter error mid-conversation",
-              response.status,
-              detail.slice(0, 500),
-            );
+            console.error("OpenRouter stream request failed", response.status, "upstream_rejected");
             emit("\n\nI lost the connection to the model midway. Ask again?");
             break;
           }
@@ -289,11 +322,12 @@ export async function action({ request, context }: Route.ActionArgs) {
             : attachResultNote(attachEnvelope!);
           await appendToLastAssistantMessage(
             db,
+            scope,
             thread,
             `\n\n${resultNote}${full ? `\n\n${full}` : ""}`,
           );
         } else if (full) {
-          await saveMessage(db, thread, "assistant", full);
+          await saveMessage(db, scope, thread, "assistant", full);
         }
       } catch (e) {
         console.error("failed to persist assistant message", e);

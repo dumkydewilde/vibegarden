@@ -7,27 +7,37 @@ import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
-import { requireUser } from "~/lib/auth.server";
+import { requireClubContext } from "~/lib/clubs.server";
+import { clubPath } from "~/lib/club-path";
 import { getDb } from "~/lib/db.server";
 import { parseAnswers } from "~/lib/questionnaire";
-import { questionnaireResponses, users } from "~/db/schema";
-import { eq } from "drizzle-orm";
+import { clubMemberships, questionnaireResponses } from "~/db/schema";
+import { and, eq } from "drizzle-orm";
 import { cn } from "~/lib/utils";
 
 export function meta({}: Route.MetaArgs) {
   return [{ title: "Welcome · Vibe Garden" }];
 }
 
-export async function loader({ request, context }: Route.LoaderArgs) {
-  const { env } = context.get(cloudflareContext);
-  const user = await requireUser(env, request);
-  if (user.stage !== "invited") throw redirect("/");
-  return { name: user.name };
+function clubSlug(params: Route.LoaderArgs["params"]) {
+  return (params as { clubSlug?: string }).clubSlug ?? "";
 }
 
-export async function action({ request, context }: Route.ActionArgs) {
+export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
-  const user = await requireUser(env, request);
+  const club = await requireClubContext(env, request, clubSlug(params));
+  if (!club.membership || club.membership.onboardingStage !== "invited") {
+    throw redirect(clubPath(club.club.slug));
+  }
+  return null;
+}
+
+export async function action({ request, context, params }: Route.ActionArgs) {
+  const { env } = context.get(cloudflareContext);
+  const club = await requireClubContext(env, request, clubSlug(params));
+  if (!club.membership || club.membership.onboardingStage !== "invited") {
+    throw redirect(clubPath(club.club.slug));
+  }
   const form = await request.formData();
 
   const answers = parseAnswers({
@@ -45,19 +55,25 @@ export async function action({ request, context }: Route.ActionArgs) {
   await db
     .insert(questionnaireResponses)
     .values({
-      userId: user.id,
+      clubId: club.club.id,
+      userId: club.membership.userId,
       answers: JSON.stringify(answers),
       createdAt: Date.now(),
     })
     .onConflictDoUpdate({
-      target: questionnaireResponses.userId,
+      target: [questionnaireResponses.clubId, questionnaireResponses.userId],
       set: { answers: JSON.stringify(answers), createdAt: Date.now() },
     });
   await db
-    .update(users)
-    .set({ stage: "exploring" })
-    .where(eq(users.id, user.id));
-  return redirect("/");
+    .update(clubMemberships)
+    .set({ onboardingStage: "exploring", updatedAt: Date.now() })
+    .where(
+      and(
+        eq(clubMemberships.clubId, club.club.id),
+        eq(clubMemberships.userId, club.membership.userId),
+      ),
+    );
+  return redirect(clubPath(club.club.slug));
 }
 
 type Subscription = "chatgpt" | "claude" | "other" | "none";

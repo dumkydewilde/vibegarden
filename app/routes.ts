@@ -1,13 +1,20 @@
 import {
   type RouteConfig,
   index,
-  layout,
   route,
 } from "@react-router/dev/routes";
 
 export default [
-  layout("routes/app-layout.tsx", [
-    index("routes/home.tsx"),
+  index("routes/home.tsx"),
+  route("settings", "routes/settings.tsx"),
+  route("admin/clubs", "routes/admin.clubs.tsx"),
+  route("join/:token", "routes/join.tsx"),
+  route("clubs/:clubSlug/welcome", "routes/welcome.tsx"),
+  route("clubs/:clubSlug/api/chat", "routes/api.chat.ts"),
+  route("clubs/:clubSlug/api/thread", "routes/api.thread.ts"),
+  route("clubs/:clubSlug/api/feedback", "routes/api.feedback.ts"),
+  route("clubs/:clubSlug", "routes/app-layout.tsx", [
+    index("routes/club-home.tsx"),
     route("garden", "routes/garden.tsx"),
     route(
       "garden/conversations/:id",
@@ -21,16 +28,16 @@ export default [
     route("gallery", "routes/gallery.tsx"),
     route("inspiration", "routes/inspiration.tsx"),
     route("admin", "routes/admin.tsx"),
+    route("admin/members", "routes/admin.members.tsx"),
+    route("admin/invitations", "routes/admin.invitations.tsx"),
+    route("admin/settings", "routes/admin.settings.tsx"),
     route(
       "admin/conversations/:id",
       "routes/admin.conversations.$id.tsx",
     ),
   ]),
-  route("join", "routes/join.tsx"),
-  route("welcome", "routes/welcome.tsx"),
-  route("api/chat", "routes/api.chat.ts"),
-  route("api/thread", "routes/api.thread.ts"),
-  route("api/feedback", "routes/api.feedback.ts"),
+  route(":section", "routes/legacy.$section.tsx"),
+  route(":section/*", "routes/legacy.$section.$.tsx"),
   route("login", "routes/login.tsx"),
   route("dev/login", "routes/dev.login.tsx"),
   route("logout", "routes/logout.tsx"),

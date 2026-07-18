@@ -11,8 +11,36 @@ function callbackUrl(request: Request) {
   return `${url.origin}/auth/google/callback`;
 }
 
+function safeNextPath(request: Request, value: string | null) {
+  if (!value?.startsWith("/") || value.startsWith("//")) return "/";
+  const current = new URL(request.url);
+  const destination = new URL(value, current);
+  if (destination.origin !== current.origin) return "/";
+  return `${destination.pathname}${destination.search}${destination.hash}`;
+}
+
+function nextPath(request: Request) {
+  const url = new URL(request.url);
+  const explicit = url.searchParams.get("next");
+  if (explicit) return safeNextPath(request, explicit);
+
+  const referer = request.headers.get("Referer");
+  if (!referer) return "/";
+  try {
+    const source = new URL(referer);
+    if (source.origin !== url.origin || source.pathname !== "/login") return "/";
+    return safeNextPath(request, source.searchParams.get("next"));
+  } catch {
+    return "/";
+  }
+}
+
 /** Builds the Google consent URL plus the state cookie to set. */
-export async function googleAuthRedirect(env: Env, request: Request) {
+export async function googleAuthRedirect(
+  env: Env,
+  request: Request,
+  next?: string | null,
+) {
   const state = crypto.randomUUID();
   const params = new URLSearchParams({
     client_id: env.GOOGLE_CLIENT_ID!,
@@ -22,15 +50,21 @@ export async function googleAuthRedirect(env: Env, request: Request) {
     state,
     prompt: "select_account",
   });
-  const signed = await signValue(state, env.SESSION_SECRET);
+  const signed = await signValue(
+    JSON.stringify({
+      state,
+      next: next === undefined ? nextPath(request) : safeNextPath(request, next),
+    }),
+    env.SESSION_SECRET,
+  );
   return {
     url: `https://accounts.google.com/o/oauth2/v2/auth?${params}`,
-    stateCookie: `${STATE_COOKIE}=${signed}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`,
+    stateCookie: `${STATE_COOKIE}=${encodeURIComponent(signed)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`,
   };
 }
 
 export type GoogleCallbackResult =
-  | { ok: true; email: string; name: string | null }
+  | { ok: true; email: string; name: string | null; next: string }
   | { ok: false; error: string };
 
 export async function handleGoogleCallback(
@@ -44,10 +78,25 @@ export async function handleGoogleCallback(
 
   const cookie = request.headers.get("Cookie") ?? "";
   const match = cookie.match(new RegExp(`(?:^|;\\s*)${STATE_COOKIE}=([^;]+)`));
-  const stored = match
-    ? await verifyValue(decodeURIComponent(match[1]), env.SESSION_SECRET)
-    : null;
-  if (!stored || stored !== state) return { ok: false, error: "bad-state" };
+  let stored: string | null = null;
+  if (match) {
+    try {
+      stored = await verifyValue(
+        decodeURIComponent(match[1]),
+        env.SESSION_SECRET,
+      );
+    } catch {
+      return { ok: false, error: "bad-state" };
+    }
+  }
+  if (!stored) return { ok: false, error: "bad-state" };
+  let storedState: { state?: string; next?: string };
+  try {
+    storedState = JSON.parse(stored) as { state?: string; next?: string };
+  } catch {
+    return { ok: false, error: "bad-state" };
+  }
+  if (storedState.state !== state) return { ok: false, error: "bad-state" };
 
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -77,5 +126,10 @@ export async function handleGoogleCallback(
   if (!info.email || info.email_verified === false) {
     return { ok: false, error: "no-verified-email" };
   }
-  return { ok: true, email: info.email, name: info.name ?? null };
+  return {
+    ok: true,
+    email: info.email,
+    name: info.name ?? null,
+    next: safeNextPath(request, storedState.next ?? null),
+  };
 }

@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "./db.server";
+import { acceptPendingEmailInvitations } from "./invites.server";
 import { sendOtpEmail } from "./mailer.server";
-import { invites, otpCodes, users, type User } from "~/db/schema";
+import { otpCodes, users, type User } from "~/db/schema";
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
@@ -32,12 +33,22 @@ export function isAdminEmail(env: Env, email: string) {
   return normalizeEmail(env.ADMIN_EMAIL ?? "") === normalizeEmail(email);
 }
 
-async function isInvited(env: Env, email: string) {
+export async function isEmailAllowedToLogin(env: Env, email: string) {
   if (isAdminEmail(env, email)) return true;
-  const invite = await getDb(env).query.invites.findFirst({
-    where: eq(invites.email, email),
-  });
-  return !!invite && invite.status !== "revoked";
+  const admission = await env.DB
+    .prepare(
+      `SELECT 1 AS allowed
+         FROM users
+        WHERE email = ?
+        UNION ALL
+       SELECT 1 AS allowed
+         FROM club_invitations
+        WHERE email = ? AND status != 'revoked'
+        LIMIT 1`,
+    )
+    .bind(email, email)
+    .first();
+  return Boolean(admission);
 }
 
 export type RequestCodeResult =
@@ -50,7 +61,9 @@ export async function requestLoginCode(
 ): Promise<RequestCodeResult> {
   const email = normalizeEmail(rawEmail);
   if (!isValidEmail(email)) return { ok: false, error: "invalid-email" };
-  if (!(await isInvited(env, email))) return { ok: false, error: "not-invited" };
+  if (!(await isEmailAllowedToLogin(env, email))) {
+    return { ok: false, error: "not-invited" };
+  }
 
   const code = generateCode();
   const now = Date.now();
@@ -99,10 +112,11 @@ export async function verifyLoginCode(
 
   await db.delete(otpCodes).where(eq(otpCodes.email, email));
   const user = await upsertUser(env, email);
+  await acceptPendingEmailInvitations(env, user);
   return { ok: true, user };
 }
 
-/** Creates the user on first login and marks their invite as joined. */
+/** Creates the global identity on first login. Club access is invitation-based. */
 export async function upsertUser(env: Env, email: string): Promise<User> {
   const db = getDb(env);
   const existing = await db.query.users.findFirst({
@@ -120,9 +134,5 @@ export async function upsertUser(env: Env, email: string): Promise<User> {
     createdAt: Date.now(),
   };
   await db.insert(users).values(user);
-  await db
-    .update(invites)
-    .set({ status: "joined" })
-    .where(eq(invites.email, email));
   return user;
 }

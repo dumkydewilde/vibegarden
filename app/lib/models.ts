@@ -1,3 +1,5 @@
+import type { ModelPolicy } from "~/db/schema";
+
 export type Model = {
   id: string;
   label: string;
@@ -56,6 +58,34 @@ export const models: Model[] = [
 ];
 
 export const defaultModel = models[0];
+
+/** The curated models a free-only club may use. */
+export const freeModels = models.filter((model) => model.id.endsWith(":free"));
+
+if (freeModels.length === 0) {
+  throw new Error("Model policy requires at least one free model.");
+}
+
+export const defaultFreeModel = freeModels[0];
+
+/** The shared model allowlist for discovery, provisioned guardrails, and chat. */
+export function modelsForPolicy(policy: ModelPolicy): Model[] {
+  return policy === "free_only" ? freeModels : models;
+}
+
+/** Resolves untrusted and stale preferences to a model allowed by the club. */
+export function resolveClubModel(
+  policy: ModelPolicy,
+  requested?: string,
+  saved?: string | null,
+): Model {
+  const allowed = modelsForPolicy(policy);
+  return (
+    allowed.find((model) => model.id === requested) ??
+    allowed.find((model) => model.id === saved) ??
+    allowed[0]
+  );
+}
 
 export function findModel(id: string | null | undefined): Model | undefined {
   return models.find((m) => m.id === id);

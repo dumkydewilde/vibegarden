@@ -123,9 +123,12 @@ export async function requireUser(env: Env, request: Request): Promise<User> {
   return user;
 }
 
-export async function requireAdmin(env: Env, request: Request): Promise<User> {
+export async function requireSuperAdmin(
+  env: Env,
+  request: Request,
+): Promise<User> {
   const user = await requireUser(env, request);
-  if (user.role !== "admin") {
+  if (user.platformRole !== "super_admin") {
     throw new Response("Not found", { status: 404 });
   }
   return user;

@@ -46,5 +46,9 @@ describe("Login OTP entry", () => {
 
     expect(await screen.findByText(/that code is not right/i)).toBeInTheDocument();
     expect(submittedCode).toBe("123456");
+    // input-otp schedules uncancelled setup updates through 50 ms. Let them
+    // settle while jsdom is still installed so Vitest cannot tear down the
+    // window before the library dispatches its final update.
+    await new Promise((resolve) => setTimeout(resolve, 60));
   });
 });

@@ -8,17 +8,48 @@ import {
 } from "~/components/gardener/gardener-provider";
 import { AppShell } from "~/components/shell/app-shell";
 import { requireUser } from "~/lib/auth.server";
+import {
+  listActiveClubs,
+  listUserClubs,
+  requireClubContext,
+} from "~/lib/clubs.server";
+import { clubPath } from "~/lib/club-path";
 import { activeThread, parseContext } from "~/lib/threads.server";
+import { modelsForPolicy } from "~/lib/models";
 
-export async function loader({ request, context }: Route.LoaderArgs) {
+export type AppClub = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
+export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
+  const club = await requireClubContext(env, request, params.clubSlug ?? "");
+  // This runs only after canonical slug, active status, and access checks
+  // succeed. A failed switch therefore never displaces the user's last club.
+  await env.DB.prepare("UPDATE users SET last_club_id = ? WHERE id = ?")
+    .bind(club.club.id, user.id)
+    .run();
   // Progressive flow: newcomers answer the questionnaire first.
   // Admins bypass so the host is never locked out.
-  if (user.stage === "invited" && user.role !== "admin") {
-    throw redirect("/welcome");
+  if (club.membership?.onboardingStage === "invited" && !club.isSuperAdmin) {
+    throw redirect(clubPath(club.club.slug, "welcome"));
   }
-  const { threadId, messages: history } = await activeThread(env, user.id);
+  const memberships = await listUserClubs(env, user.id);
+  const activeClubs = club.isSuperAdmin
+    ? await listActiveClubs(env)
+    : memberships
+        .filter((entry) => entry.club.status === "active")
+        .map((entry) => entry.club);
+  const explicitRoles = new Map(
+    memberships.map((entry) => [entry.club.id, entry.membership.role]),
+  );
+  const { threadId, messages: history } = await activeThread(env, {
+    clubId: club.club.id,
+    userId: user.id,
+  });
   const chatMessages: ChatMessage[] = history.map((m) => ({
     id: m.id,
     role: m.role === "assistant" ? ("gardener" as const) : ("user" as const),
@@ -26,16 +57,28 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     context: parseContext(m.context),
   }));
   return {
+    club: {
+      id: club.club.id,
+      name: club.club.name,
+      slug: club.club.slug,
+    },
+    explicitRole: club.membership?.role ?? null,
+    effectiveRole: club.effectiveRole,
+    clubs: activeClubs.map((activeClub) => ({
+      name: activeClub.name,
+      slug: activeClub.slug,
+      role: explicitRoles.get(activeClub.id) ?? "admin",
+    })),
+    allowedModels: modelsForPolicy(club.club.modelPolicy).map((model) => model.id),
     user: {
       email: user.email,
       name: user.name,
-      role: user.role,
-      stage: user.stage,
+      canManageClub: club.effectiveRole === "owner" || club.effectiveRole === "admin",
     },
     gardener: {
       threadId,
       messages: chatMessages,
-      modelId: user.modelPref,
+      modelId: club.membership?.modelPref ?? null,
     },
   };
 }
@@ -45,15 +88,19 @@ export type AppUser = Awaited<ReturnType<typeof loader>>["user"];
 export default function AppLayout({ loaderData }: Route.ComponentProps) {
   return (
     <GardenerProvider
-      // No key here on purpose: the provider must survive navigations, even
-      // when the loader revalidates with a new active thread id (the first
-      // message of a session creates one). Thread switches ("continue",
-      // clear, plant) already update the sidebar client-side; a remount
-      // would cut off a streaming reply.
+      // Keep state across navigations in one club, but never carry a thread,
+      // model preference, or attached dataset into a different club.
+      key={loaderData.club.id}
       initialMessages={loaderData.gardener.messages}
       initialModelId={loaderData.gardener.modelId}
+      allowedModelIds={loaderData.allowedModels}
+      apiBase={clubPath(loaderData.club.slug, "api")}
     >
-      <AppShell aside={<AgentSidebar />}>
+      <AppShell
+        club={loaderData.club}
+        clubs={loaderData.clubs}
+        aside={<AgentSidebar />}
+      >
         <Outlet />
       </AppShell>
     </GardenerProvider>

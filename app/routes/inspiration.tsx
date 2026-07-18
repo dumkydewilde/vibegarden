@@ -23,6 +23,7 @@ import {
   CardTitle,
 } from "~/components/ui/card";
 import { requireUser } from "~/lib/auth.server";
+import { requireClubContext } from "~/lib/clubs.server";
 import { isCommentTargetType, slugify } from "~/lib/comment-target";
 import {
   createComment,
@@ -129,20 +130,26 @@ const inspirationTargetIds = new Set(
   [...stories, ...tools, ...examples, ...datasets].map((i) => slugify(i.title)),
 );
 
-export async function loader({ request, context }: Route.LoaderArgs) {
+export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
+  const club = await requireClubContext(env, request, params.clubSlug ?? "");
   const commentsByTarget = await listCommentsByType(
     env,
+    club.club.id,
     "inspiration",
     user.id,
   );
-  return { commentsByTarget, canModerate: user.role === "admin" };
+  return {
+    commentsByTarget,
+    canModerate: club.effectiveRole === "admin" || club.effectiveRole === "owner",
+  };
 }
 
-export async function action({ request, context }: Route.ActionArgs) {
+export async function action({ request, context, params }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
+  const club = await requireClubContext(env, request, params.clubSlug ?? "");
   const form = await request.formData();
   const intent = form.get("intent");
 
@@ -155,7 +162,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       targetType === "inspiration" &&
       inspirationTargetIds.has(targetId)
     ) {
-      await createComment(env, user.id, {
+      await createComment(env, { clubId: club.club.id, userId: user.id }, {
         targetType,
         targetId,
         body: String(form.get("body") ?? ""),
@@ -164,7 +171,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     return { ok: true };
   }
   if (intent === "delete-comment") {
-    await deleteComment(env, user, String(form.get("commentId") ?? ""));
+    await deleteComment(env, { user, club }, String(form.get("commentId") ?? ""));
     return { ok: true };
   }
   return { ok: false };

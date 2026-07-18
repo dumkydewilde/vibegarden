@@ -7,10 +7,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { useLocation } from "react-router";
+import { useLocation, useParams } from "react-router";
 import { toast } from "sonner";
 import type { DatasetSource } from "~/lib/duckdb.client";
-import { defaultModel, findModel, type Model } from "~/lib/models";
+import { defaultModel, findModel, models, type Model } from "~/lib/models";
+import { clubPath } from "~/lib/club-path";
 import {
   datasetSummary,
   MAX_CONTINUATIONS,
@@ -84,6 +85,7 @@ export type GardenerState = {
     modules?: string[];
   }) => void;
   model: Model;
+  allowedModels: Model[];
   setModel: (model: Model) => void;
   /** Web search via the OpenRouter web plugin; off by default (it costs). */
   webSearch: boolean;
@@ -124,11 +126,27 @@ export function GardenerProvider({
   children,
   initialMessages,
   initialModelId,
+  apiBase,
+  allowedModelIds,
 }: {
   children: React.ReactNode;
   initialMessages?: ChatMessage[];
   initialModelId?: string | null;
+  /** Canonical, club-scoped API root supplied by the authenticated layout. */
+  apiBase?: string;
+  /** The server-filtered models this club may select. */
+  allowedModelIds?: string[];
 }) {
+  const allowedModels = useMemo(() => {
+    const selected = allowedModelIds
+      ?.map((id) => findModel(id))
+      .filter((model): model is Model => !!model);
+    return selected && selected.length > 0 ? selected : models;
+  }, [allowedModelIds]);
+  const initialModel = () =>
+    allowedModels.find((candidate) => candidate.id === initialModelId) ??
+    allowedModels[0] ??
+    defaultModel;
   // Start closed on both server and client, then apply the saved
   // preference after mount: reading localStorage during render makes the
   // SSR HTML disagree with the first client render (hydration mismatch).
@@ -144,7 +162,7 @@ export function GardenerProvider({
   );
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const [model, setModel] = useState<Model>(
-    () => findModel(initialModelId) ?? defaultModel,
+    initialModel,
   );
   const [webSearch, setWebSearch] = useState(false);
   const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
@@ -153,6 +171,7 @@ export function GardenerProvider({
   );
 
   const { pathname } = useLocation();
+  const { clubSlug } = useParams();
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Refs mirror state so ask() always sees the latest values without
@@ -169,6 +188,25 @@ export function GardenerProvider({
   webSearchRef.current = webSearch;
   const datasetsRef = useRef(datasets);
   datasetsRef.current = datasets;
+
+  // A route can remain mounted while its club parameter changes. Never let
+  // conversation state, datasets, or an in-flight answer leak to that club.
+  useEffect(() => {
+    const nextMessages = initialMessages && initialMessages.length > 0
+      ? initialMessages
+      : [welcome];
+    messagesRef.current = nextMessages;
+    contextRef.current = [];
+    datasetsRef.current = [];
+    setMessages(nextMessages);
+    setContextItems([]);
+    setDatasets([]);
+    setAttachingDataset(null);
+    setBusy(false);
+    setModel(initialModel());
+  }, [clubSlug]);
+
+  const api = apiBase ?? clubPath(clubSlug ?? "", "api");
 
   const setOpen = useCallback((nextOpen: boolean) => {
     setOpenState(nextOpen);
@@ -351,7 +389,7 @@ export function GardenerProvider({
 
     type Wire = { role: "user" | "assistant" | "data"; content: string };
     const streamTurn = async (messages: Wire[], continuation: boolean) => {
-      const res = await fetch("/api/chat", {
+      const res = await fetch(`${api}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -373,7 +411,9 @@ export function GardenerProvider({
           error?: string;
         } | null;
         throw new Error(
-          err?.error ?? "The Gardener could not answer just now.",
+          typeof err?.error === "string" && err.error.trim()
+            ? err.error
+            : "The Gardener could not answer just now.",
         );
       }
       const reader = res.body.getReader();
@@ -472,7 +512,7 @@ export function GardenerProvider({
     } finally {
       setBusy(false);
     }
-  }, [attachForModel]);
+  }, [api, attachForModel]);
 
   const askFresh = useCallback(
     async (
@@ -487,10 +527,10 @@ export function GardenerProvider({
       setContextItems(seededContext);
       setOpen(true);
       // The new thread must exist before the chat request picks a thread.
-      await fetch("/api/thread", { method: "POST" });
+      await fetch(`${api}/thread`, { method: "POST" });
       ask(question);
     },
-    [ask],
+    [api, ask],
   );
 
   const resumeConversation = useCallback(
@@ -553,8 +593,8 @@ export function GardenerProvider({
     setContextItems([]);
     clearDatasets();
     // The old thread stays in the database; this just starts a new one.
-    void fetch("/api/thread", { method: "POST" });
-  }, [clearDatasets]);
+    void fetch(`${api}/thread`, { method: "POST" });
+  }, [api, clearDatasets]);
 
   const value = useMemo(
     () => ({
@@ -571,6 +611,7 @@ export function GardenerProvider({
       resumeConversation,
       plantProject,
       model,
+      allowedModels,
       setModel,
       webSearch,
       setWebSearch,
@@ -593,6 +634,7 @@ export function GardenerProvider({
       resumeConversation,
       plantProject,
       model,
+      allowedModels,
       webSearch,
       datasets,
       attachingDataset,

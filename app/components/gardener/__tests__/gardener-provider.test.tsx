@@ -6,7 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { ChatMessageBubble } from "../chat-message";
 import {
   GardenerProvider,
@@ -47,22 +47,39 @@ function Probe() {
   );
 }
 
-function renderHarness(context?: Omit<ContextItem, "id">[]) {
+function renderHarness(
+  context?: Omit<ContextItem, "id">[],
+  apiBase?: string,
+) {
   return render(
-    <MemoryRouter>
-      <GardenerProvider>
-        <GardenerHarness context={context} />
-      </GardenerProvider>
+    <MemoryRouter initialEntries={["/clubs/wotf"]}>
+      <Routes>
+        <Route
+          path="/clubs/:clubSlug/*"
+          element={
+            <GardenerProvider apiBase={apiBase}>
+              <GardenerHarness context={context} />
+            </GardenerProvider>
+          }
+        />
+      </Routes>
     </MemoryRouter>,
   );
 }
 
 function renderProvider() {
   return render(
-    <MemoryRouter>
-      <GardenerProvider>
-        <Probe />
-      </GardenerProvider>
+    <MemoryRouter initialEntries={["/clubs/wotf"]}>
+      <Routes>
+        <Route
+          path="/clubs/:clubSlug/*"
+          element={
+            <GardenerProvider>
+              <Probe />
+            </GardenerProvider>
+          }
+        />
+      </Routes>
     </MemoryRouter>,
   );
 }
@@ -82,7 +99,9 @@ function mockFreshConversation() {
 }
 
 function postedChatBody(fetchMock: ReturnType<typeof mockFreshConversation>) {
-  const chatCall = fetchMock.mock.calls.find(([url]) => url === "/api/chat");
+  const chatCall = fetchMock.mock.calls.find(
+    ([url]) => url === "/clubs/wotf/api/chat",
+  );
   expect(chatCall).toBeDefined();
   const options = chatCall?.[1] as RequestInit;
   return JSON.parse(String(options.body)) as {
@@ -117,6 +136,19 @@ afterEach(() => {
 });
 
 describe("GardenerProvider askFresh", () => {
+  it("uses the supplied canonical API base", async () => {
+    const fetchMock = mockFreshConversation();
+    renderHarness(undefined, "/clubs/canonical/api");
+
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/clubs/canonical/api/thread",
+      "/clubs/canonical/api/chat",
+    ]);
+  });
+
   it("attaches seeded dataset context to the first sent message", async () => {
     const fetchMock = mockFreshConversation();
     const datasetContext = {
@@ -144,6 +176,22 @@ describe("GardenerProvider askFresh", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(postedChatBody(fetchMock).context).toEqual([]);
     expect(await screen.findByText("Help me start.")).toBeTruthy();
+  });
+
+  it("shows a human-safe fallback when the API error is structured data", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 201 }))
+      .mockResolvedValueOnce(
+        Response.json({ error: { provider: "private diagnostic" } }, { status: 502 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+
+    expect(await screen.findByText("The Gardener could not answer just now.")).toBeTruthy();
+    expect(screen.queryByText("[object Object]")).toBeNull();
   });
 });
 

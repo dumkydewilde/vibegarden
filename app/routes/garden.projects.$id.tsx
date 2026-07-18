@@ -3,6 +3,7 @@ import {
   Link,
   redirect,
   useNavigation,
+  useParams,
   useSearchParams,
 } from "react-router";
 import { ArrowLeft, MessageCircle, Sprout, Trash2 } from "lucide-react";
@@ -30,6 +31,8 @@ import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { useGardener } from "~/components/gardener/gardener-provider";
 import { requireUser } from "~/lib/auth.server";
+import { requireClubContext } from "~/lib/clubs.server";
+import { clubPath } from "~/lib/club-path";
 import { modules } from "~/lib/modules";
 import {
   deleteProject,
@@ -47,11 +50,13 @@ export function meta({ data }: Route.MetaArgs) {
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
-  const project = await getProject(env, user.id, params.id);
+  const club = await requireClubContext(env, request, params.clubSlug ?? "");
+  const scope = { clubId: club.club.id, userId: user.id };
+  const project = await getProject(env, scope, params.id);
   if (!project) throw new Response("Project not found", { status: 404 });
   const conversations = await listProjectThreads(
     env,
-    user.id,
+    scope,
     project.id,
     project.threadId,
   );
@@ -61,16 +66,18 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
 export async function action({ request, context, params }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
+  const club = await requireClubContext(env, request, params.clubSlug ?? "");
+  const scope = { clubId: club.club.id, userId: user.id };
   const form = await request.formData();
   const intent = form.get("intent");
 
   if (intent === "delete") {
-    await deleteProject(env, user.id, params.id);
-    return redirect("/garden");
+    await deleteProject(env, scope, params.id);
+    return redirect(clubPath(club.club.slug, "garden"));
   }
 
   if (intent === "save") {
-    await updateProject(env, user.id, params.id, {
+    await updateProject(env, scope, params.id, {
       title: String(form.get("title") ?? ""),
       oneLiner: String(form.get("oneLiner") ?? ""),
       status: String(form.get("status") ?? ""),
@@ -89,6 +96,7 @@ export default function ProjectDetail({
   actionData,
 }: Route.ComponentProps) {
   const { project, conversations } = loaderData;
+  const { clubSlug } = useParams();
   const navigation = useNavigation();
   const { plantProject, addContext } = useGardener();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -106,7 +114,7 @@ export default function ProjectDetail({
     kickoffStarted.current = true;
     setSearchParams({}, { replace: true });
     void (async () => {
-      await fetch("/api/thread", {
+      await fetch(clubPath(clubSlug ?? "", "api/thread"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: project.id }),
@@ -127,7 +135,7 @@ export default function ProjectDetail({
   return (
     <div className="mx-auto max-w-2xl">
       <Link
-        to="/garden"
+        to={clubPath(clubSlug ?? "", "garden")}
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-3.5" />
@@ -257,7 +265,7 @@ export default function ProjectDetail({
             {conversations.map((c) => (
               <li key={c.id}>
                 <Link
-                  to={`/garden/conversations/${c.id}`}
+                  to={clubPath(clubSlug ?? "", `garden/conversations/${c.id}`)}
                   className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-accent/40"
                 >
                   <span className="min-w-0 truncate text-sm">

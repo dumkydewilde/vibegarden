@@ -1,6 +1,5 @@
 import { Check, ChevronDown } from "lucide-react";
 import { useGardener } from "./gardener-provider";
-import { models } from "~/lib/models";
 import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,
@@ -10,7 +9,7 @@ import {
 } from "~/components/ui/dropdown-menu";
 
 export function ModelPicker() {
-  const { model, setModel } = useGardener();
+  const { model, setModel, allowedModels } = useGardener();
 
   return (
     <DropdownMenu>
@@ -25,7 +24,7 @@ export function ModelPicker() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {models.map((m) => (
+        {allowedModels.map((m) => (
           <DropdownMenuItem
             key={m.id}
             onSelect={() => setModel(m)}

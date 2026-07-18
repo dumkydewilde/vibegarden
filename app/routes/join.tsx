@@ -1,10 +1,13 @@
+import { Form, redirect } from "react-router";
 import { Sprout } from "lucide-react";
 import type { Route } from "./+types/join";
+import { cloudflareContext } from "~/lib/context";
+import { getUser } from "~/lib/auth.server";
+import { getInvitePreview, joinWithInviteLink } from "~/lib/invites.server";
 import { Button } from "~/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "~/components/ui/card";
@@ -13,14 +16,32 @@ export function meta({}: Route.MetaArgs) {
   return [{ title: "Join · Vibe Garden" }];
 }
 
-const questions = [
-  "Do you already have an AI subscription you can use, like ChatGPT or Claude?",
-  "If not, what would you be comfortable spending per month: 0, 5, or 20 euros?",
-  "Will you mostly work on a laptop, a phone, or a tablet?",
-  "What are you hoping to build or figure out? Anything goes.",
-] as const;
+const unavailableMessage =
+  "This invitation is no longer available. Ask a club administrator for a new one.";
 
-export default function Join() {
+export async function loader({ params, context }: Route.LoaderArgs) {
+  const { env } = context.get(cloudflareContext);
+  return getInvitePreview(env, params.token ?? "");
+}
+
+export async function action({ request, params, context }: Route.ActionArgs) {
+  const { env } = context.get(cloudflareContext);
+  const token = params.token ?? "";
+  const user = await getUser(env, request);
+  if (!user) {
+    throw redirect(`/login?next=${encodeURIComponent(`/join/${token}`)}`);
+  }
+
+  const result = await joinWithInviteLink(env, user, token);
+  return result.ok ? { joined: true } : { unavailable: true };
+}
+
+export default function Join({
+  loaderData,
+  actionData,
+}: Route.ComponentProps) {
+  const unavailable = !loaderData.available || actionData?.unavailable;
+
   return (
     <main className="mx-auto flex min-h-dvh max-w-xl flex-col justify-center px-4 py-16">
       <div className="flex items-center gap-2 font-serif text-lg">
@@ -28,35 +49,45 @@ export default function Join() {
         Vibe Garden
       </div>
 
-      <h1 className="mt-8 text-3xl leading-snug">
-        Before the workshop, a few quick questions
-      </h1>
-      <p className="mt-3 text-muted-foreground">
-        Your answers help shape the workshop around what you actually want to
-        do. It takes about two minutes and there are no wrong answers.
-      </p>
-
-      <Card className="mt-8">
-        <CardHeader>
-          <CardTitle className="font-serif text-base font-normal">
-            What we will ask
-          </CardTitle>
-          <CardDescription>
-            A preview. The interactive version opens with your invite.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
-            {questions.map((q) => (
-              <li key={q}>{q}</li>
-            ))}
-          </ol>
-        </CardContent>
-      </Card>
-
-      <Button className="mt-8" size="lg" disabled>
-        Opens with your invite
-      </Button>
+      {unavailable ? (
+        <Card className="mt-8">
+          <CardHeader>
+            <CardTitle className="font-serif text-2xl font-normal">
+              Invitation unavailable
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground">{unavailableMessage}</p>
+          </CardContent>
+        </Card>
+      ) : actionData?.joined ? (
+        <Card className="mt-8">
+          <CardHeader>
+            <CardTitle className="font-serif text-2xl font-normal">
+              You are in
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground">
+              You have joined {loaderData.clubName}.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <h1 className="mt-8 text-3xl leading-snug">
+            Join {loaderData.clubName}
+          </h1>
+          <p className="mt-3 text-muted-foreground">
+            This invitation will add you to the club. Please confirm to join.
+          </p>
+          <Form method="post" className="mt-8">
+            <Button type="submit" size="lg">
+              Join {loaderData.clubName}
+            </Button>
+          </Form>
+        </>
+      )}
     </main>
   );
 }
