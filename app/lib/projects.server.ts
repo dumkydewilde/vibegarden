@@ -3,6 +3,8 @@ import { getDb } from "./db.server";
 import { isModuleName } from "./modules";
 import { projects, type Project } from "~/db/schema";
 
+export type ClubUserScope = { clubId: string; userId: string };
+
 export function parseModules(raw: string | null): string[] {
   if (!raw) return [];
   try {
@@ -13,20 +15,31 @@ export function parseModules(raw: string | null): string[] {
   }
 }
 
-export async function listProjects(env: Env, userId: string) {
+export async function listProjects(env: Env, scope: ClubUserScope) {
   const rows = await getDb(env)
     .select()
     .from(projects)
-    .where(eq(projects.userId, userId))
+    .where(
+      and(
+        eq(projects.clubId, scope.clubId),
+        eq(projects.userId, scope.userId),
+      ),
+    )
     .orderBy(desc(projects.updatedAt));
   return rows.map((p) => ({ ...p, moduleList: parseModules(p.modules) }));
 }
 
-export async function getProject(env: Env, userId: string, id: string) {
+export async function getProject(env: Env, scope: ClubUserScope, id: string) {
   const rows = await getDb(env)
     .select()
     .from(projects)
-    .where(and(eq(projects.id, id), eq(projects.userId, userId)))
+    .where(
+      and(
+        eq(projects.id, id),
+        eq(projects.clubId, scope.clubId),
+        eq(projects.userId, scope.userId),
+      ),
+    )
     .limit(1);
   const project = rows[0];
   return project
@@ -36,7 +49,7 @@ export async function getProject(env: Env, userId: string, id: string) {
 
 export async function createProject(
   env: Env,
-  userId: string,
+  scope: ClubUserScope,
   input: {
     title: string;
     oneLiner?: string;
@@ -47,7 +60,8 @@ export async function createProject(
   const now = Date.now();
   const project: Project = {
     id: crypto.randomUUID(),
-    userId,
+    userId: scope.userId,
+    clubId: scope.clubId,
     title: input.title.trim().slice(0, 120) || "Untitled idea",
     oneLiner: input.oneLiner?.trim().slice(0, 300) || null,
     modules: JSON.stringify((input.modules ?? []).filter(isModuleName)),
@@ -62,7 +76,7 @@ export async function createProject(
 
 export async function updateProject(
   env: Env,
-  userId: string,
+  scope: ClubUserScope,
   id: string,
   input: {
     title?: string;
@@ -89,12 +103,23 @@ export async function updateProject(
       ...(status ? { status } : {}),
       updatedAt: Date.now(),
     })
-    .where(and(eq(projects.id, id), eq(projects.userId, userId)));
+    .where(
+      and(
+        eq(projects.id, id),
+        eq(projects.clubId, scope.clubId),
+        eq(projects.userId, scope.userId),
+      ),
+    );
 }
 
-export async function deleteProject(env: Env, userId: string, id: string) {
+export async function deleteProject(env: Env, scope: ClubUserScope, id: string) {
   await getDb(env)
     .delete(projects)
-    .where(and(eq(projects.id, id), eq(projects.userId, userId)));
+    .where(
+      and(
+        eq(projects.id, id),
+        eq(projects.clubId, scope.clubId),
+        eq(projects.userId, scope.userId),
+      ),
+    );
 }
-

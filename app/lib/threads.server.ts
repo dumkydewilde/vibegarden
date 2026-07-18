@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { getDb, type Db } from "./db.server";
-import { chatMessages, chatThreads, users } from "~/db/schema";
+import type { ClubUserScope } from "./projects.server";
+import { chatMessages, chatThreads, projects, users } from "~/db/schema";
 
 const TITLE_MAX = 64;
 
@@ -21,21 +22,57 @@ export function parseContext(raw: string | null): StoredContext[] | undefined {
   }
 }
 
-export async function latestThread(db: Db, userId: string) {
+async function findThread(db: Db, scope: ClubUserScope, threadId: string) {
   const rows = await db
     .select()
     .from(chatThreads)
-    .where(eq(chatThreads.userId, userId))
+    .where(
+      and(
+        eq(chatThreads.id, threadId),
+        eq(chatThreads.clubId, scope.clubId),
+        eq(chatThreads.userId, scope.userId),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
+async function findProject(db: Db, scope: ClubUserScope, projectId: string) {
+  const rows = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(
+      and(
+        eq(projects.id, projectId),
+        eq(projects.clubId, scope.clubId),
+        eq(projects.userId, scope.userId),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
+export async function latestThread(db: Db, scope: ClubUserScope) {
+  const rows = await db
+    .select()
+    .from(chatThreads)
+    .where(
+      and(
+        eq(chatThreads.clubId, scope.clubId),
+        eq(chatThreads.userId, scope.userId),
+      ),
+    )
     .orderBy(desc(chatThreads.updatedAt), desc(chatThreads.createdAt))
     .limit(1);
   return rows[0];
 }
 
-async function createThread(db: Db, userId: string, projectId?: string) {
+async function createThread(db: Db, scope: ClubUserScope, projectId?: string) {
   const now = Date.now();
   const thread = {
     id: crypto.randomUUID(),
-    userId,
+    userId: scope.userId,
+    clubId: scope.clubId,
     title: null,
     projectId: projectId ?? null,
     createdAt: now,
@@ -45,37 +82,41 @@ async function createThread(db: Db, userId: string, projectId?: string) {
   return thread;
 }
 
-export async function ensureThread(db: Db, userId: string) {
-  return (await latestThread(db, userId)) ?? createThread(db, userId);
+export async function ensureThread(db: Db, scope: ClubUserScope) {
+  return (await latestThread(db, scope)) ?? createThread(db, scope);
 }
 
-export async function newThread(env: Env, userId: string, projectId?: string) {
-  return createThread(getDb(env), userId, projectId);
+export async function newThread(env: Env, scope: ClubUserScope, projectId?: string) {
+  return createThread(getDb(env), scope, projectId);
 }
 
 /** Marks a thread as belonging to a project (first project wins). */
 export async function tagThreadWithProject(
   env: Env,
-  userId: string,
+  scope: ClubUserScope,
   threadId: string,
   projectId: string,
 ) {
-  await getDb(env)
+  const db = getDb(env);
+  if (!(await findProject(db, scope, projectId))) return false;
+  await db
     .update(chatThreads)
     .set({ projectId })
     .where(
       and(
         eq(chatThreads.id, threadId),
-        eq(chatThreads.userId, userId),
+        eq(chatThreads.clubId, scope.clubId),
+        eq(chatThreads.userId, scope.userId),
         isNull(chatThreads.projectId),
       ),
     );
+  return true;
 }
 
 /** Non-empty conversations that belong to a project, newest first. */
 export async function listProjectThreads(
   env: Env,
-  userId: string,
+  scope: ClubUserScope,
   projectId: string,
   primaryThreadId?: string | null,
 ) {
@@ -91,7 +132,8 @@ export async function listProjectThreads(
     .innerJoin(chatMessages, eq(chatMessages.threadId, chatThreads.id))
     .where(
       and(
-        eq(chatThreads.userId, userId),
+        eq(chatThreads.clubId, scope.clubId),
+        eq(chatThreads.userId, scope.userId),
         primaryThreadId
           ? or(
               eq(chatThreads.projectId, projectId),
@@ -105,9 +147,9 @@ export async function listProjectThreads(
 }
 
 /** The active (latest) thread and its messages, for the sidebar. */
-export async function activeThread(env: Env, userId: string, limit = 50) {
+export async function activeThread(env: Env, scope: ClubUserScope, limit = 50) {
   const db = getDb(env);
-  const thread = await latestThread(db, userId);
+  const thread = await latestThread(db, scope);
   if (!thread) return { threadId: null, messages: [] };
   const rows = await db
     .select()
@@ -119,7 +161,7 @@ export async function activeThread(env: Env, userId: string, limit = 50) {
 }
 
 /** Non-empty threads for the conversations list, newest first. */
-export async function listThreads(env: Env, userId: string) {
+export async function listThreads(env: Env, scope: ClubUserScope) {
   const db = getDb(env);
   return db
     .select({
@@ -130,13 +172,18 @@ export async function listThreads(env: Env, userId: string) {
     })
     .from(chatThreads)
     .innerJoin(chatMessages, eq(chatMessages.threadId, chatThreads.id))
-    .where(eq(chatThreads.userId, userId))
+    .where(
+      and(
+        eq(chatThreads.clubId, scope.clubId),
+        eq(chatThreads.userId, scope.userId),
+      ),
+    )
     .groupBy(chatThreads.id)
     .orderBy(desc(chatThreads.updatedAt));
 }
 
 /** Non-empty conversations for the protected admin review area. */
-export async function listAdminThreads(env: Env) {
+export async function listAdminThreads(env: Env, clubId: string) {
   const db = getDb(env);
   return db
     .select({
@@ -152,19 +199,15 @@ export async function listAdminThreads(env: Env) {
     .from(chatThreads)
     .innerJoin(users, eq(users.id, chatThreads.userId))
     .innerJoin(chatMessages, eq(chatMessages.threadId, chatThreads.id))
+    .where(eq(chatThreads.clubId, clubId))
     .groupBy(chatThreads.id, users.id)
     .orderBy(desc(chatThreads.updatedAt));
 }
 
 /** A single thread with messages, only if it belongs to the user. */
-export async function getThread(env: Env, userId: string, threadId: string) {
+export async function getThread(env: Env, scope: ClubUserScope, threadId: string) {
   const db = getDb(env);
-  const rows = await db
-    .select()
-    .from(chatThreads)
-    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
-    .limit(1);
-  const thread = rows[0];
+  const thread = await findThread(db, scope, threadId);
   if (!thread) return null;
   const messages = await db
     .select()
@@ -175,13 +218,13 @@ export async function getThread(env: Env, userId: string, threadId: string) {
 }
 
 /** A thread for an already-authorized admin to review. */
-export async function getAdminThread(env: Env, threadId: string) {
+export async function getAdminThread(env: Env, clubId: string, threadId: string) {
   const db = getDb(env);
   const rows = await db
     .select({ thread: chatThreads, participant: users })
     .from(chatThreads)
     .innerJoin(users, eq(users.id, chatThreads.userId))
-    .where(eq(chatThreads.id, threadId))
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.clubId, clubId)))
     .limit(1);
   const result = rows[0];
   if (!result) return null;
@@ -195,12 +238,20 @@ export async function getAdminThread(env: Env, threadId: string) {
 }
 
 /** Makes an old thread the active one again. */
-export async function touchThread(env: Env, userId: string, threadId: string) {
+export async function touchThread(
+  env: Env,
+  scope: ClubUserScope,
+  threadId: string,
+) {
   await getDb(env)
     .update(chatThreads)
     .set({ updatedAt: Date.now() })
     .where(
-      and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)),
+      and(
+        eq(chatThreads.id, threadId),
+        eq(chatThreads.clubId, scope.clubId),
+        eq(chatThreads.userId, scope.userId),
+      ),
     );
 }
 
@@ -212,9 +263,11 @@ export async function touchThread(env: Env, userId: string, threadId: string) {
  */
 export async function appendToLastAssistantMessage(
   db: Db,
+  scope: ClubUserScope,
   thread: { id: string; title: string | null },
   suffix: string,
 ) {
+  if (!(await findThread(db, scope, thread.id))) return false;
   const rows = await db
     .select({ id: chatMessages.id, content: chatMessages.content })
     .from(chatMessages)
@@ -228,8 +281,8 @@ export async function appendToLastAssistantMessage(
     .limit(1);
   const last = rows[0];
   if (!last) {
-    await saveMessage(db, thread, "assistant", suffix.trimStart());
-    return;
+    await saveMessage(db, scope, thread, "assistant", suffix.trimStart());
+    return true;
   }
   await db
     .update(chatMessages)
@@ -239,15 +292,18 @@ export async function appendToLastAssistantMessage(
     .update(chatThreads)
     .set({ updatedAt: Date.now() })
     .where(eq(chatThreads.id, thread.id));
+  return true;
 }
 
 export async function saveMessage(
   db: Db,
+  scope: ClubUserScope,
   thread: { id: string; title: string | null },
   role: "user" | "assistant",
   content: string,
   context?: string,
 ) {
+  if (!(await findThread(db, scope, thread.id))) return false;
   const now = Date.now();
   await db.insert(chatMessages).values({
     id: crypto.randomUUID(),
@@ -267,4 +323,5 @@ export async function saveMessage(
     .set({ updatedAt: now, ...(title ? { title } : {}) })
     .where(eq(chatThreads.id, thread.id));
   if (title) thread.title = title;
+  return true;
 }

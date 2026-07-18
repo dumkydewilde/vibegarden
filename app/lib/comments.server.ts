@@ -1,5 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { getDb } from "./db.server";
+import type { ClubUserScope } from "./projects.server";
+import type { ClubContext } from "./clubs.server";
 import {
   normalizeCommentBody,
   type CommentTargetType,
@@ -48,6 +50,7 @@ const selection = {
 /** Visible comments for one target, oldest first (reads like a thread). */
 export async function listComments(
   env: Env,
+  clubId: string,
   targetType: CommentTargetType,
   targetId: string,
   viewerId?: string,
@@ -60,6 +63,7 @@ export async function listComments(
       and(
         eq(comments.targetType, targetType),
         eq(comments.targetId, targetId),
+        eq(comments.clubId, clubId),
         eq(comments.status, "visible"),
       ),
     )
@@ -73,6 +77,7 @@ export async function listComments(
  */
 export async function listCommentsByType(
   env: Env,
+  clubId: string,
   targetType: CommentTargetType,
   viewerId?: string,
 ): Promise<Record<string, CommentView[]>> {
@@ -83,6 +88,7 @@ export async function listCommentsByType(
     .where(
       and(
         eq(comments.targetType, targetType),
+        eq(comments.clubId, clubId),
         eq(comments.status, "visible"),
       ),
     )
@@ -96,7 +102,7 @@ export async function listCommentsByType(
 
 export async function createComment(
   env: Env,
-  userId: string,
+  scope: ClubUserScope,
   input: { targetType: CommentTargetType; targetId: string; body: string },
 ): Promise<Comment | null> {
   const body = normalizeCommentBody(input.body);
@@ -106,7 +112,8 @@ export async function createComment(
     id: crypto.randomUUID(),
     targetType: input.targetType,
     targetId: input.targetId,
-    userId,
+    userId: scope.userId,
+    clubId: scope.clubId,
     parentId: null,
     body,
     status: "visible",
@@ -118,13 +125,25 @@ export async function createComment(
 }
 
 /** Delete your own comment; an admin may delete anyone's. */
-export async function deleteComment(env: Env, user: User, id: string) {
+export async function deleteComment(
+  env: Env,
+  { user, club }: { user: User; club: ClubContext },
+  id: string,
+) {
   const db = getDb(env);
-  if (user.role === "admin") {
-    await db.delete(comments).where(eq(comments.id, id));
+  if (club.effectiveRole === "admin" || club.effectiveRole === "owner") {
+    await db
+      .delete(comments)
+      .where(and(eq(comments.id, id), eq(comments.clubId, club.club.id)));
     return;
   }
   await db
     .delete(comments)
-    .where(and(eq(comments.id, id), eq(comments.userId, user.id)));
+    .where(
+      and(
+        eq(comments.id, id),
+        eq(comments.clubId, club.club.id),
+        eq(comments.userId, user.id),
+      ),
+    );
 }
