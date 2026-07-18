@@ -1,30 +1,27 @@
-import path from "node:path";
-import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-pool-workers";
+import { readD1Migrations, cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import { defineConfig } from "vitest/config";
-import { mdxPlugin } from "./mdx-plugin";
 
 export default defineConfig({
   plugins: [
-    mdxPlugin(),
     cloudflareTest(async () => ({
-      main: "./test/mcp/fixture-worker.ts",
-      wrangler: { configPath: "./wrangler.jsonc" },
+      main: "./test/worker/fixture-worker.ts",
+      wrangler: {
+        configPath: "./wrangler.jsonc",
+      },
       miniflare: {
-        compatibilityDate: "2026-06-08",
         bindings: {
-          APP_ORIGIN: "https://vibegarden.test",
-          MCP_RESOURCE_URL: "https://vibegarden.test/mcp",
-          MCP_ALLOWED_ORIGINS: "https://claude.ai,https://chatgpt.com",
-          SUPPORT_EMAIL: "support@example.test",
-          SESSION_SECRET: "worker-test-session-secret",
-          TEST_MIGRATIONS: await readD1Migrations(path.join(import.meta.dirname, "drizzle")),
+          APP_ORIGIN: "http://localhost:5173",
+          RENDERER_ORIGIN: "http://localhost:8787",
+          WEB_ALLOWED_ORIGINS: "http://localhost:5173",
+          SESSION_SECRET: "test-session-secret",
+          RENDERER_SIGNING_SECRET: "test-renderer-signing-secret",
+          TEST_MIGRATIONS: await readD1Migrations("./drizzle"),
         },
       },
     })),
   ],
-  resolve: { alias: { "~": path.join(import.meta.dirname, "app") } },
   test: {
-    include: ["test/mcp/**/*.test.ts"],
-    setupFiles: ["./test/mcp/setup.ts"],
+    include: ["test/worker/**/*.test.ts"],
+    setupFiles: ["./test/worker/setup.ts"],
   },
 });

@@ -3,120 +3,143 @@
  * https://developers.cloudflare.com/workers/wrangler/configuration/
  */
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "vibe-garden",
-	"compatibility_date": "2026-07-14",
-	"main": "./workers/app.ts",
-	"vars": {
-		// Bootstrap admin: this email can always log in and gets the admin role.
-		"ADMIN_EMAIL": "dumky@motherduck.com",
-		"MAIL_FROM": "Vibe Garden <no-reply@vibegarden.club>",
-		"APP_ORIGIN": "https://vibegarden.club",
-		"MCP_RESOURCE_URL": "https://vibegarden.club/mcp",
-		"MCP_ALLOWED_ORIGINS": "https://claude.ai,https://chatgpt.com,https://vibegarden.club",
-		"SUPPORT_EMAIL": "dumky@motherduck.com"
-	},
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "vibe-garden",
-			"database_id": "379af88e-40af-4d06-b754-b33f8413c9aa",
-			"migrations_dir": "drizzle"
-		}
-	],
-	"kv_namespaces": [
-		{
-			"binding": "OAUTH_KV"
-		}
-	],
-	"ratelimits": [
-		{
-			"name": "MCP_GENERAL_LIMITER",
-			"namespace_id": "24071801",
-			"simple": {
-				"limit": 60,
-				"period": 60
-			}
-		},
-		{
-			"name": "MCP_HISTORY_LIMITER",
-			"namespace_id": "24071802",
-			"simple": {
-				"limit": 12,
-				"period": 60
-			}
-		}
-	],
-	"env": {
-		"staging": {
-			"name": "vibe-garden-mcp-staging",
-			"workers_dev": false,
-			"vars": {
-				"ADMIN_EMAIL": "dumky@motherduck.com",
-				"MAIL_FROM": "Vibe Garden <no-reply@vibegarden.club>",
-				"APP_ORIGIN": "https://mcp-staging.vibegarden.club",
-				"MCP_RESOURCE_URL": "https://mcp-staging.vibegarden.club/mcp",
-				"MCP_ALLOWED_ORIGINS": "https://claude.ai,https://chatgpt.com,https://mcp-staging.vibegarden.club",
-				"SUPPORT_EMAIL": "dumky@motherduck.com"
-			},
-			"d1_databases": [
-				{
-					"binding": "DB",
-					"database_name": "vibe-garden-mcp-staging",
-					"database_id": "ef0e7c6f-4659-4661-b2ea-4fd6836db1a4",
-					"migrations_dir": "drizzle"
-				}
-			],
-			"kv_namespaces": [
-				{
-					"binding": "OAUTH_KV",
-					"id": "5dabc75c96724b16885f0ea31b5bcc0e"
-				}
-			],
-			"ratelimits": [
-				{
-					"name": "MCP_GENERAL_LIMITER",
-					"namespace_id": "24071901",
-					"simple": { "limit": 60, "period": 60 }
-				},
-				{
-					"name": "MCP_HISTORY_LIMITER",
-					"namespace_id": "24071902",
-					"simple": { "limit": 12, "period": 60 }
-				}
-			],
-			"routes": [
-				{
-					"pattern": "mcp-staging.vibegarden.club",
-					"custom_domain": true
-				}
-			]
-		}
-	},
-	"observability": {
-		"enabled": true
-	},
-	"upload_source_maps": true,
-	"triggers": {
-		"crons": ["17 * * * *", "17 3 * * *"]
-	},
-	"compatibility_flags": [
-		"nodejs_compat"
-	]
-	/**
-	 * Secrets (via `wrangler secret put` in production, .dev.vars locally):
-	 * - SESSION_SECRET: HMAC key for session cookies
-	 * - DEV_LOGIN_TOKEN: optional credential for development-only automatic admin login
-	 * - RESEND_API_KEY: optional, enables OTP email sending
-	 * - GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET: optional, enables Google login
-	 * - OPENROUTER_API_KEY: phase 3, the Gardener's LLM access
-	 * - OPENROUTER_MANAGEMENT_KEY: server-only management key for club API keys and guardrails
-	 * - OPENROUTER_CREDENTIAL_KEY_V1: base64-encoded 32-byte AES-GCM key for club credentials
-	 * - OPENROUTER_WORKSPACE_ID: optional OpenRouter workspace for managed club credentials
-	 * - ALLOW_WOTF_LEGACY_KEY: temporary 'true' fallback for WOTF while its club key is unavailable
-	 * - MCP_REVIEW_EMAIL / MCP_REVIEW_PASSWORD: optional, enables MCP connection review login
-	 * - MOTHERDUCK_TOKEN: optional, enables the Gardener's fresh_reads tool
-	 *   (use a read-scaling token; MOTHERDUCK_PG_HOST/MOTHERDUCK_DATABASE
-	 *   override the pg endpoint host and initial database)
-	 */
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "vibe-garden",
+  "compatibility_date": "2026-07-14",
+  "main": "./workers/app.ts",
+  "vars": {
+    // Bootstrap admin: this email can always log in and gets the admin role.
+    "ADMIN_EMAIL": "dumky@motherduck.com",
+    "MAIL_FROM": "Vibe Garden <no-reply@vibegarden.club>",
+    "APP_ORIGIN": "https://vibegarden.club",
+    "RENDERER_ORIGIN": "https://usercontent.vibegarden.club",
+    "WEB_ALLOWED_ORIGINS": "https://vibegarden.club",
+    "MCP_RESOURCE_URL": "https://vibegarden.club/mcp",
+    "MCP_ALLOWED_ORIGINS": "https://claude.ai,https://chatgpt.com,https://vibegarden.club",
+    "SUPPORT_EMAIL": "dumky@motherduck.com"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "vibe-garden",
+      "database_id": "379af88e-40af-4d06-b754-b33f8413c9aa",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "MCP_GENERAL_LIMITER",
+      "namespace_id": "24071801",
+      "simple": { "limit": 60, "period": 60 }
+    },
+    {
+      "name": "MCP_HISTORY_LIMITER",
+      "namespace_id": "24071802",
+      "simple": { "limit": 12, "period": 60 }
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "ARTIFACTS",
+      "bucket_name": "vibe-garden-artifacts"
+    }
+  ],
+  "analytics_engine_datasets": [
+    {
+      "binding": "ARTIFACT_METRICS",
+      "dataset": "vibe_garden_artifacts"
+    }
+  ],
+  "env": {
+    "staging": {
+      "name": "vibe-garden-mcp-staging",
+      "workers_dev": false,
+      "vars": {
+        "ADMIN_EMAIL": "dumky@motherduck.com",
+        "MAIL_FROM": "Vibe Garden <no-reply@vibegarden.club>",
+        "APP_ORIGIN": "https://mcp-staging.vibegarden.club",
+        "RENDERER_ORIGIN": "https://usercontent.vibegarden.club",
+        "WEB_ALLOWED_ORIGINS": "https://mcp-staging.vibegarden.club",
+        "MCP_RESOURCE_URL": "https://mcp-staging.vibegarden.club/mcp",
+        "MCP_ALLOWED_ORIGINS": "https://claude.ai,https://chatgpt.com,https://mcp-staging.vibegarden.club",
+        "SUPPORT_EMAIL": "dumky@motherduck.com"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "vibe-garden-mcp-staging",
+          "database_id": "ef0e7c6f-4659-4661-b2ea-4fd6836db1a4",
+          "migrations_dir": "drizzle"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "OAUTH_KV",
+          "id": "5dabc75c96724b16885f0ea31b5bcc0e"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "MCP_GENERAL_LIMITER",
+          "namespace_id": "24071901",
+          "simple": { "limit": 60, "period": 60 }
+        },
+        {
+          "name": "MCP_HISTORY_LIMITER",
+          "namespace_id": "24071902",
+          "simple": { "limit": 12, "period": 60 }
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "ARTIFACTS",
+          "bucket_name": "vibe-garden-artifacts"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "ARTIFACT_METRICS",
+          "dataset": "vibe_garden_artifacts"
+        }
+      ],
+      "routes": [
+        {
+          "pattern": "mcp-staging.vibegarden.club",
+          "custom_domain": true
+        }
+      ]
+    }
+  },
+  "observability": {
+    "enabled": true
+  },
+  "upload_source_maps": true,
+  "triggers": {
+    "crons": ["17 * * * *", "17 3 * * *", "23 3 * * *"]
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ]
+  /**
+   * Secrets (via `wrangler secret put` in production, .dev.vars locally):
+   * - SESSION_SECRET: HMAC key for session cookies
+   * - RENDERER_SIGNING_SECRET: dedicated HMAC key for renderer capabilities
+   * - DEV_LOGIN_TOKEN: optional credential for development-only automatic admin login
+   * - RESEND_API_KEY: optional, enables OTP email sending
+   * - GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET: optional, enables Google login
+   * - OPENROUTER_API_KEY: phase 3, the Gardener's LLM access
+   * - OPENROUTER_MANAGEMENT_KEY: server-only management key for club API keys and guardrails
+   * - OPENROUTER_CREDENTIAL_KEY_V1: base64-encoded 32-byte AES-GCM key for club credentials
+   * - OPENROUTER_WORKSPACE_ID: optional OpenRouter workspace for managed club credentials
+   * - ALLOW_WOTF_LEGACY_KEY: temporary 'true' fallback for WOTF while its club key is unavailable
+   * - MCP_REVIEW_EMAIL / MCP_REVIEW_PASSWORD: optional, enables MCP connection review login
+   * - MOTHERDUCK_TOKEN: optional, enables the Gardener's fresh_reads tool
+   *   (use a read-scaling token; MOTHERDUCK_PG_HOST/MOTHERDUCK_DATABASE
+   *   override the pg endpoint host and initial database)
+   */
 }
