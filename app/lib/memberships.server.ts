@@ -1,6 +1,7 @@
 import type { ClubRole, User } from "~/db/schema";
 import { requireClubPermission } from "~/lib/club-permissions";
 import type { ClubContext } from "~/lib/clubs.server";
+import { serializeAuditMetadata } from "~/lib/operational-log.server";
 
 type AuditEventInput = {
   actorUserId: string | null;
@@ -43,7 +44,7 @@ export function recordAuditEvent(env: Env, event: AuditEventInput) {
       event.action,
       event.targetType,
       event.targetId,
-      event.metadata ? JSON.stringify(event.metadata) : null,
+      serializeAuditMetadata(event.action, event.metadata),
       event.createdAt,
     );
 }
@@ -67,7 +68,7 @@ async function runConditionalMutation(
         auditEvent.action,
         auditEvent.targetType,
         auditEvent.targetId,
-        auditEvent.metadata ? JSON.stringify(auditEvent.metadata) : null,
+        serializeAuditMetadata(auditEvent.action, auditEvent.metadata),
         auditEvent.createdAt,
         expectedChanges,
       ),

@@ -10,6 +10,7 @@ import {
   type OpenRouterKeyPatch,
 } from "~/lib/openrouter-management.server";
 import type { ModelPolicy } from "~/db/schema";
+import { logOperation } from "~/lib/operational-log.server";
 
 export type ClubAiManagementClient = {
   listKeys(includeDisabled?: boolean): Promise<OpenRouterKey[]>;
@@ -45,6 +46,10 @@ type CredentialRow = {
   provisioningLeaseToken: string | null;
   provisioningLeaseHeartbeatAt: number | null;
 };
+
+type ReconciliationRow = ClubRow & Pick<CredentialRow, "keyHash" | "remoteGuardrailId" | "provisioningState">;
+
+type ReconciliationFindingKind = "orphaned_key" | "duplicate_key";
 
 const FREE_GUARDRAIL = "vibegarden:free-only:v1";
 const sanitizedFailure = "Club AI provisioning could not be completed.";
@@ -93,6 +98,114 @@ async function credential(env: Env, clubId: string): Promise<CredentialRow> {
 
 function clientFor(env: Env, client?: ClubAiManagementClient) {
   return client ?? new OpenRouterManagementClient(env);
+}
+
+async function reconciliationRows(env: Env): Promise<ReconciliationRow[]> {
+  const result = await env.DB.prepare(
+    `SELECT c.id, c.model_policy AS modelPolicy, c.spending_limit_usd AS spendingLimitUsd,
+      credential.key_hash AS keyHash, credential.remote_guardrail_id AS remoteGuardrailId,
+      credential.provisioning_state AS provisioningState
+      FROM clubs c
+      JOIN club_ai_credentials credential ON credential.club_id = c.id
+      WHERE c.status = 'active' AND credential.provisioning_state != 'disabled'`,
+  ).all<ReconciliationRow>();
+  return result.results;
+}
+
+async function openFinding(env: Env, clubId: string, kind: ReconciliationFindingKind) {
+  const now = Date.now();
+  const existing = await env.DB.prepare(
+    "SELECT id FROM ai_reconciliation_findings WHERE club_id = ? AND kind = ? AND status = 'open' LIMIT 1",
+  ).bind(clubId, kind).first<{ id: string }>();
+  if (existing) {
+    await env.DB.prepare(
+      "UPDATE ai_reconciliation_findings SET last_seen_at = ? WHERE id = ?",
+    ).bind(now, existing.id).run();
+    return;
+  }
+  await env.DB.prepare(
+    `INSERT INTO ai_reconciliation_findings
+      (id, club_id, kind, remote_id, status, metadata, first_seen_at, last_seen_at, resolved_at)
+      VALUES (?, ?, ?, NULL, 'open', NULL, ?, ?, NULL)`,
+  ).bind(crypto.randomUUID(), clubId, kind, now, now).run();
+}
+
+async function resolveFinding(env: Env, clubId: string, kind: ReconciliationFindingKind) {
+  const now = Date.now();
+  await env.DB.prepare(
+    "UPDATE ai_reconciliation_findings SET status = 'resolved', resolved_at = ? WHERE club_id = ? AND kind = ? AND status = 'open'",
+  ).bind(now, clubId, kind).run();
+}
+
+/**
+ * Reconciles only unambiguous, non-secret remote metadata. A missing or
+ * ambiguous credential becomes a review finding rather than a guessed repair.
+ */
+export async function reconcileClubAi(env: Env, suppliedClient?: ClubAiManagementClient): Promise<{ ok: boolean }> {
+  try {
+    const client = clientFor(env, suppliedClient);
+    const [rows, keys, guardrails] = await Promise.all([
+      reconciliationRows(env),
+      client.listKeys(true),
+      client.listGuardrails(),
+    ]);
+
+    for (const row of rows) {
+      if (!row.keyHash) {
+        await openFinding(env, row.id, "orphaned_key");
+        await resolveFinding(env, row.id, "duplicate_key");
+        logOperation({ level: "warn", operation: "club_ai.reconcile", clubId: row.id, provisioningState: row.provisioningState, code: "orphaned_key" });
+        continue;
+      }
+
+      const expectedKeyName = keyName(row.id);
+      const candidates = keys.filter((key) => key.hash === row.keyHash || key.name === expectedKeyName);
+      if (candidates.length > 1) {
+        await openFinding(env, row.id, "duplicate_key");
+        await resolveFinding(env, row.id, "orphaned_key");
+        logOperation({ level: "warn", operation: "club_ai.reconcile", clubId: row.id, provisioningState: row.provisioningState, code: "duplicate_key" });
+        continue;
+      }
+
+      const key = candidates[0];
+      if (!key || key.hash !== row.keyHash || key.disabled) {
+        await openFinding(env, row.id, "orphaned_key");
+        await resolveFinding(env, row.id, "duplicate_key");
+        logOperation({ level: "warn", operation: "club_ai.reconcile", clubId: row.id, provisioningState: row.provisioningState, code: "orphaned_key" });
+        continue;
+      }
+
+      await resolveFinding(env, row.id, "orphaned_key");
+      await resolveFinding(env, row.id, "duplicate_key");
+      if (key.name !== expectedKeyName || key.limit !== 0) {
+        await client.updateKey(key.hash, { name: expectedKeyName, limit: 0 });
+      }
+
+      const desiredGuardrail = guardrailInput(row);
+      const guardrail = guardrails.find((item) => item.id === row.remoteGuardrailId)
+        ?? guardrails.find((item) => item.name === desiredGuardrail.name);
+      if (!guardrail) {
+        logOperation({ level: "warn", operation: "club_ai.reconcile", clubId: row.id, provisioningState: row.provisioningState, code: "missing_guardrail" });
+        continue;
+      }
+
+      if (guardrail.name !== desiredGuardrail.name || guardrail.limitUsd !== desiredGuardrail.limitUsd) {
+        await client.updateGuardrail(guardrail.id, {
+          name: desiredGuardrail.name,
+          limitUsd: desiredGuardrail.limitUsd,
+        });
+      }
+      const assignments = await client.listKeyAssignments(guardrail.id);
+      if (!assignments.includes(key.hash)) await client.assignKeyToGuardrail(guardrail.id, key.hash);
+      logOperation({ level: "info", operation: "club_ai.reconcile", clubId: row.id, provisioningState: row.provisioningState, code: "reconciled" });
+    }
+    return { ok: true };
+  } catch {
+    // Do not mutate local availability or generate findings from a partial
+    // provider view: either could turn an outage into an unsafe repair.
+    logOperation({ level: "error", operation: "club_ai.reconcile", code: "provider_unavailable" });
+    return { ok: false };
+  }
 }
 
 /** Acquire a short reconciliation lease so concurrent requests cannot mint two keys. */

@@ -5,6 +5,7 @@ import { requireClubPermission } from "~/lib/club-permissions";
 import { requireUser } from "~/lib/auth.server";
 import { getDb } from "~/lib/db.server";
 import { recordAuditEvent } from "~/lib/memberships.server";
+import { serializeAuditMetadata } from "~/lib/operational-log.server";
 import { normalizeClubSlug } from "~/lib/club-path";
 
 export { normalizeClubSlug } from "~/lib/club-path";
@@ -83,7 +84,7 @@ function platformAudit(
       clubId,
       action,
       clubId,
-      metadata ? JSON.stringify(metadata) : null,
+      serializeAuditMetadata(action, metadata),
       Date.now(),
     );
 }

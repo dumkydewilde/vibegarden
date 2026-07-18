@@ -24,6 +24,9 @@
 		"enabled": true
 	},
 	"upload_source_maps": true,
+	"triggers": {
+		"crons": ["17 * * * *"]
+	},
 	"compatibility_flags": [
 		"nodejs_compat"
 	]
