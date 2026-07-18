@@ -100,6 +100,19 @@ export const clubSlugAliases = sqliteTable(
   (table) => [index("club_slug_aliases_club_id_idx").on(table.clubId)],
 );
 
+/** Reserves canonical slugs and historic aliases in one unique namespace. */
+export const clubSlugClaims = sqliteTable(
+  "club_slug_claims",
+  {
+    slug: text("slug").primaryKey(),
+    clubId: text("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [index("club_slug_claims_club_id_idx").on(table.clubId)],
+);
+
 export const clubInvitations = sqliteTable(
   "club_invitations",
   {

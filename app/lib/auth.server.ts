@@ -133,8 +133,3 @@ export async function requireSuperAdmin(
   }
   return user;
 }
-
-/** @deprecated Use requireSuperAdmin until Task 9 converts legacy admin routes. */
-export async function requireAdmin(env: Env, request: Request): Promise<User> {
-  return requireSuperAdmin(env, request);
-}

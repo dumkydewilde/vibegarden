@@ -22,7 +22,7 @@ export function LeftNav({ current, clubs }: Pick<ClubSwitcherProps, "current" | 
   const { clubSlug } = useParams();
   const user = useAppUser();
   const items = navItems.filter(
-    (item) => !item.adminOnly || user?.role === "admin",
+    (item) => !item.adminOnly || user?.canManageClub,
   );
 
   return (

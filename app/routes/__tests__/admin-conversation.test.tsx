@@ -2,11 +2,11 @@ import { render, screen } from "@testing-library/react";
 import { createRoutesStub } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AdminConversation, { loader } from "../admin.conversations.$id";
-import { requireAdmin } from "~/lib/auth.server";
+import { requireClubPermission } from "~/lib/club-permissions";
 import { requireClubContext } from "~/lib/clubs.server";
 import { getAdminThread } from "~/lib/threads.server";
 
-vi.mock("~/lib/auth.server", () => ({ requireAdmin: vi.fn() }));
+vi.mock("~/lib/club-permissions", () => ({ requireClubPermission: vi.fn() }));
 vi.mock("~/lib/clubs.server", () => ({ requireClubContext: vi.fn() }));
 vi.mock("~/lib/threads.server", () => ({
   getAdminThread: vi.fn(),
@@ -22,7 +22,7 @@ vi.mock("~/lib/threads.server", () => ({
       : undefined,
 }));
 
-const mockedRequireAdmin = vi.mocked(requireAdmin);
+const mockedRequireClubPermission = vi.mocked(requireClubPermission);
 const mockedRequireClubContext = vi.mocked(requireClubContext);
 const mockedGetAdminThread = vi.mocked(getAdminThread);
 
@@ -64,7 +64,6 @@ describe("Admin conversation loader", () => {
     }) as never;
 
   it("authorizes before loading a participant transcript", async () => {
-    mockedRequireAdmin.mockResolvedValue({} as never);
     mockedGetAdminThread.mockResolvedValue({
       thread: { title: "Build a reading tracker" },
       participant: transcript.participant,
@@ -82,19 +81,20 @@ describe("Admin conversation loader", () => {
       title: "Build a reading tracker",
       participant: transcript.participant,
     });
-    expect(mockedRequireAdmin).toHaveBeenCalledOnce();
+    expect(mockedRequireClubPermission).toHaveBeenCalledWith(expect.anything(), "moderate");
     expect(mockedGetAdminThread).toHaveBeenCalledWith({}, "club-wotf", "thread-1");
   });
 
   it("does not query a transcript when the requester is not an admin", async () => {
-    mockedRequireAdmin.mockRejectedValue(new Response("Not found", { status: 404 }));
+    mockedRequireClubPermission.mockImplementation(() => {
+      throw new Response("Not found", { status: 404 });
+    });
 
     await expect(loader(args())).rejects.toMatchObject({ status: 404 });
     expect(mockedGetAdminThread).not.toHaveBeenCalled();
   });
 
   it("returns 404 for a missing participant transcript", async () => {
-    mockedRequireAdmin.mockResolvedValue({} as never);
     mockedGetAdminThread.mockResolvedValue(null);
 
     await expect(loader(args("missing"))).rejects.toMatchObject({ status: 404 });

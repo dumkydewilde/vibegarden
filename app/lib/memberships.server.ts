@@ -102,18 +102,19 @@ export async function removeMember(
   context: ClubContext,
   userId: string,
 ) {
-  const actor = explicitMembership(context);
   requireClubPermission(context, "manage_member");
+  const actor = context.membership;
+  const implicitSuperAdmin = !actor && context.isSuperAdmin;
   const now = Date.now();
   const changes = await runConditionalMutation(
     env,
     env.DB
       .prepare(
-        "DELETE FROM club_memberships WHERE club_id = ? AND user_id = ? AND EXISTS (SELECT 1 FROM club_memberships actor WHERE actor.club_id = club_memberships.club_id AND actor.user_id = ? AND (actor.role = 'owner' OR (actor.role = 'admin' AND club_memberships.role = 'member'))) AND (role != 'owner' OR (SELECT COUNT(*) FROM club_memberships owners WHERE owners.club_id = club_memberships.club_id AND owners.role = 'owner') > 1)",
+        "DELETE FROM club_memberships WHERE club_id = ? AND user_id = ? AND role = 'member' AND (? = 1 OR EXISTS (SELECT 1 FROM club_memberships actor WHERE actor.club_id = club_memberships.club_id AND actor.user_id = ? AND actor.role IN ('owner', 'admin')))",
       )
-      .bind(context.club.id, userId, actor.userId),
+      .bind(context.club.id, userId, implicitSuperAdmin ? 1 : 0, actor?.userId ?? null),
     {
-      actorUserId: actor.userId,
+      actorUserId: actor?.userId ?? null,
       clubId: context.club.id,
       action: "member.removed",
       targetType: "membership",
@@ -141,7 +142,7 @@ export async function changeMemberRole(
     env,
     env.DB
       .prepare(
-        "UPDATE club_memberships SET role = ?, updated_at = ? WHERE club_id = ? AND user_id = ? AND role != ? AND EXISTS (SELECT 1 FROM club_memberships actor WHERE actor.club_id = club_memberships.club_id AND actor.user_id = ? AND actor.role = 'owner') AND (role != 'owner' OR (SELECT COUNT(*) FROM club_memberships owners WHERE owners.club_id = club_memberships.club_id AND owners.role = 'owner') > 1)",
+        "UPDATE club_memberships SET role = ?, updated_at = ? WHERE club_id = ? AND user_id = ? AND role != 'owner' AND role != ? AND EXISTS (SELECT 1 FROM club_memberships actor WHERE actor.club_id = club_memberships.club_id AND actor.user_id = ? AND actor.role = 'owner')",
       )
       .bind(role, now, context.club.id, userId, role, actor.userId),
     {

@@ -27,6 +27,9 @@ export default [
     route("gallery", "routes/gallery.tsx"),
     route("inspiration", "routes/inspiration.tsx"),
     route("admin", "routes/admin.tsx"),
+    route("admin/members", "routes/admin.members.tsx"),
+    route("admin/invitations", "routes/admin.invitations.tsx"),
+    route("admin/settings", "routes/admin.settings.tsx"),
     route(
       "admin/conversations/:id",
       "routes/admin.conversations.$id.tsx",

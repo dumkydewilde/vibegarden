@@ -75,13 +75,12 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     user: {
       email: user.email,
       name: user.name,
-      role: user.role,
-      stage: user.stage,
+      canManageClub: club.effectiveRole === "owner" || club.effectiveRole === "admin",
     },
     gardener: {
       threadId,
       messages: chatMessages,
-      modelId: club.membership?.modelPref ?? user.modelPref,
+      modelId: club.membership?.modelPref ?? null,
     },
   };
 }

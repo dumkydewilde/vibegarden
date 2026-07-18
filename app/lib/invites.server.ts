@@ -182,6 +182,20 @@ export async function createEmailInvitation(
   return invitationByClubAndEmail(env, context.club.id, email);
 }
 
+export async function revokeEmailInvitation(
+  env: Env,
+  context: ClubContext,
+  invitationId: string,
+) {
+  requireClubPermission(context, "manage_invites");
+  await env.DB
+    .prepare(
+      "UPDATE club_invitations SET status = 'revoked', updated_at = ? WHERE id = ? AND club_id = ? AND status = 'pending'",
+    )
+    .bind(Date.now(), invitationId, context.club.id)
+    .run();
+}
+
 /** Accept every active-club invitation for this verified global account. */
 export async function acceptPendingEmailInvitations(env: Env, user: User) {
   const pending = await env.DB
@@ -295,6 +309,20 @@ export async function createInviteLink(
     )
     .run();
   return { urlToken, link };
+}
+
+export async function revokeInviteLink(
+  env: Env,
+  context: ClubContext,
+  linkId: string,
+) {
+  requireClubPermission(context, "manage_invites");
+  await env.DB
+    .prepare(
+      "UPDATE club_invite_links SET revoked_at = ? WHERE id = ? AND club_id = ? AND revoked_at IS NULL",
+    )
+    .bind(Date.now(), linkId, context.club.id)
+    .run();
 }
 
 type AvailableInviteLink = {

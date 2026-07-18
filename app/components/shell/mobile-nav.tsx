@@ -22,7 +22,7 @@ export function MobileNav({ current, clubs }: Pick<ClubSwitcherProps, "current" 
   const user = useAppUser();
   const { clubSlug } = useParams();
   const items = navItems.filter(
-    (item) => !item.adminOnly || user?.role === "admin",
+    (item) => !item.adminOnly || user?.canManageClub,
   );
 
   return (

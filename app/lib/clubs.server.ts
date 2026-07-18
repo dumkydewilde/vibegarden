@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { Club, ClubMembership, ClubRole, User } from "~/db/schema";
 import { clubMemberships, clubs, clubSlugAliases } from "~/db/schema";
+import { requireClubPermission } from "~/lib/club-permissions";
 import { requireUser } from "~/lib/auth.server";
 import { getDb } from "~/lib/db.server";
 import { recordAuditEvent } from "~/lib/memberships.server";
@@ -57,14 +58,12 @@ export async function createClub(
     throw new Response("Invalid club slug", { status: 400 });
   }
 
-  const [canonical, alias] = await Promise.all([
+  const [claim, canonical, alias] = await Promise.all([
+    env.DB.prepare("SELECT 1 FROM club_slug_claims WHERE slug = ?").bind(slug).first(),
     env.DB.prepare("SELECT 1 FROM clubs WHERE slug = ?").bind(slug).first(),
-    env.DB
-      .prepare("SELECT 1 FROM club_slug_aliases WHERE slug = ?")
-      .bind(slug)
-      .first(),
+    env.DB.prepare("SELECT 1 FROM club_slug_aliases WHERE slug = ?").bind(slug).first(),
   ]);
-  if (canonical || alias) {
+  if (claim || canonical || alias) {
     throw conflict();
   }
 
@@ -102,6 +101,11 @@ export async function createClub(
         ),
       env.DB
         .prepare(
+          "INSERT INTO club_slug_claims (slug, club_id, created_at) VALUES (?, ?, ?)",
+        )
+        .bind(club.slug, club.id, now),
+      env.DB
+        .prepare(
           "INSERT INTO club_memberships (club_id, user_id, role, joined_at, updated_at) VALUES (?, ?, 'owner', ?, ?)",
         )
         .bind(club.id, user.id, now, now),
@@ -130,6 +134,68 @@ export async function createClub(
   }
 
   return club;
+}
+
+/** Atomically reserves a new canonical slug and preserves the old URL alias. */
+export async function renameClub(
+  env: Env,
+  context: ClubContext,
+  rawSlug: string,
+) {
+  requireClubPermission(context, "manage_identity");
+  const slug = normalizeClubSlug(rawSlug);
+  if (!isValidClubSlug(slug)) {
+    throw new Response("Invalid club slug", { status: 400 });
+  }
+  if (slug === context.club.slug) return slug;
+
+  const now = Date.now();
+  try {
+    await env.DB.batch([
+      env.DB
+        .prepare(
+          "INSERT INTO club_slug_claims (slug, club_id, created_at) VALUES (?, ?, ?)",
+        )
+        .bind(slug, context.club.id, now),
+      env.DB
+        .prepare(
+          "INSERT INTO club_slug_aliases (slug, club_id, created_at) VALUES (?, ?, ?)",
+        )
+        .bind(context.club.slug, context.club.id, now),
+      env.DB
+        .prepare("UPDATE clubs SET slug = ?, updated_at = ? WHERE id = ? AND slug = ?")
+        .bind(slug, now, context.club.id, context.club.slug),
+      recordAuditEvent(env, {
+        actorUserId: context.membership?.userId ?? null,
+        clubId: context.club.id,
+        action: "club.slug_changed",
+        targetType: "club",
+        targetId: context.club.id,
+        metadata: { previousSlug: context.club.slug, slug },
+        createdAt: now,
+      }),
+    ]);
+  } catch (error) {
+    if (error instanceof Error && /UNIQUE constraint failed/.test(error.message)) {
+      throw conflict();
+    }
+    throw error;
+  }
+  return slug;
+}
+
+export async function renameClubDisplayName(
+  env: Env,
+  context: ClubContext,
+  name: string,
+) {
+  requireClubPermission(context, "manage_identity");
+  const value = name.trim().slice(0, 120);
+  if (!value) throw new Response("Invalid club name", { status: 400 });
+  await env.DB
+    .prepare("UPDATE clubs SET name = ?, updated_at = ? WHERE id = ?")
+    .bind(value, Date.now(), context.club.id)
+    .run();
 }
 
 export async function listUserClubs(env: Env, userId: string) {

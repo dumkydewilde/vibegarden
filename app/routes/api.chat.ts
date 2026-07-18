@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Route } from "./+types/api.chat";
 import { cloudflareContext } from "~/lib/context";
 import { requireUser } from "~/lib/auth.server";
@@ -35,7 +35,7 @@ import {
   saveMessage,
   tagThreadWithProject,
 } from "~/lib/threads.server";
-import { users } from "~/db/schema";
+import { clubMemberships } from "~/db/schema";
 
 type ChatRequest = {
   messages: WireMessage[];
@@ -154,11 +154,11 @@ export async function action({ request, context, params }: Route.ActionArgs) {
       contextItems.length > 0 ? JSON.stringify(contextItems) : undefined,
     );
   }
-  if (user.modelPref !== model.id) {
+  if (club.membership?.modelPref !== model.id) {
     await db
-      .update(users)
+      .update(clubMemberships)
       .set({ modelPref: model.id })
-      .where(eq(users.id, user.id));
+      .where(and(eq(clubMemberships.clubId, club.club.id), eq(clubMemberships.userId, user.id)));
   }
 
   // After a successful query the model should only narrate, so its
