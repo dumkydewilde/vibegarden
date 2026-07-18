@@ -130,10 +130,10 @@ const inspirationTargetIds = new Set(
   [...stories, ...tools, ...examples, ...datasets].map((i) => slugify(i.title)),
 );
 
-export async function loader({ request, context }: Route.LoaderArgs) {
+export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
-  const club = await requireClubContext(env, request, "wotf");
+  const club = await requireClubContext(env, request, params.clubSlug ?? "");
   const commentsByTarget = await listCommentsByType(
     env,
     club.club.id,
@@ -146,10 +146,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   };
 }
 
-export async function action({ request, context }: Route.ActionArgs) {
+export async function action({ request, context, params }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
-  const club = await requireClubContext(env, request, "wotf");
+  const club = await requireClubContext(env, request, params.clubSlug ?? "");
   const form = await request.formData();
   const intent = form.get("intent");
 

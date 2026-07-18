@@ -1,13 +1,18 @@
 import {
   type RouteConfig,
   index,
-  layout,
   route,
 } from "@react-router/dev/routes";
 
 export default [
-  layout("routes/app-layout.tsx", [
-    index("routes/home.tsx"),
+  index("routes/home.tsx"),
+  route("join/:token", "routes/join.tsx"),
+  route("clubs/:clubSlug/welcome", "routes/welcome.tsx"),
+  route("clubs/:clubSlug/api/chat", "routes/api.chat.ts"),
+  route("clubs/:clubSlug/api/thread", "routes/api.thread.ts"),
+  route("clubs/:clubSlug/api/feedback", "routes/api.feedback.ts"),
+  route("clubs/:clubSlug", "routes/app-layout.tsx", [
+    index("routes/club-home.tsx"),
     route("garden", "routes/garden.tsx"),
     route(
       "garden/conversations/:id",
@@ -26,11 +31,8 @@ export default [
       "routes/admin.conversations.$id.tsx",
     ),
   ]),
-  route("join/:token", "routes/join.tsx"),
-  route("welcome", "routes/welcome.tsx"),
-  route("api/chat", "routes/api.chat.ts"),
-  route("api/thread", "routes/api.thread.ts"),
-  route("api/feedback", "routes/api.feedback.ts"),
+  route(":section", "routes/legacy.$section.tsx"),
+  route(":section/*", "routes/legacy.$section.$.tsx"),
   route("login", "routes/login.tsx"),
   route("dev/login", "routes/dev.login.tsx"),
   route("logout", "routes/logout.tsx"),

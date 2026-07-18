@@ -1,7 +1,8 @@
 import { Blocks, BookOpen, ExternalLink } from "lucide-react";
-import { Link } from "react-router";
+import { Link, useParams } from "react-router";
 import { getArticle } from "~/lib/content";
 import { getModule } from "~/lib/modules";
+import { clubPath } from "~/lib/club-path";
 
 /** The small clickable card for an article or building block. */
 export function ContentCard({
@@ -35,19 +36,21 @@ export function ContentLink({
   href,
   children,
 }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+  const { clubSlug } = useParams();
+  const path = (suffix: string) => clubPath(clubSlug ?? "", suffix);
   const articleSlug = href?.match(/^\/learning\/([\w-]+)$/)?.[1];
   const article = articleSlug ? getArticle(articleSlug) : undefined;
   if (article) {
-    return <ContentCard to={href!} icon={BookOpen} title={article.meta.title} />;
+    return <ContentCard to={path(`learning/${articleSlug}`)} icon={BookOpen} title={article.meta.title} />;
   }
   const moduleSlug = href?.match(/^\/garden\/modules\/([\w-]+)$/)?.[1];
   const module = moduleSlug ? getModule(moduleSlug) : undefined;
   if (module) {
-    return <ContentCard to={href!} icon={Blocks} title={module.meta.title} />;
+    return <ContentCard to={path(`garden/modules/${moduleSlug}`)} icon={Blocks} title={module.meta.title} />;
   }
   if (href?.startsWith("/")) {
     return (
-      <Link to={href} className="text-primary underline underline-offset-2">
+      <Link to={path(href)} className="text-primary underline underline-offset-2">
         {children}
       </Link>
     );

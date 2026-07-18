@@ -7,10 +7,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { useLocation } from "react-router";
+import { useLocation, useParams } from "react-router";
 import { toast } from "sonner";
 import type { DatasetSource } from "~/lib/duckdb.client";
 import { defaultModel, findModel, type Model } from "~/lib/models";
+import { clubPath } from "~/lib/club-path";
 import {
   datasetSummary,
   MAX_CONTINUATIONS,
@@ -153,6 +154,7 @@ export function GardenerProvider({
   );
 
   const { pathname } = useLocation();
+  const { clubSlug } = useParams();
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Refs mirror state so ask() always sees the latest values without
@@ -351,7 +353,7 @@ export function GardenerProvider({
 
     type Wire = { role: "user" | "assistant" | "data"; content: string };
     const streamTurn = async (messages: Wire[], continuation: boolean) => {
-      const res = await fetch("/api/chat", {
+      const res = await fetch(clubPath(clubSlug ?? "", "api/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -472,7 +474,7 @@ export function GardenerProvider({
     } finally {
       setBusy(false);
     }
-  }, [attachForModel]);
+  }, [attachForModel, clubSlug]);
 
   const askFresh = useCallback(
     async (
@@ -487,10 +489,10 @@ export function GardenerProvider({
       setContextItems(seededContext);
       setOpen(true);
       // The new thread must exist before the chat request picks a thread.
-      await fetch("/api/thread", { method: "POST" });
+      await fetch(clubPath(clubSlug ?? "", "api/thread"), { method: "POST" });
       ask(question);
     },
-    [ask],
+    [ask, clubSlug],
   );
 
   const resumeConversation = useCallback(
@@ -553,8 +555,8 @@ export function GardenerProvider({
     setContextItems([]);
     clearDatasets();
     // The old thread stays in the database; this just starts a new one.
-    void fetch("/api/thread", { method: "POST" });
-  }, [clearDatasets]);
+    void fetch(clubPath(clubSlug ?? "", "api/thread"), { method: "POST" });
+  }, [clearDatasets, clubSlug]);
 
   const value = useMemo(
     () => ({

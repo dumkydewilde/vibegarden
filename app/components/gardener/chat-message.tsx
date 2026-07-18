@@ -1,5 +1,6 @@
 import { Blocks, BookOpen, Database, Globe, Sprout } from "lucide-react";
 import Markdown from "react-markdown";
+import { useParams } from "react-router";
 import { ContextQuote } from "./context-quote";
 import { DataToolResult } from "./data-tool-result";
 import type { ChatMessage } from "./gardener-provider";
@@ -14,6 +15,7 @@ import {
   type ToolNoteSegment,
 } from "~/lib/tool-notes";
 import { cn } from "~/lib/utils";
+import { clubPath } from "~/lib/club-path";
 
 const noteWrapper =
   "flex max-w-full items-center gap-1.5 rounded-lg bg-muted/60 px-2.5 py-1.5 text-xs italic text-muted-foreground";
@@ -88,9 +90,11 @@ function toolActivityLabel(
 function ToolNoteBubble({
   segment,
   active = false,
+  clubSlug,
 }: {
   segment: Extract<ToolNoteSegment, { type: "tool" }>;
   active?: boolean;
+  clubSlug: string;
 }) {
   if (active) return <ActivityBubble label={toolActivityLabel(segment)} />;
 
@@ -103,7 +107,7 @@ function ToolNoteBubble({
         <div className={wrapper}>
           <span className="shrink-0">reading</span>
           <ContentCard
-            to={`/learning/${segment.value}`}
+            to={clubPath(clubSlug, `learning/${segment.value}`)}
             icon={BookOpen}
             title={article.meta.title}
           />
@@ -118,7 +122,7 @@ function ToolNoteBubble({
         <div className={wrapper}>
           <span className="shrink-0">reading</span>
           <ContentCard
-            to={`/garden/modules/${segment.value}`}
+            to={clubPath(clubSlug, `garden/modules/${segment.value}`)}
             icon={Blocks}
             title={module.meta.title}
           />
@@ -165,6 +169,7 @@ export function ChatMessageBubble({
   message: ChatMessage;
   isStreaming?: boolean;
 }) {
+  const { clubSlug } = useParams();
   const isGardener = message.role === "gardener";
   const segments = isGardener ? splitToolNotes(message.text) : [];
   const activeToolIndex =
@@ -263,6 +268,7 @@ export function ChatMessageBubble({
                   key={i}
                   segment={segment}
                   active={i === activeToolIndex}
+                  clubSlug={clubSlug ?? ""}
                 />
               );
             })}

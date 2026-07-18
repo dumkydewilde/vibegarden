@@ -1,4 +1,4 @@
-import { Form, Link, useNavigation } from "react-router";
+import { Form, Link, useNavigation, useParams } from "react-router";
 import { Check, Mail, Upload, UserCog, UserX } from "lucide-react";
 import { desc, eq } from "drizzle-orm";
 import type { Route } from "./+types/admin";
@@ -17,6 +17,7 @@ import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { requireAdmin } from "~/lib/auth.server";
 import { requireClubContext } from "~/lib/clubs.server";
+import { clubPath } from "~/lib/club-path";
 import { getDb } from "~/lib/db.server";
 import { isFeedbackStatus } from "~/lib/feedback";
 import { listFeedback, setFeedbackStatus } from "~/lib/feedback.server";
@@ -30,10 +31,10 @@ export function meta({}: Route.MetaArgs) {
   return [{ title: "Admin · Vibe Garden" }];
 }
 
-export async function loader({ request, context }: Route.LoaderArgs) {
+export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   await requireAdmin(env, request);
-  const club = await requireClubContext(env, request, "wotf");
+  const club = await requireClubContext(env, request, params.clubSlug ?? "");
   const db = getDb(env);
   const [allUsers, allInvites, responses, feedback, conversations] = await Promise.all([
     db.select().from(users).orderBy(desc(users.createdAt)),
@@ -65,10 +66,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   };
 }
 
-export async function action({ request, context }: Route.ActionArgs) {
+export async function action({ request, context, params }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
   const admin = await requireAdmin(env, request);
-  const club = await requireClubContext(env, request, "wotf");
+  const club = await requireClubContext(env, request, params.clubSlug ?? "");
   const db = getDb(env);
   const form = await request.formData();
   const intent = form.get("intent");
@@ -142,6 +143,7 @@ const stageLabel: Record<string, string> = {
 
 export default function Admin({ loaderData, actionData }: Route.ComponentProps) {
   const navigation = useNavigation();
+  const { clubSlug } = useParams();
   const busy = navigation.state === "submitting";
   const pending = loaderData.invites.filter((i) => i.status === "pending");
   const revoked = loaderData.invites.filter((i) => i.status === "revoked");
@@ -308,7 +310,7 @@ export default function Admin({ loaderData, actionData }: Route.ComponentProps) 
               {loaderData.conversations.map((conversation) => (
                 <li key={conversation.id}>
                   <Link
-                    to={`/admin/conversations/${conversation.id}`}
+                    to={clubPath(clubSlug ?? "", `admin/conversations/${conversation.id}`)}
                     className="block py-3 transition-colors hover:text-primary"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">

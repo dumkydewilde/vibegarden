@@ -1,4 +1,4 @@
-import { Form, NavLink } from "react-router";
+import { Form, NavLink, useParams } from "react-router";
 import { LogOut, Menu, Sprout } from "lucide-react";
 import { useState } from "react";
 import { useAppUser } from "~/hooks/use-app-user";
@@ -14,10 +14,12 @@ import {
   SheetTrigger,
 } from "~/components/ui/sheet";
 import { cn } from "~/lib/utils";
+import { clubPath } from "~/lib/club-path";
 
 export function MobileNav() {
   const [open, setOpen] = useState(false);
   const user = useAppUser();
+  const { clubSlug } = useParams();
   const items = navItems.filter(
     (item) => !item.adminOnly || user?.role === "admin",
   );
@@ -41,7 +43,7 @@ export function MobileNav() {
             {items.map((item) => (
               <li key={item.to}>
                 <NavLink
-                  to={item.to}
+                  to={clubPath(clubSlug ?? "", item.to)}
                   end={item.to === "/"}
                   onClick={() => setOpen(false)}
                   className={({ isActive }) =>
@@ -91,7 +93,7 @@ export function MobileNav() {
         </SheetContent>
       </Sheet>
 
-      <NavLink to="/" className="flex items-center gap-2 font-serif text-lg">
+      <NavLink to={clubPath(clubSlug ?? "")} className="flex items-center gap-2 font-serif text-lg">
         <Sprout className="size-5 text-primary" />
         Vibe Garden
       </NavLink>

@@ -11,8 +11,13 @@ import {
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { getModule, getModuleRaw } from "~/lib/modules";
+import { cloudflareContext } from "~/lib/context";
+import { requireClubContext } from "~/lib/clubs.server";
+import { clubPath } from "~/lib/club-path";
 
-export function loader({ params }: Route.LoaderArgs) {
+export async function loader({ request, context, params }: Route.LoaderArgs) {
+  const { env } = context.get(cloudflareContext);
+  await requireClubContext(env, request, params.clubSlug ?? "");
   if (!getModule(params.slug)) {
     throw new Response("Building block not found", { status: 404 });
   }
@@ -52,7 +57,7 @@ export default function ModulePage({ params }: Route.ComponentProps) {
     <div className="article-page">
       <div className="mb-8">
         <Link
-          to="/garden"
+          to={clubPath(params.clubSlug ?? "", "garden")}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-3.5" />

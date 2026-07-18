@@ -24,13 +24,13 @@ const loaderData = {
 function renderAdmin(action: () => unknown = () => ({ ok: true })) {
   const Stub = createRoutesStub([
     {
-      path: "/admin",
+      path: "/clubs/:clubSlug/admin",
       Component: Admin,
       loader: () => loaderData,
       action,
     },
   ]);
-  render(<Stub initialEntries={["/admin"]} />);
+  render(<Stub initialEntries={["/clubs/wotf/admin"]} />);
 }
 
 describe("Admin bulk invites", () => {
@@ -102,7 +102,7 @@ describe("Admin Gardener conversations", () => {
     expect(screen.getByText(/4 messages/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /build a reading tracker/i })).toHaveAttribute(
       "href",
-      "/admin/conversations/thread-1",
+      "/clubs/wotf/admin/conversations/thread-1",
     );
   });
 });

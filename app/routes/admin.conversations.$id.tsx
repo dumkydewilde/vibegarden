@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+import { Link, useParams } from "react-router";
 import { ArrowLeft, MessageCircle } from "lucide-react";
 import type { Route } from "./+types/admin.conversations.$id";
 import { cloudflareContext } from "~/lib/context";
@@ -6,6 +6,7 @@ import { ChatMessageBubble } from "~/components/gardener/chat-message";
 import { PageHeader } from "~/components/shell/page-header";
 import { requireAdmin } from "~/lib/auth.server";
 import { requireClubContext } from "~/lib/clubs.server";
+import { clubPath } from "~/lib/club-path";
 import { getAdminThread, parseContext } from "~/lib/threads.server";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -19,7 +20,7 @@ export function meta({ data }: Route.MetaArgs) {
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   await requireAdmin(env, request);
-  const club = await requireClubContext(env, request, "wotf");
+  const club = await requireClubContext(env, request, params.clubSlug ?? "");
   const result = await getAdminThread(env, club.club.id, params.id);
   if (!result) throw new Response("Conversation not found", { status: 404 });
 
@@ -39,12 +40,13 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
 }
 
 export default function AdminConversation({ loaderData }: Route.ComponentProps) {
+  const { clubSlug } = useParams();
   const participant = loaderData.participant.name ?? loaderData.participant.email;
 
   return (
     <div className="mx-auto max-w-[70ch]">
       <Link
-        to="/admin"
+        to={clubPath(clubSlug ?? "", "admin")}
         className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-3.5" />

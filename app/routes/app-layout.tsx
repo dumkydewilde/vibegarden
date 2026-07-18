@@ -9,16 +9,17 @@ import {
 import { AppShell } from "~/components/shell/app-shell";
 import { requireUser } from "~/lib/auth.server";
 import { requireClubContext } from "~/lib/clubs.server";
+import { clubPath } from "~/lib/club-path";
 import { activeThread, parseContext } from "~/lib/threads.server";
 
-export async function loader({ request, context }: Route.LoaderArgs) {
+export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
-  const club = await requireClubContext(env, request, "wotf");
+  const club = await requireClubContext(env, request, params.clubSlug ?? "");
   // Progressive flow: newcomers answer the questionnaire first.
   // Admins bypass so the host is never locked out.
-  if (user.stage === "invited" && user.role !== "admin") {
-    throw redirect("/welcome");
+  if (club.membership?.onboardingStage === "invited" && !club.isSuperAdmin) {
+    throw redirect(clubPath(club.club.slug, "welcome"));
   }
   const { threadId, messages: history } = await activeThread(env, {
     clubId: club.club.id,
@@ -40,7 +41,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     gardener: {
       threadId,
       messages: chatMessages,
-      modelId: user.modelPref,
+      modelId: club.membership?.modelPref ?? user.modelPref,
     },
   };
 }

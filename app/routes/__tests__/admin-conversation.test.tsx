@@ -58,8 +58,8 @@ beforeEach(() => {
 describe("Admin conversation loader", () => {
   const args = (id = "thread-1") =>
     ({
-      request: new Request("http://example.com/admin/conversations/" + id),
-      params: { id },
+      request: new Request("http://example.com/clubs/wotf/admin/conversations/" + id),
+      params: { id, clubSlug: "wotf" },
       context: { get: () => ({ env: {} }) },
     }) as never;
 
@@ -105,12 +105,12 @@ describe("Admin conversation transcript", () => {
   it("renders saved messages and context without participant controls", async () => {
     const Stub = createRoutesStub([
       {
-        path: "/admin/conversations/:id",
+        path: "/clubs/:clubSlug/admin/conversations/:id",
         Component: AdminConversation,
         loader: () => transcript,
       },
     ]);
-    render(<Stub initialEntries={["/admin/conversations/thread-1"]} />);
+    render(<Stub initialEntries={["/clubs/wotf/admin/conversations/thread-1"]} />);
 
     expect(
       await screen.findByRole("heading", { name: "Build a reading tracker" }),
@@ -119,7 +119,7 @@ describe("Admin conversation transcript", () => {
     expect(screen.getByText("Start with a small table of books.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute(
       "href",
-      "/admin",
+      "/clubs/wotf/admin",
     );
     expect(screen.queryByRole("form")).not.toBeInTheDocument();
     expect(screen.queryByText(/plant as a project/i)).not.toBeInTheDocument();

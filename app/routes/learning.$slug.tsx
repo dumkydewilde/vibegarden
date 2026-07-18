@@ -13,6 +13,7 @@ import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { requireUser } from "~/lib/auth.server";
 import { requireClubContext } from "~/lib/clubs.server";
+import { clubPath } from "~/lib/club-path";
 import {
   createComment,
   deleteComment,
@@ -27,7 +28,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   }
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
-  const club = await requireClubContext(env, request, "wotf");
+  const club = await requireClubContext(env, request, params.clubSlug ?? "");
   const comments = await listComments(env, club.club.id, "article", params.slug, user.id);
   return {
     comments,
@@ -38,7 +39,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
 export async function action({ params, request, context }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
-  const club = await requireClubContext(env, request, "wotf");
+  const club = await requireClubContext(env, request, params.clubSlug ?? "");
   const form = await request.formData();
   const intent = form.get("intent");
 
@@ -94,7 +95,7 @@ export default function LearningArticle({
     <div className="article-page">
       <div className="mb-8">
         <Link
-          to="/learning"
+          to={clubPath(params.clubSlug ?? "", "learning")}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-3.5" />

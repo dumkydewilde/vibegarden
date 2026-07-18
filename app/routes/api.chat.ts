@@ -3,6 +3,9 @@ import type { Route } from "./+types/api.chat";
 import { cloudflareContext } from "~/lib/context";
 import { requireUser } from "~/lib/auth.server";
 import { requireClubContext } from "~/lib/clubs.server";
+import type { ClubContext } from "~/lib/clubs.server";
+import type { User } from "~/db/schema";
+import { apiAuthorizationError } from "~/lib/api-errors";
 import { getDb } from "~/lib/db.server";
 import {
   buildSystemPrompt,
@@ -70,10 +73,16 @@ type UpstreamMessage =
 /** Tool-execution rounds per answer; after the last, tools are withheld. */
 const MAX_TOOL_ROUNDS = 3;
 
-export async function action({ request, context }: Route.ActionArgs) {
+export async function action({ request, context, params }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
-  const user = await requireUser(env, request);
-  const club = await requireClubContext(env, request, "wotf");
+  let user: User;
+  let club: ClubContext;
+  try {
+    user = await requireUser(env, request);
+    club = await requireClubContext(env, request, params.clubSlug ?? "");
+  } catch (error) {
+    return apiAuthorizationError(error);
+  }
   const scope = { clubId: club.club.id, userId: user.id };
 
   if (!env.OPENROUTER_API_KEY) {

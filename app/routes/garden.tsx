@@ -1,4 +1,4 @@
-import { Form, Link, redirect, useNavigation } from "react-router";
+import { Form, Link, redirect, useNavigation, useParams } from "react-router";
 import { Blocks, MessageCircle, Plus, Sprout } from "lucide-react";
 import { useState } from "react";
 import type { Route } from "./+types/garden";
@@ -26,6 +26,7 @@ import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { requireUser } from "~/lib/auth.server";
 import { requireClubContext } from "~/lib/clubs.server";
+import { clubPath } from "~/lib/club-path";
 import {
   getModuleRaw,
   getModulesByCategory,
@@ -40,10 +41,10 @@ export function meta({}: Route.MetaArgs) {
   return [{ title: "Idea Garden · Vibe Garden" }];
 }
 
-export async function loader({ request, context }: Route.LoaderArgs) {
+export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
-  const club = await requireClubContext(env, request, "wotf");
+  const club = await requireClubContext(env, request, params.clubSlug ?? "");
   const scope = { clubId: club.club.id, userId: user.id };
   const [conversations, projects] = await Promise.all([
     listThreads(env, scope),
@@ -52,10 +53,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   return { conversations, projects };
 }
 
-export async function action({ request, context }: Route.ActionArgs) {
+export async function action({ request, context, params }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
-  const club = await requireClubContext(env, request, "wotf");
+  const club = await requireClubContext(env, request, params.clubSlug ?? "");
   const form = await request.formData();
   if (form.get("intent") !== "create") {
     return { error: "Unknown action." };
@@ -68,7 +69,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     modules: form.getAll("modules").map(String),
   });
   // ?planted=1 makes the project page kick off a Gardener conversation.
-  return redirect(`/garden/projects/${project.id}?planted=1`);
+  return redirect(clubPath(club.club.slug, `garden/projects/${project.id}?planted=1`));
 }
 
 function conversationDate(ts: number) {
@@ -178,13 +179,15 @@ function PlantDialog({
 function ModuleCard({
   module: m,
   onDiscuss,
+  clubSlug,
 }: {
   module: ModuleMeta;
   onDiscuss: (module: ModuleMeta) => void;
+  clubSlug: string;
 }) {
   return (
     <div className="group relative h-full">
-      <Link to={`/garden/modules/${m.slug}`} className="block h-full">
+      <Link to={clubPath(clubSlug, `garden/modules/${m.slug}`)} className="block h-full">
         <Card className="h-full gap-2 py-4 pb-11 transition-colors group-hover:border-primary/40">
           <CardHeader className="px-4">
             <CardTitle className="font-serif text-base font-normal">
@@ -212,6 +215,7 @@ function ModuleCard({
 
 export default function Garden({ loaderData, actionData }: Route.ComponentProps) {
   const { setOpen, addContext } = useGardener();
+  const { clubSlug } = useParams();
   const { conversations, projects } = loaderData;
 
   const discussModule = (m: ModuleMeta) => {
@@ -258,7 +262,7 @@ export default function Garden({ loaderData, actionData }: Route.ComponentProps)
       ) : (
         <section className="grid gap-4 sm:grid-cols-2">
           {projects.map((p) => (
-            <Link key={p.id} to={`/garden/projects/${p.id}`} className="group">
+            <Link key={p.id} to={clubPath(clubSlug ?? "", `garden/projects/${p.id}`)} className="group">
               <Card className="h-full transition-colors group-hover:border-primary/40">
                 <CardHeader>
                   <div className="flex items-start justify-between gap-2">
@@ -304,7 +308,7 @@ export default function Garden({ loaderData, actionData }: Route.ComponentProps)
             {conversations.map((c) => (
               <li key={c.id}>
                 <Link
-                  to={`/garden/conversations/${c.id}`}
+                  to={clubPath(clubSlug ?? "", `garden/conversations/${c.id}`)}
                   className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-accent/40"
                 >
                   <span className="min-w-0 truncate text-sm">
@@ -338,7 +342,12 @@ export default function Garden({ loaderData, actionData }: Route.ComponentProps)
             </h3>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {group.modules.map((m) => (
-                <ModuleCard key={m.slug} module={m} onDiscuss={discussModule} />
+                <ModuleCard
+                  key={m.slug}
+                  module={m}
+                  onDiscuss={discussModule}
+                  clubSlug={clubSlug ?? ""}
+                />
               ))}
             </div>
           </div>

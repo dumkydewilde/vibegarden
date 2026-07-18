@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+import { Link, useParams } from "react-router";
 import { TreeDeciduous } from "lucide-react";
 import type { Route } from "./+types/learning";
 import { PageHeader } from "~/components/shell/page-header";
@@ -10,13 +10,23 @@ import {
   CardTitle,
 } from "~/components/ui/card";
 import { getArticlesByCategory } from "~/lib/content";
+import { cloudflareContext } from "~/lib/context";
+import { requireClubContext } from "~/lib/clubs.server";
+import { clubPath } from "~/lib/club-path";
 
 export function meta({}: Route.MetaArgs) {
   return [{ title: "Learning · Vibe Garden" }];
 }
 
+export async function loader({ request, context, params }: Route.LoaderArgs) {
+  const { env } = context.get(cloudflareContext);
+  await requireClubContext(env, request, params.clubSlug ?? "");
+  return null;
+}
+
 export default function Learning() {
   const groups = getArticlesByCategory();
+  const { clubSlug } = useParams();
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -33,7 +43,7 @@ export default function Learning() {
             {group.articles.map((article) => (
               <Link
                 key={article.slug}
-                to={`/learning/${article.slug}`}
+                to={clubPath(clubSlug ?? "", `learning/${article.slug}`)}
                 className="group"
               >
                 <Card className="h-full transition-colors group-hover:border-primary/40">

@@ -6,7 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { ChatMessageBubble } from "../chat-message";
 import {
   GardenerProvider,
@@ -49,20 +49,34 @@ function Probe() {
 
 function renderHarness(context?: Omit<ContextItem, "id">[]) {
   return render(
-    <MemoryRouter>
-      <GardenerProvider>
-        <GardenerHarness context={context} />
-      </GardenerProvider>
+    <MemoryRouter initialEntries={["/clubs/wotf"]}>
+      <Routes>
+        <Route
+          path="/clubs/:clubSlug/*"
+          element={
+            <GardenerProvider>
+              <GardenerHarness context={context} />
+            </GardenerProvider>
+          }
+        />
+      </Routes>
     </MemoryRouter>,
   );
 }
 
 function renderProvider() {
   return render(
-    <MemoryRouter>
-      <GardenerProvider>
-        <Probe />
-      </GardenerProvider>
+    <MemoryRouter initialEntries={["/clubs/wotf"]}>
+      <Routes>
+        <Route
+          path="/clubs/:clubSlug/*"
+          element={
+            <GardenerProvider>
+              <Probe />
+            </GardenerProvider>
+          }
+        />
+      </Routes>
     </MemoryRouter>,
   );
 }
@@ -82,7 +96,9 @@ function mockFreshConversation() {
 }
 
 function postedChatBody(fetchMock: ReturnType<typeof mockFreshConversation>) {
-  const chatCall = fetchMock.mock.calls.find(([url]) => url === "/api/chat");
+  const chatCall = fetchMock.mock.calls.find(
+    ([url]) => url === "/clubs/wotf/api/chat",
+  );
   expect(chatCall).toBeDefined();
   const options = chatCall?.[1] as RequestInit;
   return JSON.parse(String(options.body)) as {
