@@ -106,6 +106,26 @@ describe("OAuth authorization consent", () => {
     );
   });
 
+  it("rejects a foreign consent POST before completing authorization", async () => {
+    const provider = oauthProvider();
+    const form = new FormData();
+    form.append("scope", "projects:read");
+
+    await expect(
+      action(
+        args(
+          new Request("https://vibegarden.test/authorize?client_id=test-client", {
+            method: "POST",
+            headers: { Origin: "https://evil.example" },
+            body: form,
+          }),
+          { OAUTH_PROVIDER: provider } as unknown as Env,
+        ),
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(provider.completeAuthorization).not.toHaveBeenCalled();
+  });
+
   it("returns unauthenticated visitors to login with the internal authorization path", async () => {
     getUser.mockResolvedValue(null);
     const provider = oauthProvider();

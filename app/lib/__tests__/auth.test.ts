@@ -109,6 +109,18 @@ describe("Google OAuth login state", () => {
       expect(response).toMatchObject({ ok: true, next: "/" });
     },
   );
+
+  it("rejects a malformed state cookie without throwing", async () => {
+    await expect(
+      handleGoogleCallback(
+        env,
+        new Request(
+          "https://vibegarden.test/auth/google/callback?code=code&state=nonce",
+          { headers: { Cookie: "vg_oauth_state=%" } },
+        ),
+      ),
+    ).resolves.toEqual({ ok: false, error: "bad-state" });
+  });
 });
 
 describe("otp helpers", () => {
