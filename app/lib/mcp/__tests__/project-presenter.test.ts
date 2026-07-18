@@ -3,6 +3,7 @@ import {
   presentConversationPage,
   presentProject,
 } from "~/lib/mcp/project-presenter.server";
+import { BODY_MAX_CHARS } from "~/lib/mcp/contracts";
 
 describe("MCP project presenters", () => {
   it("never returns identity or storage fields", () => {
@@ -43,5 +44,30 @@ describe("MCP project presenters", () => {
       { label: "Plan", source: "user-authored context" },
     ]);
     expect(JSON.stringify(result)).not.toContain("select 1");
+  });
+
+  it("caps conversation content and encodes private record IDs in canonical URLs", () => {
+    const id = "project /?";
+    const project = presentProject("https://vibegarden.test", {
+      id,
+      title: "Project",
+      oneLiner: null,
+      status: "seed",
+      moduleList: [],
+      updatedAt: 1,
+    });
+    const conversation = presentConversationPage("https://vibegarden.test", {
+      thread: { id, title: "Thread", createdAt: 1, updatedAt: 2 },
+      messages: [{
+        role: "user",
+        content: "x".repeat(BODY_MAX_CHARS + 1),
+        context: null,
+        createdAt: 3,
+      }],
+    });
+
+    expect(project.url).toBe("https://vibegarden.test/garden/projects/project%20%2F%3F");
+    expect(conversation.conversation.url).toBe("https://vibegarden.test/garden/conversations/project%20%2F%3F");
+    expect(conversation.messages[0].content).toHaveLength(BODY_MAX_CHARS);
   });
 });

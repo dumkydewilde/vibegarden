@@ -22,8 +22,14 @@ vi.mock("~/lib/content", () => ({
 }));
 
 vi.mock("~/lib/modules", () => ({
-  getModules: () => [],
-  getModuleRaw: () => undefined,
+  getModules: () => [{
+    slug: "module /?",
+    title: "Module",
+    description: "Module basics",
+    category: "Inputs",
+    order: 1,
+  }],
+  getModuleRaw: () => "---\ntitle: private\n---\nModule guide",
 }));
 
 vi.mock("~/lib/projects.server", () => ({
@@ -131,17 +137,22 @@ describe("MCP compatibility tools", () => {
       { limit: 50 },
     );
     expect(mocks.getThreadPage).toHaveBeenCalledWith(env, "user-a", "thread-1", { limit: 50 });
-    expect(project).toMatchObject({
+    expect(project).toEqual({
       id: "project:project-1",
       title: "Garden map",
+      text: expect.any(String),
       url: "https://vibegarden.test/garden/projects/project-1",
     });
-    expect(conversation).toMatchObject({
+    expect(conversation).toEqual({
       id: "conversation:thread-1",
       title: "Planning",
+      text: expect.any(String),
       url: "https://vibegarden.test/garden/conversations/thread-1",
     });
-    expect(JSON.stringify([project, conversation])).not.toContain("user-a");
+    for (const payload of [project, conversation]) {
+      expect(Object.keys(payload).sort()).toEqual(["id", "text", "title", "url"]);
+      expect(JSON.stringify(payload)).not.toMatch(/userId|threadId|createdAt|moduleList/);
+    }
   });
 
   it("rejects unknown and malformed namespaces", async () => {
@@ -160,13 +171,24 @@ describe("MCP compatibility tools", () => {
       .rejects.toMatchObject({ code: "insufficient_scope" });
 
     const payload = await fetchKnowledge(env, contentPrincipal, "article:what-is-mcp");
-    expect(payload).toMatchObject({
+    expect(payload).toEqual({
       id: "article:what-is-mcp",
       title: "What is MCP?",
       text: expect.any(String),
       url: "https://vibegarden.test/learning/what-is-mcp",
     });
+    expect(Object.keys(payload).sort()).toEqual(["id", "text", "title", "url"]);
     expect(payload.text).not.toMatch(/^---/);
+
+    const module = await fetchKnowledge(env, contentPrincipal, "module:module /?");
+    expect(module).toEqual({
+      id: "module:module /?",
+      title: "Module",
+      text: "Module guide",
+      url: "https://vibegarden.test/garden/modules/module%20%2F%3F",
+    });
+    expect(Object.keys(module).sort()).toEqual(["id", "text", "title", "url"]);
+    expect(JSON.stringify([payload, module])).not.toMatch(/raw|Component|order|private/);
   });
 
   it("emits an OpenAI-compatible structured and text result from one payload", async () => {

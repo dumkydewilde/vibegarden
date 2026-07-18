@@ -6,6 +6,7 @@ import {
   presentArticle,
   presentModule,
 } from "~/lib/mcp/content-presenter";
+import { BODY_MAX_CHARS } from "~/lib/mcp/contracts";
 
 const appOrigin = "https://vibegarden.test";
 
@@ -68,6 +69,61 @@ describe("MCP learning content presenters", () => {
         slug: "what-is-an-llm",
         url: "https://vibegarden.test/learning/what-is-an-llm",
       })],
+    });
+  });
+
+  it("caps bodies and encodes content IDs in public URLs", () => {
+    const slug = "a slug/with?reserved";
+    const article = presentArticle(appOrigin, {
+      slug,
+      title: "Article",
+      description: "Description",
+      category: "Foundations",
+      level: "starter",
+      raw: `---\ntitle: hidden\n---\n${"a".repeat(BODY_MAX_CHARS + 1)}`,
+    });
+    const module = presentModule(appOrigin, {
+      slug,
+      title: "Module",
+      description: "Description",
+      category: "Inputs",
+      raw: `---\ntitle: hidden\n---\n${"b".repeat(BODY_MAX_CHARS + 1)}`,
+    });
+
+    expect(article.body).toHaveLength(BODY_MAX_CHARS);
+    expect(module.body).toHaveLength(BODY_MAX_CHARS);
+    expect(article.url).toBe("https://vibegarden.test/learning/a%20slug%2Fwith%3Freserved");
+    expect(module.url).toBe("https://vibegarden.test/garden/modules/a%20slug%2Fwith%3Freserved");
+  });
+
+  it("uses exact content offset page boundaries and only exposes a supplied next cursor", () => {
+    const articles = [1, 2, 3].map((order) => ({
+      slug: `article-${order}`,
+      title: `Article ${order}`,
+      description: "Description",
+      category: "Foundations",
+      level: "starter" as const,
+      order,
+    }));
+    const input = {
+      appOrigin,
+      kind: "article" as const,
+      pageSize: 2,
+      getArticles: () => articles,
+      getModules: () => [],
+      getArticleRaw: (slug: string) => `# ${slug}`,
+      getModuleRaw: () => undefined,
+    };
+
+    expect(listLearningContent({ ...input, nextCursor: "offset-2" })).toEqual({
+      items: [expect.objectContaining({ slug: "article-1" }), expect.objectContaining({ slug: "article-2" })],
+      next_cursor: "offset-2",
+    });
+    expect(listLearningContent({ ...input, position: { offset: 2 }, nextCursor: "offset-4" })).toEqual({
+      items: [expect.objectContaining({ slug: "article-3" })],
+    });
+    expect(listLearningContent({ ...input, position: { offset: 3 }, nextCursor: "offset-5" })).toEqual({
+      items: [],
     });
   });
 });

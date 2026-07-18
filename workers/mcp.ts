@@ -14,6 +14,7 @@ import {
 } from "../app/lib/mcp/contracts";
 import { McpPublicError, toMcpErrorResult } from "../app/lib/mcp/errors.server";
 import { oauthChallenge } from "../app/lib/mcp/auth.server";
+import { parseKnowledgeId } from "../app/lib/mcp/compatibility.server";
 import { createGardenerMcpServer } from "../app/lib/mcp/server.server";
 import { runWithMcpRequestProps } from "../app/lib/mcp/request-context.server";
 
@@ -86,13 +87,6 @@ function scopeForResource(uri: unknown): McpScope | undefined {
     return "content:read";
   }
   return undefined;
-}
-
-function scopeForFetch(id: unknown): McpScope | McpScope[] | undefined {
-  if (typeof id !== "string") return undefined;
-  if (/^(?:project|conversation):/.test(id)) return "projects:read";
-  if (/^(?:article|module|guide):/.test(id)) return "content:read";
-  return ["projects:read", "content:read"];
 }
 
 const continueProjectPromptInput = z.object({
@@ -181,9 +175,20 @@ async function preflightMcpRequest(request: Request, env: Env, ctx: ExecutionCon
     if (tool && !tool.schema.safeParse(envelope.params?.arguments).success) {
       return response(envelope.id, new McpPublicError("invalid_input", "The tool input is invalid."));
     }
-    required = name === "fetch"
-      ? scopeForFetch((envelope.params?.arguments as { id?: unknown } | undefined)?.id)
-      : tool?.scope;
+    if (name === "fetch") {
+      const parsedInput = fetchInput.parse(envelope.params?.arguments);
+      try {
+        const { kind } = parseKnowledgeId(parsedInput.id);
+        required = kind === "project" || kind === "conversation"
+          ? "projects:read"
+          : "content:read";
+      } catch (error) {
+        if (error instanceof McpPublicError) return response(envelope.id, error);
+        throw error;
+      }
+    } else {
+      required = tool?.scope;
+    }
   } else if (envelope.method === "resources/read") {
     required = scopeForResource(envelope.params?.uri);
   } else if (envelope.method === "prompts/get") {

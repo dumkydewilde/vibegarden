@@ -32,4 +32,16 @@ describe("MCP reviewer seeder", () => {
       { results: [{ id: reviewerId(email, "user") }], success: true },
     ]))).toBe(reviewerId(email, "user"));
   });
+
+  it("fails closed for valid JSON that is not a recognized Wrangler result shape", () => {
+    const email = "review@example.test";
+    for (const output of [
+      JSON.stringify({ results: [] }),
+      JSON.stringify([{ success: false, results: [] }]),
+      JSON.stringify([{ success: true, result: [] }]),
+    ]) {
+      expect(() => assertReviewerIdentity(email, output))
+        .toThrow("Could not verify the existing reviewer identity");
+    }
+  });
 });

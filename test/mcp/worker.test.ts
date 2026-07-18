@@ -451,6 +451,17 @@ describe("Gardener MCP Worker", () => {
       });
     }
 
+    const contentOnlyToken = await accessTokenFor(`malformed-fetch-${crypto.randomUUID()}`, "content:read");
+    const malformedFetch = await mcpRpc(contentOnlyToken, "tools/call", {
+      name: "fetch",
+      arguments: { id: "project:" },
+    });
+    expect(malformedFetch.status).toBe(200);
+    await expect(mcpJson(malformedFetch)).resolves.toMatchObject({
+      id: 7,
+      result: { isError: true, content: [expect.objectContaining({ text: expect.stringContaining("invalid_input") })] },
+    });
+
     const insufficient = await mcpRpc(token.body.access_token, "tools/call", {
       name: "read_article",
       arguments: { slug: "anything" },

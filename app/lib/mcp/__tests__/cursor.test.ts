@@ -43,4 +43,31 @@ describe("MCP cursors", () => {
       code: "invalid_cursor",
     });
   });
+
+  it("round-trips boundary cursor positions and rejects a signed wrong position shape", async () => {
+    const firstOffset = await encodeCursor(secret, {
+      kind: "learning_content",
+      position: { offset: 0 },
+    });
+    const largestTimestamp = await encodeCursor(secret, {
+      kind: "projects",
+      position: { updatedAt: Number.MAX_SAFE_INTEGER, id: "project /?" },
+    });
+    const wrongShape = await encodeCursor(secret, {
+      kind: "learning_content",
+      position: { offset: -1 } as never,
+    });
+
+    await expect(decodeCursor(secret, "learning_content", firstOffset)).resolves.toEqual({
+      kind: "learning_content",
+      position: { offset: 0 },
+    });
+    await expect(decodeCursor(secret, "projects", largestTimestamp)).resolves.toEqual({
+      kind: "projects",
+      position: { updatedAt: Number.MAX_SAFE_INTEGER, id: "project /?" },
+    });
+    await expect(decodeCursor(secret, "learning_content", wrongShape)).rejects.toMatchObject({
+      code: "invalid_cursor",
+    });
+  });
 });

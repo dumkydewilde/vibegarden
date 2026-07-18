@@ -32,9 +32,16 @@ export function assertReviewerIdentity(rawEmail, preflightOutput) {
   } catch {
     throw new Error("Could not verify the existing reviewer identity before seeding.");
   }
-  const rows = Array.isArray(result)
-    ? result.flatMap((entry) => Array.isArray(entry?.results) ? entry.results : [])
-    : [];
+  if (!Array.isArray(result) || result.length === 0 || !result.every((entry) => (
+    entry
+    && typeof entry === "object"
+    && entry.success === true
+    && Array.isArray(entry.results)
+    && entry.results.every((row) => row && typeof row === "object" && typeof row.id === "string")
+  ))) {
+    throw new Error("Could not verify the existing reviewer identity before seeding.");
+  }
+  const rows = result.flatMap((entry) => entry.results);
   const existingId = rows[0]?.id;
   if (existingId === undefined) return expectedId;
   if (existingId !== expectedId) {

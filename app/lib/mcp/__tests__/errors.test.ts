@@ -25,6 +25,21 @@ describe("MCP public errors", () => {
     });
   });
 
+  it("treats arbitrary thrown objects and throwing accessors as internal errors", () => {
+    const hostile = {};
+    Object.defineProperty(hostile, "message", {
+      get() { throw new Error("access denied"); },
+    });
+
+    for (const failure of [{ name: "D1_ERROR", message: "unavailable" }, hostile]) {
+      expect(errorBody(failure).error).toEqual({
+        code: "internal_error",
+        message: "The request could not be completed.",
+        retryable: false,
+      });
+    }
+  });
+
   it("does not expose unexpected error messages or stacks", () => {
     const failure = new Error("database password: do-not-expose");
     failure.stack = "sensitive stack trace";

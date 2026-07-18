@@ -20,10 +20,17 @@ export class McpPublicError extends Error {
 }
 
 function isTemporaryFailure(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const { message, name } = error as { message?: unknown; name?: unknown };
+  if (!(error instanceof Error)) return false;
+  let message = "";
+  let name = "";
+  try {
+    message = typeof error.message === "string" ? error.message : "";
+    name = typeof error.name === "string" ? error.name : "";
+  } catch {
+    return false;
+  }
   return /\b(?:D1(?:[_\s-]?ERROR)?|network|fetch|connection|timeout|ECONN)\b/i
-    .test(`${name ?? ""} ${message ?? ""}`);
+    .test(`${name} ${message}`);
 }
 
 export function toMcpPublicError(error: unknown): McpPublicError {
