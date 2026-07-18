@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { OpenRouterManagementClient } from "~/lib/openrouter-management.server";
+import {
+  OpenRouterManagementClient,
+  type OpenRouterKeyPatch,
+} from "~/lib/openrouter-management.server";
 
 const managementEnv = {
   OPENROUTER_MANAGEMENT_KEY: "management-test-key",
@@ -81,6 +84,23 @@ describe("OpenRouterManagementClient", () => {
       ["https://openrouter.ai/api/v1/guardrails/guardrail-1/assignments/keys", "GET"],
       ["https://openrouter.ai/api/v1/keys/key-1", "DELETE"],
     ]);
+  });
+
+  it("allows a managed key name to be repaired", async () => {
+    const { client, fetchImpl } = clientWith(
+      Response.json({ data: { hash: "key-1", name: "vibegarden:club:club-a", disabled: false } }),
+    );
+    const patch: OpenRouterKeyPatch = { name: "vibegarden:club:club-a" };
+
+    await client.updateKey("key-1", patch);
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://openrouter.ai/api/v1/keys/key-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ name: "vibegarden:club:club-a" }),
+      }),
+    );
   });
 
   it("returns sanitized failures without provider response bodies", async () => {

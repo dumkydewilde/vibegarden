@@ -24,7 +24,8 @@ export type OpenRouterKeyInput = {
   workspaceId?: string;
 };
 
-export type OpenRouterKeyPatch = Omit<Partial<OpenRouterKeyInput>, "name"> & {
+/** OpenRouter permits PATCHing a key's name as well as its limits and state. */
+export type OpenRouterKeyPatch = Partial<OpenRouterKeyInput> & {
   disabled?: boolean;
 };
 
