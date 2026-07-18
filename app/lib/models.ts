@@ -24,6 +24,12 @@ export const models: Model[] = [
     tools: true,
   },
   {
+    id: "z-ai/glm-5.2",
+    label: "GLM 5.2",
+    note: "strong + capable",
+    tools: true,
+  },
+  {
     id: "deepseek/deepseek-v4-flash",
     label: "DeepSeek V4 Flash",
     note: "fast + cheap",
