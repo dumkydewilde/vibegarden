@@ -281,6 +281,9 @@ describe("membership lifecycle", () => {
     );
 
     await transferOwnership(testEnv, staleOwnerContext, successor.id);
+    await env.DB.prepare(
+      "UPDATE club_ai_credentials SET provisioning_state = 'ready', synced_policy = 'free_only' WHERE club_id = ?",
+    ).bind(club.id).run();
 
     for (const mutation of [
       () => archiveClub(testEnv, staleOwnerContext),
@@ -294,6 +297,11 @@ describe("membership lifecycle", () => {
         .first<{ status: string }>(),
     ).toEqual({ status: "active" });
     expect((await membership(club.id, member.id))?.role).toBe("member");
+    expect(
+      await env.DB.prepare(
+        "SELECT provisioning_state AS state, synced_policy AS syncedPolicy FROM club_ai_credentials WHERE club_id = ?",
+      ).bind(club.id).first(),
+    ).toEqual({ state: "ready", syncedPolicy: "free_only" });
     expect(
       await env.DB.prepare(
         "SELECT COUNT(*) AS count FROM club_memberships WHERE club_id = ? AND role = 'owner'",

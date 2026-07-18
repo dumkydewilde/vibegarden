@@ -242,7 +242,10 @@ export async function archiveClub(env: Env, context: ClubContext) {
     1,
     [
       env.DB.prepare(
-        "UPDATE club_ai_credentials SET provisioning_state = 'disabled', synced_policy = NULL, provisioning_lease_token = NULL, provisioning_lease_heartbeat_at = NULL WHERE club_id = ?",
+        // The preceding audit insert is itself conditional on the archive
+        // mutation changing one row. Its changes() result therefore keeps
+        // this credential update inside the same successful archive branch.
+        "UPDATE club_ai_credentials SET provisioning_state = 'disabled', synced_policy = NULL, provisioning_lease_token = NULL, provisioning_lease_heartbeat_at = NULL WHERE club_id = ? AND changes() = 1",
       ).bind(context.club.id),
     ],
   );
