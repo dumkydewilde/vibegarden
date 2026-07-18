@@ -10,6 +10,9 @@
     "deploy": "npm run build && wrangler deploy",
     "preview": "npm run build && vite preview",
     "test": "vitest run",
+    "test:d1": "vitest run --config vitest.d1.config.ts",
+    "test:migrations": "vitest run --config vitest.migration.config.ts",
+    "test:all": "npm test && npm run test:d1 && npm run test:migrations",
     "cf-typegen": "wrangler types",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 migrations apply DB --local",
@@ -40,9 +43,12 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.44.0",
+    "@cloudflare/vitest-pool-workers": "^0.18.6",
+    "@cloudflare/workers-types": "^4.20260604.1",
     "@mdx-js/rollup": "^3.1.1",
     "@react-router/dev": "8.0.0",
     "@tailwindcss/vite": "^4.2.2",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/mdx": "^2.0.14",
@@ -61,5 +67,11 @@
     "vite": "^8.0.3",
     "vitest": "^4.1.10",
     "wrangler": "^4.97.0"
+  },
+  "overrides": {
+    "@cloudflare/vitest-pool-workers": {
+      "miniflare": "4.20260708.1",
+      "wrangler": "4.110.0"
+    }
   }
 }
