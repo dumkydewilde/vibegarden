@@ -1,4 +1,6 @@
+import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   integer,
   primaryKey,
@@ -6,7 +8,6 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-
 export type PlatformRole = "user" | "super_admin";
 export type ClubRole = "owner" | "admin" | "member";
 export type ClubStatus = "active" | "archived";
@@ -382,6 +383,240 @@ export const siteFeedback = sqliteTable(
   (table) => [index("site_feedback_club_id_idx").on(table.clubId)],
 );
 
+/**
+ * Immutable project-owned metadata. Versioned content and gallery publication
+ * each have their own pointer so a later upload cannot replace shared content.
+ */
+export const artifacts = sqliteTable(
+  "artifacts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    type: text("type", { enum: ["html", "file", "link"] }).notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    visibility: text("visibility", {
+      enum: ["private", "gallery", "public"],
+    })
+      .notNull()
+      .default("private"),
+    // This starts null so a new artifact can be inserted before its first version.
+    currentVersionId: text("current_version_id").references(
+      () => artifactVersions.id,
+      { onDelete: "set null" },
+    ),
+    galleryVersionId: text("gallery_version_id").references(
+      () => artifactVersions.id,
+      { onDelete: "set null" },
+    ),
+    deletedAt: integer("deleted_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    check("artifacts_type_check", sql`${table.type} in ('html', 'file', 'link')`),
+    check(
+      "artifacts_visibility_check",
+      sql`${table.visibility} in ('private', 'gallery', 'public')`,
+    ),
+    index("artifacts_owner_list_idx").on(
+      table.userId,
+      table.deletedAt,
+      table.updatedAt,
+    ),
+    index("artifacts_gallery_idx").on(
+      table.visibility,
+      table.deletedAt,
+      table.updatedAt,
+    ),
+    index("artifacts_cleanup_idx").on(table.deletedAt),
+  ],
+);
+
+export const artifactVersions = sqliteTable(
+  "artifact_versions",
+  {
+    id: text("id").primaryKey(),
+    artifactId: text("artifact_id")
+      .notNull()
+      .references(() => artifacts.id, { onDelete: "cascade" }),
+    versionNumber: integer("version_number").notNull(),
+    source: text("source", { enum: ["web", "mcp"] }).notNull(),
+    entryPath: text("entry_path"),
+    externalUrl: text("external_url"),
+    allowedDataOrigins: text("allowed_data_origins").notNull().default("[]"),
+    fileCount: integer("file_count").notNull(),
+    totalBytes: integer("total_bytes").notNull(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    check(
+      "artifact_versions_source_check",
+      sql`${table.source} in ('web', 'mcp')`,
+    ),
+    check(
+      "artifact_versions_version_number_check",
+      sql`${table.versionNumber} >= 1`,
+    ),
+    check(
+      "artifact_versions_file_count_check",
+      sql`${table.fileCount} >= 0`,
+    ),
+    check(
+      "artifact_versions_total_bytes_check",
+      sql`${table.totalBytes} >= 0`,
+    ),
+    uniqueIndex("artifact_versions_artifact_number_unique").on(
+      table.artifactId,
+      table.versionNumber,
+    ),
+  ],
+);
+
+export const artifactFiles = sqliteTable(
+  "artifact_files",
+  {
+    versionId: text("version_id")
+      .notNull()
+      .references(() => artifactVersions.id, { onDelete: "cascade" }),
+    path: text("path").notNull(),
+    r2Key: text("r2_key").primaryKey(),
+    mimeType: text("mime_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    sha256: text("sha256").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    check("artifact_files_byte_size_check", sql`${table.byteSize} >= 0`),
+    uniqueIndex("artifact_files_version_path_unique").on(
+      table.versionId,
+      table.path,
+    ),
+  ],
+);
+
+/** Pending browser or MCP write state. Finalization consumes these rows only. */
+export const artifactUploads = sqliteTable(
+  "artifact_uploads",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    artifactId: text("artifact_id").notNull(),
+    versionId: text("version_id").notNull(),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "restrict",
+    }),
+    projectDraftTitle: text("project_draft_title"),
+    projectDraftOneLiner: text("project_draft_one_liner"),
+    type: text("type", { enum: ["html", "file", "link"] }).notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    allowedDataOrigins: text("allowed_data_origins").notNull().default("[]"),
+    source: text("source", { enum: ["web", "mcp"] }).notNull(),
+    status: text("status", {
+      enum: ["pending", "finalizing", "complete", "failed", "aborted"],
+    }).notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    check(
+      "artifact_uploads_type_check",
+      sql`${table.type} in ('html', 'file', 'link')`,
+    ),
+    check(
+      "artifact_uploads_source_check",
+      sql`${table.source} in ('web', 'mcp')`,
+    ),
+    check(
+      "artifact_uploads_status_check",
+      sql`${table.status} in ('pending', 'finalizing', 'complete', 'failed', 'aborted')`,
+    ),
+    uniqueIndex("artifact_uploads_user_idempotency_unique").on(
+      table.userId,
+      table.idempotencyKey,
+    ),
+    index("artifact_uploads_expiry_idx").on(table.expiresAt, table.status),
+  ],
+);
+
+export const artifactUploadFiles = sqliteTable(
+  "artifact_upload_files",
+  {
+    uploadId: text("upload_id")
+      .notNull()
+      .references(() => artifactUploads.id, { onDelete: "cascade" }),
+    path: text("path").notNull(),
+    r2Key: text("r2_key").primaryKey(),
+    mimeType: text("mime_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    sha256: text("sha256").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    check("artifact_upload_files_byte_size_check", sql`${table.byteSize} >= 0`),
+    uniqueIndex("artifact_upload_files_upload_path_unique").on(
+      table.uploadId,
+      table.path,
+    ),
+  ],
+);
+
+/** Every object written before a D1 transaction gets a reclaimable lease. */
+export const artifactObjectLeases = sqliteTable(
+  "artifact_object_leases",
+  {
+    r2Key: text("r2_key").primaryKey(),
+    uploadId: text("upload_id"),
+    userId: text("user_id").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    sha256: text("sha256").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    check("artifact_object_leases_byte_size_check", sql`${table.byteSize} >= 0`),
+    index("artifact_object_leases_expiry_idx").on(table.expiresAt),
+  ],
+);
+
+/** Durable replay ledger for artifact mutations from the web and MCP callers. */
+export const artifactIdempotency = sqliteTable(
+  "artifact_idempotency",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    operation: text("operation").notNull(),
+    targetKey: text("target_key").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    artifactId: text("artifact_id").notNull(),
+    versionId: text("version_id").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("artifact_idempotency_scope_unique").on(
+      table.userId,
+      table.operation,
+      table.targetKey,
+      table.idempotencyKey,
+    ),
+  ],
+);
+
 export type User = typeof users.$inferSelect;
 export type Invite = typeof invites.$inferSelect;
 export type Club = typeof clubs.$inferSelect;
@@ -396,3 +631,5 @@ export type ChatMessage = typeof chatMessages.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type Comment = typeof comments.$inferSelect;
 export type SiteFeedback = typeof siteFeedback.$inferSelect;
+export type Artifact = typeof artifacts.$inferSelect;
+export type ArtifactVersion = typeof artifactVersions.$inferSelect;

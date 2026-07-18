@@ -43,6 +43,13 @@
       "when": 1784103975184,
       "tag": "0005_misty_havok",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1784397663635,
+      "tag": "0006_artifacts",
+      "breakpoints": true
     }
   ]
 }
