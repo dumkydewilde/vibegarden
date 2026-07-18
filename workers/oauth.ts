@@ -11,6 +11,15 @@ const redirectError = {
   description: "This MCP client redirect URI is not supported.",
 };
 
+export function isOAuthProviderPath(pathname: string, env: Env) {
+  return pathname === new URL(env.MCP_RESOURCE_URL).pathname
+    || pathname === "/authorize"
+    || pathname === "/token"
+    || pathname === "/register"
+    || pathname === "/.well-known/oauth-protected-resource"
+    || pathname === "/.well-known/oauth-authorization-server";
+}
+
 function supportedRedirectUri(value: unknown): boolean {
   if (typeof value !== "string") return false;
   let url: URL;

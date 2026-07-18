@@ -1,4 +1,5 @@
 import { createMcpHandler } from "agents/mcp";
+import { z } from "zod";
 import {
   fetchInput,
   freshReadsInput,
@@ -35,11 +36,15 @@ const toolRequirements = {
   fetch: { schema: fetchInput, scope: ["projects:read", "content:read"] },
 } as const;
 
-function originAllowed(request: Request, env: Env) {
+export function mcpOriginAllowed(request: Request, env: Env) {
   const origin = request.headers.get("Origin");
   if (!origin) return true;
   const allowed = new Set(env.MCP_ALLOWED_ORIGINS.split(",").map((value) => value.trim()));
   return allowed.has(origin);
+}
+
+export function mcpOriginRejectedResponse() {
+  return new Response("Forbidden", { status: 403 });
 }
 
 function principalScopes(ctx: ExecutionContext): McpScope[] {
@@ -50,12 +55,12 @@ function principalScopes(ctx: ExecutionContext): McpScope[] {
   ));
 }
 
-function response(id: RpcEnvelope["id"], error: McpPublicError, challenge?: string) {
+function response(id: RpcEnvelope["id"], error: McpPublicError, challenge?: string, status = 200) {
   return new Response(JSON.stringify({
     jsonrpc: "2.0",
     id: id ?? null,
     result: toMcpErrorResult(error, challenge),
-  }), { headers: { "Content-Type": "application/json" } });
+  }), { status, headers: { "Content-Type": "application/json" } });
 }
 
 function insufficientScopeResponse(
@@ -87,6 +92,63 @@ function scopeForFetch(id: unknown): McpScope | McpScope[] | undefined {
   if (/^(?:project|conversation):/.test(id)) return "projects:read";
   if (/^(?:article|module|guide):/.test(id)) return "content:read";
   return ["projects:read", "content:read"];
+}
+
+const continueProjectPromptInput = z.object({
+  project_id: z.string().min(1).max(200),
+}).strict();
+
+function requestId(request: Request): Promise<RpcEnvelope["id"]> {
+  return request.clone().json()
+    .then((envelope: RpcEnvelope) => envelope.id)
+    .catch(() => null);
+}
+
+/**
+ * `agents/mcp` logs raw thrown values before returning its 500 response. Keep
+ * that implementation detail behind this boundary: logs contain only fixed,
+ * approved fields and clients receive the same generic public failure shape.
+ */
+async function runSafeMcpTransport(
+  handler: (request: Request, env: Env, ctx: ExecutionContext) => Promise<Response>,
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+) {
+  const originalConsoleError = console.error;
+  console.error = () => {
+    console.info(JSON.stringify({
+      event: "mcp_transport_error",
+      errorClass: "unexpected_error",
+      method: request.method,
+      path: new URL(request.url).pathname,
+    }));
+  };
+  try {
+    const transportResponse = await handler(request, env, ctx);
+    if (transportResponse.status < 500) return transportResponse;
+    return response(
+      await requestId(request),
+      new McpPublicError("internal_error", "The request could not be completed."),
+      undefined,
+      500,
+    );
+  } catch {
+    console.info(JSON.stringify({
+      event: "mcp_transport_error",
+      errorClass: "unexpected_error",
+      method: request.method,
+      path: new URL(request.url).pathname,
+    }));
+    return response(
+      await requestId(request),
+      new McpPublicError("internal_error", "The request could not be completed."),
+      undefined,
+      500,
+    );
+  } finally {
+    console.error = originalConsoleError;
+  }
 }
 
 function hasRequiredScope(scopes: McpScope[], required: McpScope | McpScope[]) {
@@ -123,6 +185,9 @@ async function preflightMcpRequest(request: Request, env: Env, ctx: ExecutionCon
   } else if (envelope.method === "resources/read") {
     required = scopeForResource(envelope.params?.uri);
   } else if (envelope.method === "prompts/get") {
+    if (!continueProjectPromptInput.safeParse(envelope.params?.arguments).success) {
+      return response(envelope.id, new McpPublicError("invalid_input", "The tool input is invalid."));
+    }
     required = "projects:read";
   }
 
@@ -135,11 +200,11 @@ async function preflightMcpRequest(request: Request, env: Env, ctx: ExecutionCon
 
 export const mcpHandler = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    if (!originAllowed(request, env)) return new Response("Forbidden", { status: 403 });
+    if (!mcpOriginAllowed(request, env)) return mcpOriginRejectedResponse();
     const preflightFailure = await preflightMcpRequest(request, env, ctx);
     if (preflightFailure) return preflightFailure;
     // A fresh server is mandatory: the stateless transport allows one connection per server.
     const server = createGardenerMcpServer(env);
-    return createMcpHandler(server, { route: "/mcp" })(request, env, ctx);
+    return runSafeMcpTransport(createMcpHandler(server, { route: "/mcp" }), request, env, ctx);
   },
 } satisfies ExportedHandler<Env>;

@@ -1,4 +1,5 @@
-import { createOAuthProvider } from "../../workers/oauth";
+import { createOAuthProvider, isOAuthProviderPath } from "../../workers/oauth";
+import { mcpOriginAllowed, mcpOriginRejectedResponse } from "../../workers/mcp";
 
 function unauthenticatedMcpChallenge(env: Env) {
   return new Response("Authentication required", {
@@ -42,6 +43,14 @@ const defaultHandler = {
 
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    const pathname = new URL(request.url).pathname;
+    const mcpPath = new URL(env.MCP_RESOURCE_URL).pathname;
+    if (pathname === mcpPath && !mcpOriginAllowed(request, env)) {
+      return mcpOriginRejectedResponse();
+    }
+    if (!isOAuthProviderPath(pathname, env)) {
+      return defaultHandler.fetch(request, env, ctx);
+    }
     return createOAuthProvider(env, defaultHandler).fetch(request, env, ctx);
   },
 } satisfies ExportedHandler<Env>;

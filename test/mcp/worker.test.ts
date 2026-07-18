@@ -104,15 +104,23 @@ describe("Gardener MCP Worker", () => {
 
     const page = await SELF.fetch("https://vibegarden.test/connect");
     expect(page.status).not.toBe(401);
+
+    const malformed = await mcpRpc("not-a-real-access-token", "tools/list");
+    expect(malformed.status).toBe(401);
   });
 
   it("publishes exact protected-resource and authorization metadata", async () => {
     const resource = await SELF.fetch("https://vibegarden.test/.well-known/oauth-protected-resource");
-    await expect(resource.json()).resolves.toMatchObject({
+    const resourceMetadata = await resource.json() as {
+      resource: string;
+      authorization_servers: string[];
+      scopes_supported: string[];
+    };
+    expect(resourceMetadata).toMatchObject({
       resource: "https://vibegarden.test/mcp",
       authorization_servers: ["https://vibegarden.test"],
-      scopes_supported: ["projects:read", "content:read"],
     });
+    expect(resourceMetadata.scopes_supported).toEqual(["projects:read", "content:read"]);
     const authorization = await SELF.fetch("https://vibegarden.test/.well-known/oauth-authorization-server");
     await expect(authorization.json()).resolves.toMatchObject({
       registration_endpoint: "https://vibegarden.test/register",
@@ -143,6 +151,15 @@ describe("Gardener MCP Worker", () => {
     expect(tools.status).toBe(200);
     await expect(mcpJson(tools)).resolves.toMatchObject({
       result: { tools: expect.arrayContaining([expect.objectContaining({ name: "list_projects" })]) },
+    });
+
+    const resources = await mcpRpc(token.body.access_token, "resources/templates/list");
+    await expect(mcpJson(resources)).resolves.toMatchObject({
+      result: { resourceTemplates: expect.arrayContaining([expect.objectContaining({ uriTemplate: "vibegarden://project/{id}" })]) },
+    });
+    const prompts = await mcpRpc(token.body.access_token, "prompts/list");
+    await expect(mcpJson(prompts)).resolves.toMatchObject({
+      result: { prompts: expect.arrayContaining([expect.objectContaining({ name: "continue_project" })]) },
     });
   });
 
@@ -175,6 +192,17 @@ describe("Gardener MCP Worker", () => {
       result: { isError: true, content: [expect.objectContaining({ text: expect.stringContaining("invalid_input") })] },
     });
 
+    for (const argumentsValue of [undefined, { project_id: "x".repeat(201) }]) {
+      const malformed = await mcpRpc(token.body.access_token, "tools/call", {
+        name: "get_project",
+        ...(argumentsValue === undefined ? {} : { arguments: argumentsValue }),
+      });
+      expect(malformed.status).toBe(200);
+      await expect(mcpJson(malformed)).resolves.toMatchObject({
+        result: { isError: true, content: [expect.objectContaining({ text: expect.stringContaining("invalid_input") })] },
+      });
+    }
+
     const insufficient = await mcpRpc(token.body.access_token, "tools/call", {
       name: "read_article",
       arguments: { slug: "anything" },
@@ -195,5 +223,57 @@ describe("Gardener MCP Worker", () => {
     const client = await registerClient();
     const grant = await authorizeWithPkce(client.body.client_id, "projects:read", "https://evil.example/mcp");
     expect(grant.response.status).toBe(400);
+  });
+
+  it("rejects a disallowed Origin at the outer MCP boundary, including preflight", async () => {
+    const options = await SELF.fetch(`${ORIGIN}/mcp`, {
+      method: "OPTIONS",
+      headers: { Origin: "https://evil.example" },
+    });
+    expect(options.status).toBe(403);
+    expect(options.headers.get("Access-Control-Allow-Origin")).not.toBe("https://evil.example");
+
+    const post = await SELF.fetch(`${ORIGIN}/mcp`, {
+      method: "POST",
+      headers: {
+        Origin: "https://evil.example",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }),
+    });
+    expect(post.status).toBe(403);
+  });
+
+  it("routes only the exact MCP endpoint through OAuth and permits origin-less OAuth MCP calls", async () => {
+    const nested = await SELF.fetch(`${ORIGIN}/mcp/not-an-mcp-endpoint`);
+    expect(nested.status).toBe(404);
+    expect(nested.headers.get("WWW-Authenticate")).toBeNull();
+    const prefixOnly = await SELF.fetch(`${ORIGIN}/mcp-not-an-endpoint`);
+    expect(prefixOnly.status).toBe(404);
+    expect(prefixOnly.headers.get("WWW-Authenticate")).toBeNull();
+
+    const client = await registerClient();
+    const grant = await authorizeWithPkce(client.body.client_id, "projects:read");
+    const token = await exchangeCode(client.body.client_id, grant.code!, grant.verifier);
+    const response = await mcpRpc(token.body.access_token, "prompts/get", {
+      name: "continue_project",
+      arguments: {},
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("preflights malformed prompts/get arguments with a stable public invalid-input result", async () => {
+    const client = await registerClient();
+    const grant = await authorizeWithPkce(client.body.client_id, "projects:read");
+    const token = await exchangeCode(client.body.client_id, grant.code!, grant.verifier);
+    const response = await mcpRpc(token.body.access_token, "prompts/get", {
+      name: "continue_project",
+      arguments: { project_id: 123, unexpected: "nope" },
+    });
+    expect(response.status).toBe(200);
+    await expect(mcpJson(response)).resolves.toMatchObject({
+      id: 7,
+      result: { isError: true, content: [expect.objectContaining({ text: expect.stringContaining("invalid_input") })] },
+    });
   });
 });

@@ -1,5 +1,6 @@
 import { reconcileClubAi } from "../app/lib/club-ai.server";
-import { createOAuthProvider } from "./oauth";
+import { createOAuthProvider, isOAuthProviderPath } from "./oauth";
+import { mcpOriginAllowed, mcpOriginRejectedResponse } from "./mcp";
 import { reactRouterHandler } from "./react-router";
 
 function unauthenticatedMcpChallenge(env: Env) {
@@ -24,9 +25,19 @@ async function purgeExpiredOauthData(env: Env) {
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    const pathname = new URL(request.url).pathname;
+    const mcpPath = new URL(env.MCP_RESOURCE_URL).pathname;
+    // OAuthProvider treats apiRoute as a prefix. Enforce the exact protected
+    // route before it can reflect Origin or authenticate a nested website URL.
+    if (pathname === mcpPath && !mcpOriginAllowed(request, env)) {
+      return mcpOriginRejectedResponse();
+    }
+    if (!isOAuthProviderPath(pathname, env)) {
+      return reactRouterHandler.fetch(request, env, ctx);
+    }
     const defaultHandler = {
       fetch(defaultRequest: Request, defaultEnv: Env, defaultCtx: ExecutionContext) {
-        if (new URL(defaultRequest.url).pathname === new URL(env.MCP_RESOURCE_URL).pathname) {
+        if (new URL(defaultRequest.url).pathname === mcpPath) {
           return unauthenticatedMcpChallenge(defaultEnv);
         }
         return reactRouterHandler.fetch(defaultRequest, defaultEnv, defaultCtx);
