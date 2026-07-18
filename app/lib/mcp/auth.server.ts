@@ -7,7 +7,12 @@ import {
   type McpPrincipal,
   type McpScope,
 } from "~/lib/mcp/contracts";
-import { McpPublicError, toMcpErrorResult } from "~/lib/mcp/errors.server";
+import {
+  McpPublicError,
+  toMcpErrorResult,
+  toMcpProtocolError,
+  toMcpPublicError,
+} from "~/lib/mcp/errors.server";
 
 const encoder = new TextEncoder();
 
@@ -89,6 +94,10 @@ type McpToolOptions = {
   limiter: "general" | "history";
 };
 
+type McpRequestOptions = McpToolOptions & {
+  kind: "tool" | "resource" | "prompt";
+};
+
 type McpToolValue = CallToolResult | Record<string, unknown>;
 
 function isCallToolResult(value: McpToolValue): value is CallToolResult {
@@ -103,25 +112,20 @@ function toToolResult(value: McpToolValue): CallToolResult {
   };
 }
 
-function isTemporaryFailure(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const { message, name } = error as { message?: unknown; name?: unknown };
-  const text = `${name ?? ""} ${message ?? ""}`;
-  return /\b(?:D1(?:[_\s-]?ERROR)?|network|fetch|connection|timeout|ECONN)\b/i.test(text);
-}
-
-function hasOversizedTextualBody(result: CallToolResult): boolean {
-  return result.content.some((content) => (
-    content.type === "text" && content.text.length > BODY_MAX_CHARS
-  ) || (
-    content.type === "resource"
-    && "text" in content.resource
-    && content.resource.text.length > BODY_MAX_CHARS
+function hasOversizedTextualBody(result: unknown): boolean {
+  if (!result || typeof result !== "object") return false;
+  const value = result as Record<string, unknown>;
+  if (typeof value.text === "string" && value.text.length > BODY_MAX_CHARS) {
+    return true;
+  }
+  return Object.values(value).some((child) => (
+    Array.isArray(child)
+      ? child.some((item) => hasOversizedTextualBody(item))
+      : hasOversizedTextualBody(child)
   ));
 }
 
-function cappedResult(value: McpToolValue): CallToolResult {
-  const result = toToolResult(value);
+function assertResponseCaps(result: object): void {
   if (hasOversizedTextualBody(result)
     || JSON.stringify(result).length > RESPONSE_MAX_CHARS) {
     throw new McpPublicError(
@@ -129,17 +133,17 @@ function cappedResult(value: McpToolValue): CallToolResult {
       "The response could not be completed.",
     );
   }
-  return result;
 }
 
 /**
- * Applies the MCP server's trust boundary, rate limits, output bound, and
- * privacy-safe operational logging around an individual read-only tool.
+ * Applies the common MCP trust boundary to each protocol response shape.
+ * Resource and prompt handlers deliberately receive typed protocol responses,
+ * never a tool-shaped CallToolResult.
  */
-export async function runMcpTool(
-  options: McpToolOptions,
-  handler: () => Promise<McpToolValue>,
-): Promise<CallToolResult> {
+export async function runMcpRequest<T extends object>(
+  options: McpRequestOptions,
+  handler: (principal: McpPrincipal) => Promise<T>,
+): Promise<T> {
   const startedAt = performance.now();
   let userHash = "unavailable";
   let outcome = "internal_error";
@@ -157,7 +161,10 @@ export async function runMcpTool(
       );
     }
 
-    const limiter = options.toolName === "get_conversation"
+    const useHistoryLimiter = options.kind === "tool"
+      ? options.toolName === "get_conversation"
+      : options.limiter === "history";
+    const limiter = useHistoryLimiter
       ? options.env.MCP_HISTORY_LIMITER
       : options.env.MCP_GENERAL_LIMITER;
     const limited = await limiter.limit({ key: `${userHash}:${options.toolName}` });
@@ -169,41 +176,71 @@ export async function runMcpTool(
       );
     }
 
-    const result = cappedResult(await handler());
+    const result = await handler(principal);
+    assertResponseCaps(result);
     outcome = "success";
     return result;
   } catch (error) {
-    const publicError = error instanceof McpPublicError
-      ? error
-      : isTemporaryFailure(error)
-        ? new McpPublicError(
-            "temporarily_unavailable",
-            "The request could not be completed.",
-            true,
-          )
-        : new McpPublicError("internal_error", "The request could not be completed.");
+    const publicError = toMcpPublicError(error);
     outcome = publicError.code;
     if (!(error instanceof McpPublicError)) {
       console.error(JSON.stringify({
-        event: "mcp_tool_error",
+        event: "mcp_request_error",
+        operation: options.toolName,
         errorClass: "unexpected_error",
         requestId: options.requestId,
       }));
     }
+    throw publicError;
+  } finally {
+    console.info(JSON.stringify({
+      event: `mcp_${options.kind}`,
+      operation: options.toolName,
+      outcome,
+      latencyMs: Math.round(performance.now() - startedAt),
+      requestId: options.requestId,
+      userHash,
+    }));
+  }
+}
+
+/** Applies the shared boundary and converts failures to resource/prompt protocol errors. */
+export async function runMcpProtocolRequest<T extends object>(
+  options: Omit<McpRequestOptions, "kind"> & { kind: "resource" | "prompt" },
+  handler: (principal: McpPrincipal) => Promise<T>,
+): Promise<T> {
+  try {
+    return await runMcpRequest(options, handler);
+  } catch (error) {
+    const publicError = toMcpPublicError(error);
+    const challenge = publicError.code === "insufficient_scope"
+      ? oauthChallenge(options.env, Array.isArray(options.requiredScope)
+        ? options.requiredScope
+        : [options.requiredScope], "insufficient_scope")
+      : undefined;
+    throw toMcpProtocolError(publicError, challenge);
+  }
+}
+
+/**
+ * Applies the MCP server's trust boundary, rate limits, output bound, and
+ * privacy-safe operational logging around an individual read-only tool.
+ */
+export async function runMcpTool(
+  options: McpToolOptions,
+  handler: () => Promise<McpToolValue>,
+): Promise<CallToolResult> {
+  try {
+    return await runMcpRequest({ ...options, kind: "tool" }, async () => (
+      toToolResult(await handler())
+    ));
+  } catch (error) {
+    const publicError = toMcpPublicError(error);
     const challenge = publicError.code === "insufficient_scope"
       ? oauthChallenge(options.env, Array.isArray(options.requiredScope)
         ? options.requiredScope
         : [options.requiredScope], "insufficient_scope")
       : undefined;
     return toMcpErrorResult(publicError, challenge);
-  } finally {
-    console.info(JSON.stringify({
-      event: "mcp_tool",
-      tool: options.toolName,
-      outcome,
-      latencyMs: Math.round(performance.now() - startedAt),
-      requestId: options.requestId,
-      userHash,
-    }));
   }
 }

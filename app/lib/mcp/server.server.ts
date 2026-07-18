@@ -27,7 +27,7 @@ import {
   slugInput,
   type McpScope,
 } from "~/lib/mcp/contracts";
-import { getMcpPrincipal, requireScope, runMcpTool } from "~/lib/mcp/auth.server";
+import { getMcpPrincipal, runMcpProtocolRequest, runMcpTool } from "~/lib/mcp/auth.server";
 import { fetchKnowledge, searchKnowledge } from "~/lib/mcp/compatibility.server";
 import { listLearningContent, presentArticle, presentModule } from "~/lib/mcp/content-presenter";
 import { decodeCursor, encodeCursor, type CursorPayload } from "~/lib/mcp/cursor.server";
@@ -177,20 +177,30 @@ function registerResources(server: McpServer, env: Env) {
   server.registerResource("project", new ResourceTemplate("vibegarden://project/{id}", { list: undefined }), {
     title: "Project",
     mimeType: "application/json",
-  }, async (uri, variables) => {
-    const principal = getMcpPrincipal();
-    requireScope(principal, "projects:read");
+  }, async (uri, variables, extra) => runMcpProtocolRequest({
+    env,
+    toolName: "read_project_resource",
+    requestId: String(extra.requestId),
+    requiredScope: "projects:read",
+    limiter: "general",
+    kind: "resource",
+  }, async (principal) => {
     const projectId = resourceVariable(variables.id);
     const payload = await ownedProjectPayload(env, principal.userId, projectId);
     return resourceResult(uri, "application/json", JSON.stringify(payload));
-  });
+  }));
 
   server.registerResource("conversation", new ResourceTemplate("vibegarden://conversation/{id}", { list: undefined }), {
     title: "Conversation",
     mimeType: "application/json",
-  }, async (uri, variables) => {
-    const principal = getMcpPrincipal();
-    requireScope(principal, "projects:read");
+  }, async (uri, variables, extra) => runMcpProtocolRequest({
+    env,
+    toolName: "read_conversation_resource",
+    requestId: String(extra.requestId),
+    requiredScope: "projects:read",
+    limiter: "history",
+    kind: "resource",
+  }, async (principal) => {
     const conversationId = resourceVariable(variables.id);
     const page = await getThreadPage(env, principal.userId, conversationId, {
       limit: clampPageSize(undefined, "conversation"),
@@ -198,42 +208,55 @@ function registerResources(server: McpServer, env: Env) {
     if (!page) return notFound();
     const payload = presentConversationPage(env.APP_ORIGIN, { ...page });
     return resourceResult(uri, "application/json", JSON.stringify(payload));
-  });
+  }));
 
   server.registerResource("article", new ResourceTemplate("vibegarden://article/{slug}", { list: undefined }), {
     title: "Learning article",
     mimeType: "text/markdown",
-  }, async (uri, variables) => {
-    const principal = getMcpPrincipal();
-    requireScope(principal, "content:read");
+  }, async (uri, variables, extra) => runMcpProtocolRequest({
+    env,
+    toolName: "read_article_resource",
+    requestId: String(extra.requestId),
+    requiredScope: "content:read",
+    limiter: "general",
+    kind: "resource",
+  }, async () => {
     const slug = resourceVariable(variables.slug);
     const article = getArticles().find((item) => item.slug === slug);
     const raw = article ? getArticleRaw(article.slug) : undefined;
     if (!article || raw === undefined) return notFound();
     return resourceResult(uri, "text/markdown", presentArticle(env.APP_ORIGIN, article, raw).body);
-  });
+  }));
 
   server.registerResource("module", new ResourceTemplate("vibegarden://module/{slug}", { list: undefined }), {
     title: "Building block",
     mimeType: "text/markdown",
-  }, async (uri, variables) => {
-    const principal = getMcpPrincipal();
-    requireScope(principal, "content:read");
+  }, async (uri, variables, extra) => runMcpProtocolRequest({
+    env,
+    toolName: "read_module_resource",
+    requestId: String(extra.requestId),
+    requiredScope: "content:read",
+    limiter: "general",
+    kind: "resource",
+  }, async () => {
     const slug = resourceVariable(variables.slug);
     const module = getModules().find((item) => item.slug === slug);
     const raw = module ? getModuleRaw(module.slug) : undefined;
     if (!module || raw === undefined) return notFound();
     return resourceResult(uri, "text/markdown", presentModule(env.APP_ORIGIN, module, raw).body);
-  });
+  }));
 
   server.registerResource("gardener-guide", "vibegarden://guide/gardener", {
     title: "Working with Vibe Garden",
     mimeType: "text/markdown",
-  }, async (uri) => {
-    const principal = getMcpPrincipal();
-    requireScope(principal, "content:read");
-    return resourceResult(uri, "text/markdown", gardenerGuide);
-  });
+  }, async (uri, extra) => runMcpProtocolRequest({
+    env,
+    toolName: "read_gardener_guide_resource",
+    requestId: String(extra.requestId),
+    requiredScope: "content:read",
+    limiter: "general",
+    kind: "resource",
+  }, async () => resourceResult(uri, "text/markdown", gardenerGuide)));
 }
 
 function registerPrompts(server: McpServer, env: Env) {
@@ -241,9 +264,14 @@ function registerPrompts(server: McpServer, env: Env) {
     title: "Continue project",
     description: "Continue an owned project with its current context and public guidance.",
     argsSchema: { project_id: z.string().min(1).max(200) },
-  }, async ({ project_id }) => {
-    const principal = getMcpPrincipal();
-    requireScope(principal, "projects:read");
+  }, async ({ project_id }, extra) => runMcpProtocolRequest({
+    env,
+    toolName: "continue_project",
+    requestId: String(extra.requestId),
+    requiredScope: "projects:read",
+    limiter: "general",
+    kind: "prompt",
+  }, async (principal) => {
     const projectId = resourceVariable(project_id);
     const project = await ownedProjectPayload(env, principal.userId, projectId);
     const projectUri = `vibegarden://project/${encodeURIComponent(projectId)}`;
@@ -288,7 +316,7 @@ function registerPrompts(server: McpServer, env: Env) {
         },
       ],
     };
-  });
+  }));
 }
 
 function registerTools(server: McpServer, env: Env) {
