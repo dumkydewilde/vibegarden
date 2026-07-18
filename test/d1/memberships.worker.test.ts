@@ -170,6 +170,33 @@ describe("membership lifecycle", () => {
     expect((await membership(club.id, owner.id))?.role).toBe("owner");
   });
 
+  it("rejects owner promotion and unknown roles without changing ownership", async () => {
+    const owner = await insertUser("lifecycle-role-owner");
+    const member = await insertUser("lifecycle-role-member");
+    const club = await createClub(testEnv, owner, {
+      name: "Role validation club",
+      slug: "role-validation-club",
+    });
+    await insertMembership(club.id, member.id, "member");
+    const ownerContext = context(club, (await membership(club.id, owner.id))!);
+
+    for (const role of ["owner", "unknown"]) {
+      expect(
+        (await capturedResponse(() =>
+          changeMemberRole(testEnv, ownerContext, member.id, role as ClubRole),
+        )).status,
+      ).toBe(400);
+    }
+    expect((await membership(club.id, member.id))?.role).toBe("member");
+    expect(
+      await env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM club_memberships WHERE club_id = ? AND role = 'owner'",
+      )
+        .bind(club.id)
+        .first<{ count: number }>(),
+    ).toEqual({ count: 1 });
+  });
+
   it("limits admins to removing members and records successful removals", async () => {
     const owner = await insertUser("lifecycle-admin-owner");
     const admin = await insertUser("lifecycle-admin");
@@ -235,6 +262,51 @@ describe("membership lifecycle", () => {
         transferOwnership(testEnv, staleOwnerContext, successor.id),
       )).status,
     ).toBe(409);
+  });
+
+  it("checks the actor's current role before stale owner contexts mutate", async () => {
+    const owner = await insertUser("lifecycle-stale-owner");
+    const successor = await insertUser("lifecycle-stale-successor");
+    const member = await insertUser("lifecycle-stale-member");
+    const club = await createClub(testEnv, owner, {
+      name: "Stale context club",
+      slug: "stale-context-club",
+    });
+    await insertMembership(club.id, successor.id, "admin");
+    await insertMembership(club.id, member.id, "member");
+    const staleOwnerContext = context(
+      club,
+      (await membership(club.id, owner.id))!,
+    );
+
+    await transferOwnership(testEnv, staleOwnerContext, successor.id);
+
+    for (const mutation of [
+      () => archiveClub(testEnv, staleOwnerContext),
+      () => changeMemberRole(testEnv, staleOwnerContext, member.id, "admin"),
+    ]) {
+      expect((await capturedResponse(mutation)).status).toBe(409);
+    }
+    expect(
+      await env.DB.prepare("SELECT status FROM clubs WHERE id = ?")
+        .bind(club.id)
+        .first<{ status: string }>(),
+    ).toEqual({ status: "active" });
+    expect((await membership(club.id, member.id))?.role).toBe("member");
+    expect(
+      await env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM club_memberships WHERE club_id = ? AND role = 'owner'",
+      )
+        .bind(club.id)
+        .first<{ count: number }>(),
+    ).toEqual({ count: 1 });
+    expect(
+      await env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM audit_events WHERE club_id = ? AND action IN ('club.archived', 'member.role_changed')",
+      )
+        .bind(club.id)
+        .first<{ count: number }>(),
+    ).toEqual({ count: 0 });
   });
 
   it("lets an owner archive a club and only a super admin restore it", async () => {

@@ -20,6 +20,10 @@ function notFound() {
   return new Response("Not found", { status: 404 });
 }
 
+function badRequest() {
+  return new Response("Invalid membership role", { status: 400 });
+}
+
 function explicitMembership(context: ClubContext) {
   if (!context.membership) {
     throw notFound();
@@ -105,9 +109,9 @@ export async function removeMember(
     env,
     env.DB
       .prepare(
-        "DELETE FROM club_memberships WHERE club_id = ? AND user_id = ? AND (? = 'owner' OR role = 'member') AND (role != 'owner' OR (SELECT COUNT(*) FROM club_memberships owners WHERE owners.club_id = club_memberships.club_id AND owners.role = 'owner') > 1)",
+        "DELETE FROM club_memberships WHERE club_id = ? AND user_id = ? AND EXISTS (SELECT 1 FROM club_memberships actor WHERE actor.club_id = club_memberships.club_id AND actor.user_id = ? AND (actor.role = 'owner' OR (actor.role = 'admin' AND club_memberships.role = 'member'))) AND (role != 'owner' OR (SELECT COUNT(*) FROM club_memberships owners WHERE owners.club_id = club_memberships.club_id AND owners.role = 'owner') > 1)",
       )
-      .bind(context.club.id, userId, context.effectiveRole),
+      .bind(context.club.id, userId, actor.userId),
     {
       actorUserId: actor.userId,
       clubId: context.club.id,
@@ -131,14 +135,15 @@ export async function changeMemberRole(
 ) {
   const actor = explicitMembership(context);
   requireClubPermission(context, "manage_admin");
+  if (role !== "admin" && role !== "member") throw badRequest();
   const now = Date.now();
   const changes = await runConditionalMutation(
     env,
     env.DB
       .prepare(
-        "UPDATE club_memberships SET role = ?, updated_at = ? WHERE club_id = ? AND user_id = ? AND role != ? AND (role != 'owner' OR (SELECT COUNT(*) FROM club_memberships owners WHERE owners.club_id = club_memberships.club_id AND owners.role = 'owner') > 1)",
+        "UPDATE club_memberships SET role = ?, updated_at = ? WHERE club_id = ? AND user_id = ? AND role != ? AND EXISTS (SELECT 1 FROM club_memberships actor WHERE actor.club_id = club_memberships.club_id AND actor.user_id = ? AND actor.role = 'owner') AND (role != 'owner' OR (SELECT COUNT(*) FROM club_memberships owners WHERE owners.club_id = club_memberships.club_id AND owners.role = 'owner') > 1)",
       )
-      .bind(role, now, context.club.id, userId, role),
+      .bind(role, now, context.club.id, userId, role, actor.userId),
     {
       actorUserId: actor.userId,
       clubId: context.club.id,
@@ -219,9 +224,9 @@ export async function archiveClub(env: Env, context: ClubContext) {
     env,
     env.DB
       .prepare(
-        "UPDATE clubs SET status = 'archived', archived_at = ?, updated_at = ? WHERE id = ? AND status = 'active'",
+        "UPDATE clubs SET status = 'archived', archived_at = ?, updated_at = ? WHERE id = ? AND status = 'active' AND EXISTS (SELECT 1 FROM club_memberships actor WHERE actor.club_id = clubs.id AND actor.user_id = ? AND actor.role = 'owner')",
       )
-      .bind(now, now, context.club.id),
+      .bind(now, now, context.club.id, actor.userId),
     {
       actorUserId: actor.userId,
       clubId: context.club.id,
