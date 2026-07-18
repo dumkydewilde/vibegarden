@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # First-time deploy for Vibe Garden. Requires `wrangler login` first.
 # Safe to re-run: every step is idempotent or skips itself.
+#
+# Do not use this script to upgrade an existing production database to
+# multi-club. Follow docs/runbooks/multi-club-rollout.md after the required
+# environment-specific approval instead.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -36,7 +40,7 @@ openssl rand -hex 32 | npx wrangler secret put SESSION_SECRET
 # Pull the service keys from .dev.vars so they are typed in exactly once.
 get_var() { grep "^$1=" .dev.vars | head -1 | cut -d= -f2- | tr -d '"'; }
 
-for key in OPENROUTER_API_KEY RESEND_API_KEY GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET; do
+for key in OPENROUTER_API_KEY OPENROUTER_MANAGEMENT_KEY OPENROUTER_CREDENTIAL_KEY_V1 OPENROUTER_WORKSPACE_ID RESEND_API_KEY GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET; do
   value=$(get_var "$key" || true)
   if [ -n "$value" ]; then
     echo "   - $key"

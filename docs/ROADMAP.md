@@ -212,6 +212,23 @@ Migration `0005_misty_havok.sql` adds `comments` + `site_feedback`.
 - [ ] Design pass against the original mockup
 - [ ] Invite the first friends
 
+## Multi-club workspaces
+
+Implementation ready, production rollout pending. The local test, D1, type,
+and build gates pass. Production D1 migration, deployment, OpenRouter
+provisioning, WOTF fallback removal, and the contract migration all require
+explicit authorization for their named environment or workspace. See
+[the rollout runbook](runbooks/multi-club-rollout.md).
+
+- [x] Club-scoped routes, permissions, invitations, data access, and UI
+- [x] Club-managed OpenRouter credentials, guardrails, encrypted storage, and
+      hourly reconciliation
+- [x] Expand migration, idempotent WOTF backfill, invariant verification, and
+      local migration-history coverage
+- [ ] Approved production expand, backfill, deploy, and provider smoke test
+- [ ] WOTF credential ready and legacy-key fallback removed
+- [ ] Contract migration after stable production verification
+
 ## Later / ideas
 
 - Gardener as MCP server (continue projects in Claude Code/Codex)

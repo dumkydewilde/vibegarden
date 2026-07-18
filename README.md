@@ -71,6 +71,32 @@ npm run db:generate  # new migration after schema changes
 npm run db:migrate   # apply locally
 ```
 
+## Multi-club configuration
+
+The multi-club implementation is ready locally. Its production rollout has not
+been performed. Use [the rollout runbook](docs/runbooks/multi-club-rollout.md)
+only after explicit authorization for the named Cloudflare environment and
+OpenRouter workspace.
+
+Club-managed Gardener credentials require these production secrets:
+
+- `OPENROUTER_MANAGEMENT_KEY`: OpenRouter Management API key used server-side
+  to create and reconcile club credentials and guardrails.
+- `OPENROUTER_CREDENTIAL_KEY_V1`: a base64-encoded, 32-byte AES-GCM key used
+  to encrypt club credentials before they are written to D1.
+- `OPENROUTER_WORKSPACE_ID`: optional OpenRouter workspace that owns managed
+  club credentials.
+
+`OPENROUTER_API_KEY` is only the temporary WOTF fallback during the rollout.
+Do not remove it until WOTF has a ready dedicated credential and a Gardener
+request has succeeded. Plaintext OpenRouter keys and raw invitation tokens are
+never stored in recoverable form in D1. Keep the original secret material and
+the one-time invitation URL outside D1.
+
+The Worker runs reconciliation at minute 17 of every hour (UTC). It checks
+managed credentials and guardrail assignments, records sanitized findings, and
+does not log provider secrets or private content.
+
 ## Deploy
 
 First time (creates the D1 database, applies migrations, sets secrets from
@@ -83,4 +109,5 @@ wrangler login
 
 After that, `npm run deploy` for code changes and `npm run db:migrate:prod`
 after schema changes. Local secrets go in `.dev.vars` (see
-`.dev.vars.example`).
+`.dev.vars.example`). For an existing production database, do not use this
+script as a multi-club upgrade shortcut; follow the approval-gated runbook.
