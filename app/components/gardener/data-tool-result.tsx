@@ -11,7 +11,7 @@ import type {
   Cell,
   ChartSpec,
   QueryResultEnvelope,
-} from "~/lib/query-tool";
+} from "@vibegarden/agent-web";
 
 function SqlDetails({ sql }: { sql: string }) {
   return (

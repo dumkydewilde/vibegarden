@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useLocation, useParams } from "react-router";
 import { toast } from "sonner";
-import type { DatasetSource } from "~/lib/duckdb.client";
+import type { DatasetSource } from "@vibegarden/agent-web/duckdb";
 import { defaultModel, findModel, models, type Model } from "~/lib/models";
 import { clubPath } from "~/lib/club-path";
 import {
@@ -19,12 +19,10 @@ import {
   type AttachResultEnvelope,
   type DatasetInfo,
   type QueryResultEnvelope,
-} from "~/lib/query-tool";
-import {
   attachResultNote,
   queryResultNote,
   splitToolNotes,
-} from "~/lib/tool-notes";
+} from "@vibegarden/agent-web";
 
 export type ContextItem = {
   id: string;
@@ -232,7 +230,7 @@ export function GardenerProvider({
   const removeDataset = useCallback((name: string) => {
     setDatasets((d) => d.filter((x) => x.name !== name));
     setContextItems((items) => items.filter((i) => i.datasetName !== name));
-    void import("~/lib/duckdb.client").then(({ dropDataset }) =>
+    void import("@vibegarden/agent-web/duckdb").then(({ dropDataset }) =>
       dropDataset(name),
     );
   }, []);
@@ -253,7 +251,7 @@ export function GardenerProvider({
   /** Datasets belong to one conversation; a fresh one starts clean. */
   const clearDatasets = useCallback(() => {
     for (const d of datasetsRef.current) {
-      void import("~/lib/duckdb.client").then(({ dropDataset }) =>
+      void import("@vibegarden/agent-web/duckdb").then(({ dropDataset }) =>
         dropDataset(d.name),
       );
     }
@@ -270,7 +268,7 @@ export function GardenerProvider({
     setOpen(true);
     try {
       // Lazy: DuckDB-WASM only loads when someone actually attaches data.
-      const { registerDataset } = await import("~/lib/duckdb.client");
+      const { registerDataset } = await import("@vibegarden/agent-web/duckdb");
       const info = await registerDataset(source);
       // Sync the ref now so a send() that attached then immediately asks
       // includes this dataset's schema in the request.
@@ -297,12 +295,6 @@ export function GardenerProvider({
     }
   }, [addContext]);
 
-  /**
-   * The model asked to attach a URL (an attach marker ended its turn). Same
-   * browser-side load as a user-initiated attach, but the outcome reports
-   * back to the model as an envelope instead of a toast; the chat bubble
-   * shows what happened. Never throws.
-   */
   const attachForModel = useCallback(
     async (url: string): Promise<AttachResultEnvelope> => {
       const okEnvelope = (info: DatasetInfo): AttachResultEnvelope => ({
@@ -323,10 +315,8 @@ export function GardenerProvider({
         };
       }
       try {
-        const { registerDataset } = await import("~/lib/duckdb.client");
+        const { registerDataset } = await import("@vibegarden/agent-web/duckdb");
         const info = await registerDataset({ kind: "url", url });
-        // Sync the ref now so the continuation request lists the new
-        // dataset's schema (and offers query_data) to the model.
         const next = [
           ...datasetsRef.current.filter((x) => x.name !== info.name),
           info,
@@ -449,21 +439,21 @@ export function GardenerProvider({
       return;
     }
 
-    // The turn may end on a query or attach marker: run the SQL (or load
-    // the URL) in the browser, fold the result into the same bubble, and
-    // let the model react in a hidden continuation turn. Capped so a
-    // stubborn model cannot loop marker after marker.
+    // The turn may end on a query marker: run the SQL in the browser,
+    // fold the result into the same bubble, and let the model narrate it
+    // in a hidden continuation turn. Capped so a stubborn model cannot
+    // loop query after query.
     try {
       for (let i = 0; i < MAX_CONTINUATIONS; i++) {
         const last = splitToolNotes(text).at(-1);
         if (last?.type !== "query" && last?.type !== "attach") break;
-        // The assistant turn sent as history stops at the marker; the
+        // The assistant turn sent as history stops at the query marker; the
         // result travels only in the data message, so the model is not fed
         // a pre-summarized result line it would otherwise parrot back.
         const historyText = text;
         let envelope: QueryResultEnvelope | AttachResultEnvelope;
         if (last.type === "query") {
-          const { runQuery } = await import("~/lib/duckdb.client");
+          const { runQuery } = await import("@vibegarden/agent-web/duckdb");
           envelope = await runQuery(last.sql);
           append(`\n\n${queryResultNote(envelope)}\n\n`);
         } else {

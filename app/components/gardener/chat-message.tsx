@@ -8,12 +8,12 @@ import { MermaidToolResult } from "./mermaid-tool-result";
 import { ContentCard, ContentLink } from "~/components/content-link";
 import { getArticle } from "~/lib/content";
 import { getModule } from "~/lib/modules";
-import type { AttachResultEnvelope } from "~/lib/query-tool";
+import type { AttachResultEnvelope } from "@vibegarden/agent-web";
 import {
   splitToolNotes,
   stripToolEcho,
   type ToolNoteSegment,
-} from "~/lib/tool-notes";
+} from "@vibegarden/agent-web";
 import { cn } from "~/lib/utils";
 import { clubPath } from "~/lib/club-path";
 

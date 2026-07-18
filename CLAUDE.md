@@ -22,6 +22,11 @@ A workshop environment for friends learning to build with AI/LLMs. See
   `content/gardener/audience.md`; turn it off with `enabled: false` in its
   frontmatter, or delete the file.
 - **Path alias:** `~/*` maps to `app/*`.
+- **Agent packages:** `packages/agent-core` is runtime-neutral and owns the
+  event stream, SSE reader, ToolSpecs, and turn loop. `packages/agent-web`
+  owns the marker/query wire protocol and lazy DuckDB browser executor.
+  Gardener-specific prompts, tools, React provider, and rendered UI stay in
+  `app/`.
 - **Design:** modern Tufte with garden hints. Serif headings (Merriweather),
   sans body (Roboto), ~90ch reading measure, minimal chrome, garden palette.
   Tokens live in `app/app.css`. No overwhelming lists: over ~7 items,

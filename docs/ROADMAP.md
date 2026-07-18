@@ -229,7 +229,34 @@ explicit authorization for their named environment or workspace. See
 - [ ] WOTF credential ready and legacy-key fallback removed
 - [ ] Contract migration after stable production verification
 
+## Agent core extraction (plan: 2026-07-17-agent-core-extraction.md)
+
+Goal: one harness, many surfaces (web, docs site, Signal bot, MCP server).
+
+- [x] Phase 1 (2026-07-17): agent core seam inside the repo. The
+      `@vibegarden/agent-core` workspace package holds the surface-agnostic
+      pieces: AgentEvent stream, readSseRound, ToolSpec registry, and
+      startTurn (the multi-round tool loop).
+      Gardener tools are ToolSpecs (`gardenerToolSpecs` /
+      `offeredGardenerTools`), query_data is a delegated tool, and
+      prompt guidance is composed from the exact offered specs, so gated
+      and narration-only turns cannot advertise unavailable tools.
+      api.chat.ts serializes events into the unchanged `[[tool:...]]`
+      marker wire format via `markerForEvent`. Loop covered by
+      `packages/agent-core/src/__tests__/run-turn.test.ts`; verified live
+      (read_article note card + delegated query with chart + narration)
+- [x] Phase 2 (2026-07-17): split into npm workspace packages
+      (`@vibegarden/agent-core`, `@vibegarden/agent-web`). The core owns the
+      runtime-neutral harness; the web package owns marker/query protocol
+      and lazy DuckDB execution. Worker bindings become plain config at the
+      Vibe Garden host boundary
+- [ ] Phase 3: MCP adapter over ToolSpecs
+- [ ] Phase 4: second surface (Signal bot container, buffered turns,
+       image rendering for diagrams/charts, server-side query_data)
+- [ ] Phase 5: docs-site deployment (own plan, public hardening)
+
 ## Later / ideas
 
-- Gardener as MCP server (continue projects in Claude Code/Codex)
+- Gardener as MCP server (continue projects in Claude Code/Codex):
+  becomes phase 3 of the agent core extraction above
 - Free-tier model option for participants without a budget

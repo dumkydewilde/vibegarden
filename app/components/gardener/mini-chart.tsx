@@ -7,7 +7,7 @@
  * to it is the accessible view.
  */
 
-import type { Cell, ChartSpec } from "~/lib/query-tool";
+import type { Cell, ChartSpec } from "@vibegarden/agent-web";
 
 const WIDTH = 360;
 const HEIGHT = 160;

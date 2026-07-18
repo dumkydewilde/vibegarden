@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  attachMarkerFor,
-  executeTool,
+  noteEventFor,
+  openAiToolDefinitions,
+  runToolCall,
+} from "@vibegarden/agent-core";
+import {
+  gardenerToolSpecs,
   htmlToText,
-  toolDefinitions,
-  toolNoteFor,
+  offeredGardenerTools,
 } from "~/lib/gardener-tools.server";
+import { markerForEvent } from "@vibegarden/agent-web";
 
 const call = (name: string, args: object) => ({
   id: "call_1",
@@ -13,11 +17,21 @@ const call = (name: string, args: object) => ({
   arguments: JSON.stringify(args),
 });
 
-const env = {} as Env;
+const config = {};
+const specs = gardenerToolSpecs(config);
 
-describe("executeTool", () => {
+const execute = (c: { id: string; name: string; arguments: string }) =>
+  runToolCall(specs, c);
+
+/** The web marker for a call's activity note, as the chat route emits it. */
+const noteMarker = (c: { id: string; name: string; arguments: string }) => {
+  const event = noteEventFor(specs, c);
+  return event ? markerForEvent(event) : null;
+};
+
+describe("gardener tool execution", () => {
   it("offers a required titled Mermaid visualization tool", () => {
-    const definition = toolDefinitions(env).find(
+    const definition = openAiToolDefinitions(offeredGardenerTools(config)).find(
       (item) => item.function.name === "visualize_flow",
     );
     expect(definition).toMatchObject({
@@ -36,66 +50,80 @@ describe("executeTool", () => {
     });
   });
 
-  it("reads an article without its frontmatter", async () => {
-    const result = await executeTool(
-      call("read_article", { slug: "what-is-an-llm" }),
-      env,
+  it("gates fresh_reads on the token and query_data on datasets", () => {
+    const names = (offered: { name: string }[]) => offered.map((s) => s.name);
+    expect(names(offeredGardenerTools(config))).toEqual([
+      "read_article",
+      "read_module",
+      "fetch_page",
+      "visualize_flow",
+      "attach_data",
+    ]);
+    expect(
+      names(
+        offeredGardenerTools(
+          { freshReads: { token: "token" } },
+          { queryData: true },
+        ),
+      ),
+    ).toContain("fresh_reads");
+    expect(names(offeredGardenerTools(config, { queryData: true }))).toContain(
+      "query_data",
     );
+  });
+
+  it("reads an article without its frontmatter", async () => {
+    const result = await execute(call("read_article", { slug: "what-is-an-llm" }));
     expect(result).toContain("A very good guesser");
     expect(result).not.toMatch(/^---/);
   });
 
   it("lists valid slugs when the article is unknown", async () => {
-    const result = await executeTool(call("read_article", { slug: "nope" }), env);
+    const result = await execute(call("read_article", { slug: "nope" }));
     expect(result).toContain("Error");
     expect(result).toContain("what-is-an-llm");
   });
 
   it("reads a building block", async () => {
-    const result = await executeTool(
-      call("read_module", { slug: "google-sheet" }),
-      env,
-    );
+    const result = await execute(call("read_module", { slug: "google-sheet" }));
     expect(result).toContain("Setup steps");
   });
 
   it("lists valid slugs when the block is unknown", async () => {
-    const result = await executeTool(call("read_module", { slug: "nope" }), env);
+    const result = await execute(call("read_module", { slug: "nope" }));
     expect(result).toContain("Error");
     expect(result).toContain("csv-file");
   });
 
   it("rejects non-http URLs and invalid JSON args", async () => {
     expect(
-      await executeTool(call("fetch_page", { url: "file:///etc/passwd" }), env),
+      await execute(call("fetch_page", { url: "file:///etc/passwd" })),
     ).toContain("only http(s)");
+    expect(await execute(call("fetch_page", { url: "not a url" }))).toContain(
+      "not a valid URL",
+    );
     expect(
-      await executeTool(call("fetch_page", { url: "not a url" }), env),
-    ).toContain("not a valid URL");
-    expect(
-      await executeTool({ id: "x", name: "fetch_page", arguments: "{oops" }, env),
+      await execute({ id: "x", name: "fetch_page", arguments: "{oops" }),
     ).toContain("not valid JSON");
   });
 
   it("fails softly when fresh_reads has no token", async () => {
-    expect(await executeTool(call("fresh_reads", {}), env)).toContain(
-      "not reachable",
-    );
+    expect(await execute(call("fresh_reads", {}))).toContain("not reachable");
   });
 
   it("rejects unknown tools", async () => {
-    expect(await executeTool(call("rm_rf", {}), env)).toContain("unknown tool");
+    expect(await execute(call("rm_rf", {}))).toContain("unknown tool");
   });
 
-  it("acknowledges and emits a marker for a valid flow", async () => {
+  it("acknowledges and emits a diagram for a valid flow", async () => {
     const flow = call("visualize_flow", {
       title: " Request flow ",
       diagram: " flowchart TD\n  A --> B ",
     });
-    expect(await executeTool(flow, env)).toBe(
+    expect(await execute(flow)).toBe(
       'Diagram "Request flow" is ready. Briefly explain what it shows.',
     );
-    expect(toolNoteFor(flow)).toContain("[[tool:diagram:");
+    expect(noteMarker(flow)).toContain("[[tool:diagram:");
   });
 
   it("rejects empty and oversized flows without emitting a marker", async () => {
@@ -103,15 +131,15 @@ describe("executeTool", () => {
       title: "",
       diagram: "flowchart TD",
     });
-    expect(await executeTool(empty, env)).toContain("title is required");
-    expect(toolNoteFor(empty)).toBeNull();
+    expect(await execute(empty)).toContain("title is required");
+    expect(noteMarker(empty)).toBeNull();
 
     const oversized = call("visualize_flow", {
       title: "Large flow",
       diagram: "x".repeat(12_001),
     });
-    expect(await executeTool(oversized, env)).toContain("12,000 characters");
-    expect(toolNoteFor(oversized)).toBeNull();
+    expect(await execute(oversized)).toContain("12,000 characters");
+    expect(noteMarker(oversized)).toBeNull();
   });
 
   it("rejects Mermaid data charts, steering them to query_data", async () => {
@@ -121,8 +149,8 @@ describe("executeTool", () => {
       "barchart\n  x: dept\n  y: salary",
     ]) {
       const chart = call("visualize_flow", { title: "Data chart", diagram });
-      expect(await executeTool(chart, env)).toContain("query_data");
-      expect(toolNoteFor(chart)).toBeNull();
+      expect(await execute(chart)).toContain("query_data");
+      expect(noteMarker(chart)).toBeNull();
     }
   });
 
@@ -131,29 +159,8 @@ describe("executeTool", () => {
       title: "Pipeline",
       diagram: "flowchart LR\n  A --> B --> C",
     });
-    expect(await executeTool(flow, env)).toContain("is ready");
-    expect(toolNoteFor(flow)).toContain("[[tool:diagram:");
-  });
-});
-
-describe("attachMarkerFor", () => {
-  it("is always offered, no env requirements", () => {
-    const names = toolDefinitions(env).map((d) => d.function.name);
-    expect(names).toContain("attach_data");
-  });
-
-  it("turns a valid attach_data call into a browser marker", () => {
-    const marker = attachMarkerFor(
-      call("attach_data", { url: "https://example.com/data.csv" }),
-    );
-    expect(marker).toContain("[[tool:attach:");
-  });
-
-  it("returns null for invalid calls, which then error via executeTool", async () => {
-    const bad = call("attach_data", { url: "ftp://example.com/data.csv" });
-    expect(attachMarkerFor(bad)).toBeNull();
-    expect(await executeTool(bad, env)).toContain("only http(s)");
-    expect(attachMarkerFor(call("query_data", { sql: "SELECT 1" }))).toBeNull();
+    expect(await execute(flow)).toContain("is ready");
+    expect(noteMarker(flow)).toContain("[[tool:diagram:");
   });
 });
 
@@ -167,25 +174,31 @@ describe("htmlToText", () => {
   });
 });
 
-describe("toolNoteFor", () => {
+describe("activity notes", () => {
   it("emits a card note for a known article or module", () => {
-    expect(toolNoteFor(call("read_article", { slug: "what-is-an-llm" }))).toBe(
+    expect(noteMarker(call("read_article", { slug: "what-is-an-llm" }))).toBe(
       "[[tool:article:what-is-an-llm]]",
     );
-    expect(toolNoteFor(call("read_module", { slug: "google-sheet" }))).toBe(
+    expect(noteMarker(call("read_module", { slug: "google-sheet" }))).toBe(
       "[[tool:module:google-sheet]]",
     );
   });
 
   it("falls back to a plain note for unknown slugs and pages", () => {
-    expect(toolNoteFor(call("read_article", { slug: "nope" }))).toBe(
+    expect(noteMarker(call("read_article", { slug: "nope" }))).toBe(
       "[[tool:note:looking for an article]]",
     );
-    expect(
-      toolNoteFor(call("fetch_page", { url: "https://example.com/x" })),
-    ).toBe("[[tool:web:example.com]]");
-    expect(toolNoteFor(call("fetch_page", { url: "not a url" }))).toBe(
+    expect(noteMarker(call("fetch_page", { url: "https://example.com/x" }))).toBe(
+      "[[tool:web:example.com]]",
+    );
+    expect(noteMarker(call("fetch_page", { url: "not a url" }))).toBe(
       "[[tool:note:fetching a page]]",
+    );
+  });
+
+  it("defaults to a 'using' note for tools without their own", () => {
+    expect(noteMarker(call("query_data", { sql: "SELECT 1" }))).toBe(
+      "[[tool:note:using query_data]]",
     );
   });
 });

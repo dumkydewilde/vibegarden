@@ -14,7 +14,7 @@ import {
   type Cell,
   type DatasetInfo,
   type QueryResultEnvelope,
-} from "./query-tool";
+} from "./query";
 
 type DuckDBModule = typeof import("@duckdb/duckdb-wasm");
 type AsyncDuckDB = import("@duckdb/duckdb-wasm").AsyncDuckDB;

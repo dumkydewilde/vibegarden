@@ -1,0 +1,14 @@
+{
+  "name": "@vibegarden/agent-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./duckdb": "./src/duckdb.client.ts"
+  },
+  "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.33.1-dev57.0",
+    "@vibegarden/agent-core": "*"
+  }
+}

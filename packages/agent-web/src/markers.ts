@@ -13,6 +13,7 @@
  * came of it.
  */
 
+import type { AgentEvent } from "@vibegarden/agent-core";
 import {
   attachSummaryLine,
   envelopeSummaryLine,
@@ -21,9 +22,49 @@ import {
   type AttachResultEnvelope,
   type ChartSpec,
   type QueryResultEnvelope,
-} from "./query-tool";
+} from "./query";
 
 export type ToolNoteKind = "article" | "module" | "web" | "note";
+
+const NOTE_KINDS: readonly string[] = ["article", "module", "web", "note"];
+
+/**
+ * Serialize one agent event into the web marker format, or null when the
+ * event has no marker (text, done, error). This is the web surface's
+ * rendering of the surface-agnostic event stream.
+ */
+export function markerForEvent(event: AgentEvent): string | null {
+  switch (event.type) {
+    case "note":
+      return toolNote(
+        NOTE_KINDS.includes(event.kind)
+          ? (event.kind as ToolNoteKind)
+          : "note",
+        event.value,
+      );
+    case "diagram":
+      return diagramNote({ title: event.title, diagram: event.diagram });
+    case "delegated-call": {
+      if (event.tool === "query_data") {
+        const payload = event.payload as { sql?: unknown; chart?: unknown };
+        if (typeof payload?.sql !== "string" || !payload.sql) return null;
+        return queryNote({
+          sql: payload.sql,
+          chart: parseChartSpec(payload.chart),
+        });
+      }
+      if (event.tool === "attach_data") {
+        const payload = event.payload as { url?: unknown };
+        return typeof payload?.url === "string" && payload.url
+          ? attachNote({ url: payload.url })
+          : null;
+      }
+      return null;
+    }
+    default:
+      return null;
+  }
+}
 
 export type DiagramPayload = {
   version: 1;

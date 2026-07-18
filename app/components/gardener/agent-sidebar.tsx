@@ -10,7 +10,7 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTitle } from "~/components/ui/sheet";
 import { Textarea } from "~/components/ui/textarea";
 import { useIsMobile } from "~/hooks/use-mobile";
-import { extractDataUrls, stripDataUrls } from "~/lib/query-tool";
+import { extractDataUrls, stripDataUrls } from "@vibegarden/agent-web";
 import { cn } from "~/lib/utils";
 
 /** Brief indicator while a dataset is being fetched and introspected. */
