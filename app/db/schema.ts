@@ -384,8 +384,9 @@ export const siteFeedback = sqliteTable(
 );
 
 /**
- * Immutable project-owned metadata. Versioned content and gallery publication
- * each have their own pointer so a later upload cannot replace shared content.
+ * Immutable project-owned metadata. The `0007_artifact_integrity` migration
+ * verifies project ownership, immutable type/project values, private creation,
+ * and same-artifact version pointers at the database boundary.
  */
 export const artifacts = sqliteTable(
   "artifacts",
