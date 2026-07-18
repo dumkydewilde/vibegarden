@@ -49,6 +49,11 @@ npm run test:mcp       # Worker/OAuth integration suite
 npm run mcp:inspect    # inspect a running MCP endpoint
 ```
 
+Before a release, follow the [Gardener MCP release checklist](docs/testing/gardener-mcp-release-checklist.md).
+It includes the local Inspector protocol and the required staging verification
+in Claude and ChatGPT. The cross-user isolation checks in both real hosts are
+release-blocking; a local Worker test alone does not pass that gate.
+
 Deploy in this order: create D1 and apply migrations, create and bind OAuth KV
 and rate limiters, set `SESSION_SECRET` plus any reviewer secrets, then deploy
 the Worker. Do not put production secrets in `.dev.vars` or source control.
