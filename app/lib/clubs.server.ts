@@ -40,12 +40,52 @@ export type ClubContext = {
   isSuperAdmin: boolean;
 };
 
+export type PlatformClubSummary = {
+  id: string;
+  name: string;
+  slug: string;
+  status: "active" | "archived";
+  modelPolicy: "free_only" | "all_models";
+  spendingLimitUsd: number | null;
+  owner: { id: string; name: string | null; email: string } | null;
+  memberCount: number;
+  credentialState: "pending" | "ready" | "failed" | "disabled" | null;
+  syncedPolicy: "free_only" | "all_models" | null;
+  hasSyncDrift: boolean;
+};
+
 function notFound() {
   return new Response("Not found", { status: 404 });
 }
 
 function conflict() {
   return new Response("Conflict", { status: 409 });
+}
+
+function requirePlatformAdmin(user: User) {
+  if (user.platformRole !== "super_admin") throw notFound();
+}
+
+function platformAudit(
+  env: Env,
+  actorUserId: string,
+  clubId: string,
+  action: string,
+  metadata?: Record<string, unknown>,
+) {
+  return env.DB
+    .prepare(
+      "INSERT INTO audit_events (id, actor_user_id, club_id, action, target_type, target_id, metadata, created_at) SELECT ?, ?, ?, ?, 'club', ?, ?, ? WHERE changes() = 1",
+    )
+    .bind(
+      crypto.randomUUID(),
+      actorUserId,
+      clubId,
+      action,
+      clubId,
+      metadata ? JSON.stringify(metadata) : null,
+      Date.now(),
+    );
 }
 
 export async function createClub(
@@ -202,6 +242,115 @@ export async function listActiveClubs(env: Env) {
     .select()
     .from(clubs)
     .where(eq(clubs.status, "active"));
+}
+
+/** Lists platform-wide club state using grouped queries, never synthetic memberships. */
+export async function listPlatformClubs(env: Env): Promise<PlatformClubSummary[]> {
+  const [clubRows, memberRows] = await Promise.all([
+    env.DB
+      .prepare(
+        `SELECT c.id, c.name, c.slug, c.status,
+          c.model_policy AS modelPolicy, c.spending_limit_usd AS spendingLimitUsd,
+          owner.id AS ownerId, owner.name AS ownerName, owner.email AS ownerEmail,
+          credential.provisioning_state AS credentialState,
+          credential.synced_policy AS syncedPolicy
+        FROM clubs c
+        LEFT JOIN club_memberships membership
+          ON membership.club_id = c.id AND membership.role = 'owner'
+        LEFT JOIN users owner ON owner.id = membership.user_id
+        LEFT JOIN club_ai_credentials credential ON credential.club_id = c.id
+        ORDER BY c.created_at DESC, c.id DESC`,
+      )
+      .all<{
+        id: string;
+        name: string;
+        slug: string;
+        status: "active" | "archived";
+        modelPolicy: "free_only" | "all_models";
+        spendingLimitUsd: number | null;
+        ownerId: string | null;
+        ownerName: string | null;
+        ownerEmail: string | null;
+        credentialState: PlatformClubSummary["credentialState"];
+        syncedPolicy: PlatformClubSummary["syncedPolicy"];
+      }>(),
+    env.DB
+      .prepare(
+        "SELECT club_id AS clubId, COUNT(*) AS memberCount FROM club_memberships GROUP BY club_id",
+      )
+      .all<{ clubId: string; memberCount: number }>(),
+  ]);
+  const counts = new Map(memberRows.results.map((row) => [row.clubId, row.memberCount]));
+  return clubRows.results.map((row) => ({
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    status: row.status,
+    modelPolicy: row.modelPolicy,
+    spendingLimitUsd: row.spendingLimitUsd,
+    owner: row.ownerId && row.ownerEmail
+      ? { id: row.ownerId, name: row.ownerName, email: row.ownerEmail }
+      : null,
+    memberCount: counts.get(row.id) ?? 0,
+    credentialState: row.credentialState,
+    syncedPolicy: row.syncedPolicy,
+    hasSyncDrift: row.credentialState !== "ready" || row.syncedPolicy !== row.modelPolicy,
+  }));
+}
+
+/** Changes the desired model policy and fails closed until it is reconciled remotely. */
+export async function setClubModelPolicy(
+  env: Env,
+  superAdmin: User,
+  clubId: string,
+  modelPolicy: "free_only" | "all_models",
+) {
+  requirePlatformAdmin(superAdmin);
+  if (modelPolicy !== "free_only" && modelPolicy !== "all_models") {
+    throw new Response("Invalid model policy", { status: 400 });
+  }
+  const now = Date.now();
+  const result = await env.DB.batch([
+    env.DB
+      .prepare("UPDATE clubs SET model_policy = ?, updated_at = ? WHERE id = ?")
+      .bind(modelPolicy, now, clubId),
+    env.DB
+      .prepare(
+        "UPDATE club_ai_credentials SET provisioning_state = 'pending', synced_policy = NULL, provisioning_lease_token = NULL, provisioning_lease_heartbeat_at = NULL WHERE club_id = ?",
+      )
+      .bind(clubId),
+    platformAudit(env, superAdmin.id, clubId, "club.model_policy_changed", { modelPolicy }),
+  ]);
+  if (result[0].meta.changes !== 1 || result[1].meta.changes !== 1) throw notFound();
+}
+
+/** Changes a platform-funded USD cap and leaves the credential unavailable until sync. */
+export async function setClubSpendingLimit(
+  env: Env,
+  superAdmin: User,
+  clubId: string,
+  spendingLimitUsd: number | null,
+) {
+  requirePlatformAdmin(superAdmin);
+  if (
+    spendingLimitUsd !== null &&
+    (!Number.isSafeInteger(spendingLimitUsd) || spendingLimitUsd < 0)
+  ) {
+    throw new Response("Invalid spending limit", { status: 400 });
+  }
+  const now = Date.now();
+  const result = await env.DB.batch([
+    env.DB
+      .prepare("UPDATE clubs SET spending_limit_usd = ?, updated_at = ? WHERE id = ?")
+      .bind(spendingLimitUsd, now, clubId),
+    env.DB
+      .prepare(
+        "UPDATE club_ai_credentials SET provisioning_state = 'pending', synced_policy = NULL, provisioning_lease_token = NULL, provisioning_lease_heartbeat_at = NULL WHERE club_id = ?",
+      )
+      .bind(clubId),
+    platformAudit(env, superAdmin.id, clubId, "club.spending_limit_changed", { spendingLimitUsd }),
+  ]);
+  if (result[0].meta.changes !== 1 || result[1].meta.changes !== 1) throw notFound();
 }
 
 export async function requireClubContext(

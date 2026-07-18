@@ -260,4 +260,12 @@ export async function restoreClub(env: Env, superAdmin: User, clubId: string) {
     },
   );
   if (changes === 0) throw conflict();
+  // A restored club stays unavailable until the existing or replacement key is
+  // reconciled by the platform action that initiated restoration.
+  await env.DB
+    .prepare(
+      "UPDATE club_ai_credentials SET provisioning_state = 'pending', synced_policy = NULL, provisioning_lease_token = NULL, provisioning_lease_heartbeat_at = NULL WHERE club_id = ?",
+    )
+    .bind(clubId)
+    .run();
 }
