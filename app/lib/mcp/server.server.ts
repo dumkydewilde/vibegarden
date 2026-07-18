@@ -155,12 +155,12 @@ function resourceResult(uri: URL, mimeType: "application/json" | "text/markdown"
   };
 }
 
-async function ownedProjectPayload(env: Env, userId: string, projectId: string) {
-  const project = await getProject(env, userId, projectId);
+async function ownedProjectPayload(env: Env, principal: import("~/lib/mcp/contracts").McpPrincipal, projectId: string) {
+  const project = await getProject(env, principal, projectId);
   if (!project) return notFound();
   const conversations = await listProjectThreadsPage(
     env,
-    userId,
+    principal,
     project.id,
     project.threadId,
     { limit: clampPageSize(undefined, "list") },
@@ -186,7 +186,7 @@ function registerResources(server: McpServer, env: Env) {
     kind: "resource",
   }, async (principal) => {
     const projectId = resourceVariable(variables.id);
-    const payload = await ownedProjectPayload(env, principal.userId, projectId);
+    const payload = await ownedProjectPayload(env, principal, projectId);
     return resourceResult(uri, "application/json", JSON.stringify(payload));
   }));
 
@@ -202,7 +202,7 @@ function registerResources(server: McpServer, env: Env) {
     kind: "resource",
   }, async (principal) => {
     const conversationId = resourceVariable(variables.id);
-    const page = await getThreadPage(env, principal.userId, conversationId, {
+    const page = await getThreadPage(env, principal, conversationId, {
       limit: clampPageSize(undefined, "conversation"),
     });
     if (!page) return notFound();
@@ -273,7 +273,7 @@ function registerPrompts(server: McpServer, env: Env) {
     kind: "prompt",
   }, async (principal) => {
     const projectId = resourceVariable(project_id);
-    const project = await ownedProjectPayload(env, principal.userId, projectId);
+    const project = await ownedProjectPayload(env, principal, projectId);
     const projectUri = `vibegarden://project/${encodeURIComponent(projectId)}`;
 
     return {
@@ -329,7 +329,7 @@ function registerTools(server: McpServer, env: Env) {
   }, async (input, extra) => run(env, "list_projects", "projects:read", "general", extra.requestId, async () => {
     const principal = getMcpPrincipal();
     const position = await cursorPosition(env, input.cursor, "projects", isUpdatedAtPosition);
-    const page = await listProjectsPage(env, principal.userId, {
+    const page = await listProjectsPage(env, principal, {
       status: input.status,
       position,
       limit: clampPageSize(input.page_size, "list"),
@@ -351,11 +351,11 @@ function registerTools(server: McpServer, env: Env) {
     ...metadata("projects:read"),
   }, async (input, extra) => run(env, "get_project", "projects:read", "general", extra.requestId, async () => {
     const principal = getMcpPrincipal();
-    const project = await getProject(env, principal.userId, input.project_id);
+    const project = await getProject(env, principal, input.project_id);
     if (!project) return notFound();
     const conversations = await listProjectThreadsPage(
       env,
-      principal.userId,
+      principal,
       project.id,
       project.threadId,
       { limit: clampPageSize(undefined, "list") },
@@ -379,12 +379,12 @@ function registerTools(server: McpServer, env: Env) {
     ...metadata("projects:read"),
   }, async (input, extra) => run(env, "list_project_conversations", "projects:read", "general", extra.requestId, async () => {
     const principal = getMcpPrincipal();
-    const project = await getProject(env, principal.userId, input.project_id);
+    const project = await getProject(env, principal, input.project_id);
     if (!project) return notFound();
     const position = await cursorPosition(env, input.cursor, "project_conversations", isUpdatedAtPosition);
     const page = await listProjectThreadsPage(
       env,
-      principal.userId,
+      principal,
       project.id,
       project.threadId,
       { position, limit: clampPageSize(input.page_size, "list") },
@@ -407,7 +407,7 @@ function registerTools(server: McpServer, env: Env) {
   }, async (input, extra) => run(env, "get_conversation", "projects:read", "history", extra.requestId, async () => {
     const principal = getMcpPrincipal();
     const position = await cursorPosition(env, input.cursor, "conversation_messages", isCreatedAtPosition);
-    const page = await getThreadPage(env, principal.userId, input.conversation_id, {
+    const page = await getThreadPage(env, principal, input.conversation_id, {
       position,
       limit: clampPageSize(input.page_size, "conversation"),
     });

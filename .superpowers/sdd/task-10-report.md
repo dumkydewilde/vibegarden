@@ -67,3 +67,33 @@ npm run build
 ### Compatibility constraint
 
 The installed `@cloudflare/workers-oauth-provider@0.8.2` rejects `accessTokenTTL: 1` at construction with `accessTokenTTL must be an integer of at least 60 seconds (Cloudflare KV's minimum expiration window)`. The optional fixture override remains available, but a one-second real-workerd lifecycle test cannot be run against this package without changing the dependency or its KV minimum-TTL policy. Production retains the required 3,600-second access-token TTL.
+
+## Final coverage repair: real expiry, private D1 non-disclosure, and limits
+
+### Provider compatibility decision
+
+- `@cloudflare/workers-oauth-provider` is now pinned to **0.8.0**. It retains the `clientRegistrationCallback` API used for the production redirect allowlist, unlike 0.7.2, while accepting the test-only `accessTokenTTL: 1` override. Version 0.8.1 and later reject sub-60-second TTLs at construction.
+- Production configuration is unchanged: `workers/oauth.ts` still sets `accessTokenTTL: 3_600`, `refreshTokenTTL: 2_592_000`, and `clientRegistrationTTL: 7_776_000`.
+- Workerd's real KV service independently rejects `expirationTtl: 1`. The test fixture therefore proxies only that one KV `put` option to retain the token record for 60 seconds; it leaves the real provider's stored `expiresAt` at one second. The provider performs the expiry validation against that stored timestamp. No test clock, token parser, or production KV path is faked or changed.
+
+### RED / GREEN record
+
+- **RED:** Added a real DCR/S256 token flow that asks the fixture for `accessTokenTTL: 1`, waits 1,100 ms, and expects `/mcp` to return `401`. Against the original fixture/provider it failed (`200` rather than `401`); the old fixture never selected the override. Direct provider compatibility checks also confirmed 0.8.2 rejects that override at construction.
+- **Investigation:** 0.7.2 accepts the option but both loses the current DCR callback enforcement and fails in workerd with `KV PUT failed: 400 Invalid expiration_ttl of 1`. Version 0.8.0 retains the callback and accepts the one-second option. Provider expiry is second-granularity and uses a strict `<` comparison, so the test waits until the final tenth of a second before issuing the token, then waits the required 1,100 ms; this avoids boundary flakiness without a fake clock.
+- **GREEN:** The fixture applies the one-second override only for its explicit test header and uses real workerd KV storage with the minimum-retention adapter above. The exact real HTTP test now receives `401` for the expired access token.
+- Added and ran real workerd coverage that seeds separate owner and attacker users, an owner project, conversation, and prompt-like message text directly in local D1. The attacker receives the stable public `not_found` shape for foreign project, conversation, namespaced `fetch`, and project/conversation resources; `search` cannot reveal the private title and none of the responses contains the private title or message body.
+- Added and ran real HTTP MCP rate-limit coverage: the 61st `list_projects` call returns the public `rate_limited` result from the configured general limiter, and the 13th `get_conversation` call returns it from the stricter history limiter. The HTTP transport remains `200` for these MCP tool results, as required by the MCP protocol.
+
+### Final verification
+
+```text
+npm run test:all   # 41 JS test files / 239 tests; 2 workerd files / 13 tests
+npm run typecheck  # passed
+npm run build      # passed
+git diff --check   # passed
+```
+
+### Final concerns
+
+- The workerd suite still emits upstream MCP SDK missing-source-map warnings and the intentional CIMD-disabled warning. They are dependency/runtime configuration noise; all tests pass.
+- Provider 0.8.0 is intentionally pinned, rather than ranged, so future upgrades cannot silently reintroduce the provider's 60-second constructor guard and invalidate the real one-second expiry coverage.

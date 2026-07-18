@@ -1,4 +1,5 @@
 import { SELF } from "cloudflare:test";
+import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 
 const ORIGIN = "https://vibegarden.test";
@@ -23,6 +24,7 @@ async function authorizeWithPkce(
   scopes = "projects:read content:read",
   resource = `${ORIGIN}/mcp`,
   userId = "oauth-user",
+  clubId = "test-club",
 ) {
   const verifier = "a-very-long-pkce-verifier-that-is-only-used-by-the-worker-integration-test";
   const challenge = base64Url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
@@ -37,17 +39,25 @@ async function authorizeWithPkce(
     state: "test-state",
   });
   const response = await SELF.fetch(`${ORIGIN}/authorize?${query}`, {
-    headers: { "x-test-user-id": userId },
+    headers: { "x-test-user-id": userId, "x-test-club-id": clubId },
     redirect: "manual",
   });
   const redirect = response.headers.get("location");
   return { response, code: redirect ? new URL(redirect).searchParams.get("code") : null, verifier };
 }
 
-async function exchangeCode(clientId: string, code: string, verifier: string) {
+async function exchangeCode(
+  clientId: string,
+  code: string,
+  verifier: string,
+  accessTokenTtl?: 1,
+) {
   const response = await SELF.fetch(`${ORIGIN}/token`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...(accessTokenTtl ? { "x-test-access-token-ttl": String(accessTokenTtl) } : {}),
+    },
     body: new URLSearchParams({
       grant_type: "authorization_code",
       client_id: clientId,
@@ -58,6 +68,68 @@ async function exchangeCode(clientId: string, code: string, verifier: string) {
     }),
   });
   return { response, body: await response.json() as { access_token: string; refresh_token: string } };
+}
+
+async function accessTokenFor(
+  userId: string,
+  scopes = "projects:read content:read",
+  clubId = "test-club",
+) {
+  const client = await registerClient();
+  const grant = await authorizeWithPkce(
+    client.body.client_id,
+    scopes,
+    undefined,
+    userId,
+    clubId,
+  );
+  const token = await exchangeCode(client.body.client_id, grant.code!, grant.verifier);
+  return token.body.access_token;
+}
+
+async function waitUntilFinalTenthOfSecond() {
+  const remaining = Date.now() % 1_000;
+  if (remaining < 900) await new Promise((resolve) => setTimeout(resolve, 900 - remaining));
+}
+
+function expectPrivateNotFound(body: Record<string, unknown>, secrets: string[]) {
+  const serialized = JSON.stringify(body);
+  expect(serialized).toContain("not_found");
+  for (const secret of secrets) expect(serialized).not.toContain(secret);
+}
+
+async function seedPrivateRecords() {
+  const suffix = crypto.randomUUID();
+  const owner = `owner-${suffix}`;
+  const attacker = `attacker-${suffix}`;
+  const ownerClub = `owner-club-${suffix}`;
+  const attackerClub = `attacker-club-${suffix}`;
+  const projectId = `private-project-${suffix}`;
+  const conversationId = `private-conversation-${suffix}`;
+  const projectTitle = `Owner secret project ${suffix}`;
+  const messageBody = `Owner secret message ${suffix}`;
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO users (id, email, name, role, stage, created_at) VALUES (?, ?, ?, 'user', 'exploring', ?)")
+      .bind(owner, `${owner}@example.test`, "Owner", now),
+    env.DB.prepare("INSERT INTO users (id, email, name, role, stage, created_at) VALUES (?, ?, ?, 'user', 'exploring', ?)")
+      .bind(attacker, `${attacker}@example.test`, "Attacker", now),
+    env.DB.prepare("INSERT INTO clubs (id, name, slug, model_policy, status, created_by, created_at, updated_at) VALUES (?, ?, ?, 'all_models', 'active', ?, ?, ?)")
+      .bind(ownerClub, "Owner Club", ownerClub, owner, now, now),
+    env.DB.prepare("INSERT INTO clubs (id, name, slug, model_policy, status, created_by, created_at, updated_at) VALUES (?, ?, ?, 'all_models', 'active', ?, ?, ?)")
+      .bind(attackerClub, "Attacker Club", attackerClub, attacker, now, now),
+    env.DB.prepare("INSERT INTO club_memberships (club_id, user_id, role, onboarding_stage, joined_at, updated_at) VALUES (?, ?, 'owner', 'exploring', ?, ?)")
+      .bind(ownerClub, owner, now, now),
+    env.DB.prepare("INSERT INTO club_memberships (club_id, user_id, role, onboarding_stage, joined_at, updated_at) VALUES (?, ?, 'owner', 'exploring', ?, ?)")
+      .bind(attackerClub, attacker, now, now),
+    env.DB.prepare("INSERT INTO chat_threads (id, user_id, club_id, title, project_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .bind(conversationId, owner, ownerClub, `Owner private thread ${suffix}`, projectId, now, now),
+    env.DB.prepare("INSERT INTO chat_messages (id, thread_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)")
+      .bind(`message-${suffix}`, conversationId, messageBody, now),
+    env.DB.prepare("INSERT INTO projects (id, user_id, club_id, title, one_liner, modules, status, thread_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '[]', 'seed', ?, ?, ?)")
+      .bind(projectId, owner, ownerClub, projectTitle, messageBody, conversationId, now, now),
+  ]);
+  return { attacker, attackerClub, projectId, conversationId, projectTitle, messageBody };
 }
 
 async function mcpRpc(token: string, method: string, params: Record<string, unknown> = {}) {
@@ -176,6 +248,71 @@ describe("Gardener MCP Worker", () => {
     });
     expect(revoke.status).toBe(204);
     expect((await mcpRpc(refreshed.body.access_token, "tools/list")).status).toBe(401);
+  });
+
+  it("rejects a real one-second OAuth access token after it expires", async () => {
+    const client = await registerClient();
+    const grant = await authorizeWithPkce(client.body.client_id, "projects:read");
+    await waitUntilFinalTenthOfSecond();
+    const token = await exchangeCode(client.body.client_id, grant.code!, grant.verifier, 1);
+    expect(token.response.status).toBe(200);
+
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    expect((await mcpRpc(token.body.access_token, "tools/list")).status).toBe(401);
+  });
+
+  it("does not disclose another user's private D1 project or conversation over MCP", async () => {
+    const privateRecords = await seedPrivateRecords();
+    const token = await accessTokenFor(
+      privateRecords.attacker,
+      undefined,
+      privateRecords.attackerClub,
+    );
+    const secrets = [privateRecords.projectTitle, privateRecords.messageBody];
+
+    const calls: Array<[string, Record<string, unknown>]> = [
+      ["tools/call", { name: "get_project", arguments: { project_id: privateRecords.projectId } }],
+      ["tools/call", { name: "get_conversation", arguments: { conversation_id: privateRecords.conversationId } }],
+      ["tools/call", { name: "fetch", arguments: { id: `project:${privateRecords.projectId}` } }],
+      ["resources/read", { uri: `vibegarden://project/${privateRecords.projectId}` }],
+      ["resources/read", { uri: `vibegarden://conversation/${privateRecords.conversationId}` }],
+    ];
+    for (const [method, params] of calls) {
+      const response = await mcpRpc(token, method, params);
+      expect(response.status).toBe(200);
+      expectPrivateNotFound(await mcpJson(response), secrets);
+    }
+
+    const search = await mcpRpc(token, "tools/call", {
+      name: "search",
+      arguments: { query: privateRecords.projectTitle },
+    });
+    expect(search.status).toBe(200);
+    expect(JSON.stringify(await mcpJson(search))).not.toContain(privateRecords.projectTitle);
+    expectPrivateNotFound(await mcpJson(await mcpRpc(token, "tools/call", {
+      name: "fetch",
+      arguments: { id: `conversation:${privateRecords.conversationId}` },
+    })), secrets);
+  });
+
+  it("enforces general and history limits through real MCP HTTP requests", async () => {
+    const token = await accessTokenFor(`limit-${crypto.randomUUID()}`);
+    let general: Response | undefined;
+    for (let count = 0; count <= 60; count++) {
+      general = await mcpRpc(token, "tools/call", { name: "list_projects", arguments: {} });
+      expect(general.status).toBe(200);
+    }
+    expect(JSON.stringify(await mcpJson(general!))).toContain("rate_limited");
+
+    let history: Response | undefined;
+    for (let count = 0; count <= 12; count++) {
+      history = await mcpRpc(token, "tools/call", {
+        name: "get_conversation",
+        arguments: { conversation_id: "missing-history-conversation" },
+      });
+      expect(history.status).toBe(200);
+    }
+    expect(JSON.stringify(await mcpJson(history!))).toContain("rate_limited");
   });
 
   it("returns a public invalid-input result and a 403 scope challenge before tool execution", async () => {

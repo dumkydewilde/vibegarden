@@ -50,6 +50,7 @@ export function getMcpPrincipal(): McpPrincipal {
   const context = getMcpAuthContext();
   const props = context?.props;
   if (!props || typeof props.userId !== "string" || !props.userId.trim()
+    || typeof props.clubId !== "string" || !props.clubId.trim()
     || !Array.isArray(props.scopes)) {
     throw new McpPublicError(
       "internal_error",
@@ -59,6 +60,7 @@ export function getMcpPrincipal(): McpPrincipal {
 
   return {
     userId: props.userId,
+    clubId: props.clubId,
     scopes: props.scopes.filter(isMcpScope),
   };
 }

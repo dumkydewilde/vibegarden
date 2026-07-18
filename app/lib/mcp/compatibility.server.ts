@@ -71,8 +71,8 @@ export async function searchKnowledge(
 
   if (principal.scopes.includes("projects:read")) {
     const [projects, conversations] = await Promise.all([
-      searchOwnedProjects(env, principal.userId, term, 10),
-      searchOwnedThreads(env, principal.userId, term, 10),
+      searchOwnedProjects(env, principal, term, 10),
+      searchOwnedThreads(env, principal, term, 10),
     ]);
     results.push(
       ...projects.map((project) => ({
@@ -139,12 +139,12 @@ export async function fetchKnowledge(
 
   if (kind === "project") {
     requireScope(principal, "projects:read");
-    const project = await getProject(env, principal.userId, value);
+    const project = await getProject(env, principal, value);
     if (!project) throw new McpPublicError("not_found", "The knowledge item was not found.");
 
     const conversations = await listProjectThreadsPage(
       env,
-      principal.userId,
+      principal,
       project.id,
       project.threadId,
       { limit: CONVERSATION_PAGE_DEFAULT },
@@ -167,7 +167,7 @@ export async function fetchKnowledge(
 
   if (kind === "conversation") {
     requireScope(principal, "projects:read");
-    const page = await getThreadPage(env, principal.userId, value, {
+    const page = await getThreadPage(env, principal, value, {
       limit: CONVERSATION_PAGE_DEFAULT,
     });
     if (!page) throw new McpPublicError("not_found", "The knowledge item was not found.");

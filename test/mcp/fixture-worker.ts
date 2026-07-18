@@ -20,13 +20,14 @@ const defaultHandler = {
         return new Response("Invalid OAuth resource", { status: 400 });
       }
       const userId = request.headers.get("x-test-user-id") || "test-user";
+      const clubId = request.headers.get("x-test-club-id") || "test-club";
       const scope = grant.scope.filter((value) => value === "projects:read" || value === "content:read");
       const completed = await api.completeAuthorization({
         request: grant,
         userId,
         scope,
         metadata: {},
-        props: { userId, scopes: scope },
+        props: { userId, clubId, scopes: scope },
       });
       return Response.redirect(completed.redirectTo, 302);
     }
@@ -41,6 +42,27 @@ const defaultHandler = {
   },
 } satisfies ExportedHandler<Env>;
 
+/**
+ * Workerd enforces Cloudflare KV's 60-second storage minimum. The provider
+ * still writes and validates its own one-second `expiresAt` value, so this
+ * fixture only retains that record long enough for the real expiry check.
+ */
+function retainOneSecondTokenRecord(kv: KVNamespace): KVNamespace {
+  return new Proxy(kv, {
+    get(target, property, receiver) {
+      if (property === "put") {
+        return (key: string, value: string | ReadableStream | ArrayBuffer | ArrayBufferView, options?: KVNamespacePutOptions) => (
+          target.put(key, value, options?.expirationTtl === 1
+            ? { ...options, expirationTtl: 60 }
+            : options)
+        );
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as KVNamespace;
+}
+
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const pathname = new URL(request.url).pathname;
@@ -51,6 +73,14 @@ export default {
     if (!isOAuthProviderPath(pathname, env)) {
       return defaultHandler.fetch(request, env, ctx);
     }
-    return createOAuthProvider(env, defaultHandler).fetch(request, env, ctx);
+    const expiresInOneSecond = request.headers.get("x-test-access-token-ttl") === "1";
+    const providerEnv = expiresInOneSecond
+      ? { ...env, OAUTH_KV: retainOneSecondTokenRecord(env.OAUTH_KV) }
+      : env;
+    return createOAuthProvider(
+      providerEnv,
+      defaultHandler,
+      expiresInOneSecond ? { accessTokenTTL: 1 } : undefined,
+    ).fetch(request, providerEnv, ctx);
   },
 } satisfies ExportedHandler<Env>;

@@ -2,7 +2,11 @@ import { z } from "zod";
 
 export const MCP_SCOPES = ["projects:read", "content:read"] as const;
 export type McpScope = (typeof MCP_SCOPES)[number];
-export type McpPrincipal = { userId: string; scopes: McpScope[] };
+export type McpPrincipal = {
+  userId: string;
+  clubId: string;
+  scopes: McpScope[];
+};
 export const LIST_PAGE_DEFAULT = 20;
 export const LIST_PAGE_MAX = 50;
 export const CONVERSATION_PAGE_DEFAULT = 50;

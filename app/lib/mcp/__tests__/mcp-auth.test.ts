@@ -35,7 +35,7 @@ function env(): Env {
 
 beforeEach(() => {
   mockMcpAuthContext({
-    props: { userId: "user-a", scopes: ["projects:read", "content:read"] },
+    props: { userId: "user-a", clubId: "club-a", scopes: ["projects:read", "content:read"] },
   });
   generalLimit.mockResolvedValue({ success: true });
   historyLimit.mockResolvedValue({ success: true });
@@ -76,11 +76,12 @@ describe("hashMcpUser", () => {
 describe("MCP tool auth wrapper", () => {
   it("accepts only server-issued principal properties", () => {
     mockMcpAuthContext({
-      props: { userId: "user-a", scopes: ["projects:read", "unknown"] },
+      props: { userId: "user-a", clubId: "club-a", scopes: ["projects:read", "unknown"] },
     });
 
     expect(getMcpPrincipal()).toEqual({
       userId: "user-a",
+      clubId: "club-a",
       scopes: ["projects:read"],
     });
   });
@@ -89,6 +90,7 @@ describe("MCP tool auth wrapper", () => {
     undefined,
     { props: { userId: "", scopes: [] } },
     { props: { userId: 1, scopes: [] } },
+    { props: { userId: "user-a", scopes: [] } },
     { props: { userId: "user-a", scopes: "projects:read" } },
   ])("rejects an invalid verified auth context (%j)", (context) => {
     mockMcpAuthContext(context);
@@ -97,7 +99,7 @@ describe("MCP tool auth wrapper", () => {
   });
 
   it("returns an OAuth challenge for a missing scope", async () => {
-    mockMcpAuthContext({ props: { userId: "user-a", scopes: ["projects:read"] } });
+    mockMcpAuthContext({ props: { userId: "user-a", clubId: "club-a", scopes: ["projects:read"] } });
     const handler = vi.fn(async () => ({ title: "Never reached" }));
 
     const result = await runMcpTool({
@@ -153,7 +155,7 @@ describe("MCP tool auth wrapper", () => {
 
   it("allows a tool to require either approved read scope", async () => {
     mockMcpAuthContext({
-      props: { userId: "user-a", scopes: ["content:read"] },
+      props: { userId: "user-a", clubId: "club-a", scopes: ["content:read"] },
     });
 
     const result = await runMcpTool({
@@ -251,7 +253,7 @@ describe("MCP tool auth wrapper", () => {
   });
 
   it("throws a public scope error for a missing scope", () => {
-    expect(() => requireScope({ userId: "user-a", scopes: [] }, "content:read"))
+    expect(() => requireScope({ userId: "user-a", clubId: "club-a", scopes: [] }, "content:read"))
       .toThrow(/required scope is missing/i);
   });
 });
