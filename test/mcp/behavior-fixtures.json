@@ -6,6 +6,34 @@
     "transport": "Streamable HTTP",
     "endpoint": "/mcp"
   },
+  "coverage": {
+    "resource_templates": [
+      "vibegarden://project/{id}",
+      "vibegarden://conversation/{id}",
+      "vibegarden://article/{slug}",
+      "vibegarden://module/{slug}"
+    ],
+    "resource_reads": [
+      "vibegarden://project/{id}",
+      "vibegarden://conversation/{id}",
+      "vibegarden://article/{slug}",
+      "vibegarden://module/{slug}",
+      "vibegarden://guide/gardener"
+    ],
+    "prompt": "continue_project",
+    "security_boundaries": [
+      "unauthenticated and malformed bearer challenges",
+      "exact /mcp endpoint routing",
+      "protected-resource metadata",
+      "DCR, S256 PKCE, and OAuth resource binding",
+      "scope challenge before execution",
+      "origin enforcement",
+      "refresh, expiry, revocation, and reconnect",
+      "read-only discovery and optional backend absence",
+      "rate limiting",
+      "private-ID ownership and cross-user isolation"
+    ]
+  },
   "cases": [
     {
       "id": "unknown-project-list-first",
@@ -110,6 +138,40 @@
       "protocol_request": "supply unexpected fields or an invalid identifier to a tool or prompt",
       "expected_error": "invalid_input",
       "assertions": ["strict schemas reject unexpected fields", "no handler data is returned"]
+    },
+    {
+      "id": "unauthenticated-mcp-bearer-challenge",
+      "protocol_request": "POST an MCP initialize request to the exact /mcp endpoint with no Authorization header",
+      "expected_http_status": 401,
+      "expected_headers": {
+        "WWW-Authenticate": "Bearer resource_metadata=<protected-resource metadata URL>"
+      },
+      "assertions": ["challenge names the protected-resource metadata document", "website routes are not challenged as MCP requests"]
+    },
+    {
+      "id": "malformed-bearer-mcp-challenge",
+      "protocol_request": "POST an MCP tools/list request to the exact /mcp endpoint with an unusable Bearer token",
+      "expected_http_status": 401,
+      "expected_headers": {
+        "WWW-Authenticate": "Bearer resource_metadata=<protected-resource metadata URL>"
+      },
+      "assertions": ["does not expose token-validation details", "challenge permits a host to discover the OAuth resource"]
+    },
+    {
+      "id": "protected-resource-metadata",
+      "protocol_request": "GET /.well-known/oauth-protected-resource",
+      "assertions": ["resource is the exact HTTPS /mcp URL", "authorization server and projects:read/content:read scopes are declared"]
+    },
+    {
+      "id": "exact-mcp-endpoint-routing",
+      "protocol_request": "request /mcp, /mcp/not-an-mcp-endpoint, /mcp-not-an-endpoint, and an unrelated website route without credentials",
+      "expected_responses": [
+        { "path": "/mcp", "status": 401, "www_authenticate": "protected-resource Bearer challenge" },
+        { "path": "/mcp/not-an-mcp-endpoint", "status": 404, "www_authenticate": "absent" },
+        { "path": "/mcp-not-an-endpoint", "status": 404, "www_authenticate": "absent" },
+        { "path": "/connect", "status": "website response, never MCP 401", "www_authenticate": "absent" }
+      ],
+      "assertions": ["OAuth protection applies only to the exact configured MCP path", "nested, prefix, and unrelated routes do not inherit the MCP challenge"]
     },
     {
       "id": "insufficient-scope",
