@@ -1,3 +1,5 @@
+/* Run only after the contract migration. Unlike the expand verifier, this
+   script never references the removed legacy `invites` table. */
 SELECT 'count:clubs' AS check_name, COUNT(*) AS value FROM clubs;
 SELECT 'count:club_memberships' AS check_name, COUNT(*) AS value FROM club_memberships;
 SELECT 'count:club_invitations' AS check_name, COUNT(*) AS value FROM club_invitations;
@@ -30,16 +32,6 @@ WHERE (SELECT COUNT(*) FROM club_memberships WHERE club_id = 'club_wotf' AND rol
 
 SELECT 'violation:broken_foreign_key' AS violation
 WHERE EXISTS (SELECT 1 FROM pragma_foreign_key_check);
-
-SELECT 'violation:unmigrated_invite' AS violation
-WHERE EXISTS (
-  SELECT 1 FROM invites
-  WHERE NOT EXISTS (
-    SELECT 1 FROM club_invitations
-    WHERE club_id = 'club_wotf'
-      AND email = lower(invites.email)
-  )
-);
 
 /* D1 SQL cannot read deployed Worker variables. The focused source test keeps
    this fixed WOTF bootstrap identity synchronized with wrangler.jsonc ADMIN_EMAIL. */

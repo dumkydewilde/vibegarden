@@ -31,10 +31,16 @@ describe("multi-club migration contract", () => {
   );
 
   test("keeps the WOTF SQL synchronized with Wrangler ADMIN_EMAIL", async () => {
-    const [wranglerConfig, backfillSql, verificationSql] = await Promise.all([
+    const [
+      wranglerConfig,
+      backfillSql,
+      expandVerificationSql,
+      contractVerificationSql,
+    ] = await Promise.all([
       readFile("wrangler.jsonc", "utf8"),
       readFile("scripts/backfill-wotf.sql", "utf8"),
       readFile("scripts/verify-multi-club-migration.sql", "utf8"),
+      readFile("scripts/verify-multi-club-contract.sql", "utf8"),
     ]);
     const adminEmail = wranglerConfig.match(
       /"ADMIN_EMAIL"\s*:\s*"([^\"]+)"/,
@@ -42,7 +48,14 @@ describe("multi-club migration contract", () => {
 
     expect(adminEmail).toBeDefined();
     expect(backfillSql).toContain(`lower(email) = '${adminEmail}'`);
-    expect(verificationSql).toContain(`lower(email) = '${adminEmail}'`);
-    expect(verificationSql).toContain("violation:expected_wotf_owner_missing");
+    for (const verificationSql of [
+      expandVerificationSql,
+      contractVerificationSql,
+    ]) {
+      expect(verificationSql).toContain(`lower(users.email) = '${adminEmail}'`);
+      expect(verificationSql).toContain(
+        "violation:bootstrap_admin_not_wotf_sole_owner",
+      );
+    }
   });
 });

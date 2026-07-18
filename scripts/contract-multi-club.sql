@@ -123,20 +123,12 @@ ALTER TABLE `club_invitations_new` RENAME TO `club_invitations`;
 CREATE UNIQUE INDEX `club_invitations_club_id_email_unique` ON `club_invitations` (`club_id`, `email`);
 CREATE INDEX `club_invitations_club_id_idx` ON `club_invitations` (`club_id`);
 
-CREATE TABLE `users_new` (
-  `id` text PRIMARY KEY NOT NULL,
-  `email` text NOT NULL,
-  `name` text,
-  `platform_role` text DEFAULT 'user' NOT NULL,
-  `theme_pref` text,
-  `last_club_id` text,
-  `created_at` integer NOT NULL,
-  FOREIGN KEY (`last_club_id`) REFERENCES `clubs`(`id`) ON UPDATE no action ON DELETE set null
-);
-INSERT INTO `users_new` SELECT id, email, name, platform_role, theme_pref, last_club_id, created_at FROM users;
-DROP TABLE `users`;
-ALTER TABLE `users_new` RENAME TO `users`;
-CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`);
+/* Rebuilding and dropping `users` cascades to club memberships in D1 even
+   when this script asks SQLite to disable foreign keys. Dropping the obsolete
+   columns in place preserves all existing user references. */
+ALTER TABLE `users` DROP COLUMN `role`;
+ALTER TABLE `users` DROP COLUMN `stage`;
+ALTER TABLE `users` DROP COLUMN `model_pref`;
 
 DROP TABLE `invites`;
 PRAGMA foreign_keys=ON;

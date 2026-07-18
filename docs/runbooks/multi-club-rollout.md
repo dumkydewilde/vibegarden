@@ -72,7 +72,8 @@ npx wrangler d1 execute vibe-garden --remote --file scripts/verify-multi-club-mi
 Expected: all current migrations apply; WOTF owns every legacy row; each user
 has a WOTF membership; and `dumky@motherduck.com` is the sole WOTF owner and a
 super admin. The verification query may print count rows, but must print no
-`violation:` row.
+`violation:` row. This is the expand verifier and intentionally checks the
+legacy `invites` copy. Do not run it after the contract migration.
 
 Stop before deploying if a migration, backfill, or invariant check fails.
 
@@ -108,7 +109,37 @@ Stop and roll back if any authorization or tenant-isolation check fails.
 ## Gate 4: separately approved OpenRouter staging smoke test
 
 This gate needs a separate authorization that names a non-production OpenRouter
-workspace. In that workspace, create a temporary club and verify:
+workspace and D1 database. Set these shell variables to the approved staging
+targets, then create a temporary club with a unique, recorded ID:
+
+```sh
+export D1_DATABASE=<approved-staging-d1-database>
+export OPENROUTER_STAGING_WORKSPACE_ID=<approved-staging-workspace-id>
+export TEMP_CLUB_ID=<recorded-temporary-club-id>
+read -rs OPENROUTER_MANAGEMENT_KEY
+export OPENROUTER_MANAGEMENT_KEY
+```
+
+After the club provisions, identify the exact remote key hash and guardrail ID
+from D1, then independently list them from OpenRouter. Never print a plaintext
+key or pass the management key on a command line.
+
+```sh
+npx wrangler d1 execute "$D1_DATABASE" --remote --command "SELECT club_id, key_hash, remote_guardrail_id, provisioning_state FROM club_ai_credentials WHERE club_id = '$TEMP_CLUB_ID';"
+curl --fail-with-body --silent --show-error -G "https://openrouter.ai/api/v1/keys" \
+  -H "Authorization: Bearer $OPENROUTER_MANAGEMENT_KEY" \
+  --data-urlencode "workspace_id=$OPENROUTER_STAGING_WORKSPACE_ID" \
+  --data-urlencode "include_disabled=true"
+curl --fail-with-body --silent --show-error "https://openrouter.ai/api/v1/guardrails/<remote_guardrail_id>/assignments/keys" \
+  -H "Authorization: Bearer $OPENROUTER_MANAGEMENT_KEY"
+```
+
+Stop immediately if the D1 row is not `ready`, the returned key hash differs,
+more than one key has the temporary club name, the guardrail assignment does
+not contain that exact hash, or any listed resource belongs to a different
+workspace. Investigate rather than selecting a likely match.
+
+With the IDs recorded, verify:
 
 1. a dedicated key is created;
 2. the shared free-only guardrail is assigned;
@@ -119,6 +150,46 @@ workspace. In that workspace, create a temporary club and verify:
 Also verify that a zero-dollar key limit still permits the allowlisted free
 request before using that defense in production. Stop if the provider behavior
 does not match all five checks. Do not copy a staging key into production.
+
+### Staging cleanup or disable
+
+Default to disable, which retains an auditable record and is safe when the
+free-only guardrail is shared. In the staging app, open `/admin/clubs`, find
+only the recorded temporary club, select **Disable AI**, then archive the club.
+Confirm the app shows disabled. Verify D1 and the provider state with the exact
+recorded key hash:
+
+```sh
+npx wrangler d1 execute "$D1_DATABASE" --remote --command "SELECT provisioning_state, key_hash, remote_guardrail_id FROM club_ai_credentials WHERE club_id = '$TEMP_CLUB_ID';"
+curl --fail-with-body --silent --show-error -G "https://openrouter.ai/api/v1/keys" \
+  -H "Authorization: Bearer $OPENROUTER_MANAGEMENT_KEY" \
+  --data-urlencode "workspace_id=$OPENROUTER_STAGING_WORKSPACE_ID" \
+  --data-urlencode "include_disabled=true"
+```
+
+Expected: D1 reports `disabled` and the exact key hash is present with
+`disabled: true`. Do not delete or edit `vibegarden:free-only:v1`; it is shared
+by free-only clubs. Do not delete a per-club guardrail unless the OpenRouter UI
+confirms it belongs only to the archived temporary club and has no assignments.
+
+Permanent key deletion is optional and only allowed after the disabled check,
+the archived temporary club record, and an exact hash match. It leaves the
+archived D1 record intentionally unusable:
+
+```sh
+curl --fail-with-body --silent --show-error -X DELETE "https://openrouter.ai/api/v1/keys/<exact-temporary-key-hash>" \
+  -H "Authorization: Bearer $OPENROUTER_MANAGEMENT_KEY"
+curl --fail-with-body --silent --show-error -G "https://openrouter.ai/api/v1/keys" \
+  -H "Authorization: Bearer $OPENROUTER_MANAGEMENT_KEY" \
+  --data-urlencode "workspace_id=$OPENROUTER_STAGING_WORKSPACE_ID" \
+  --data-urlencode "include_disabled=true"
+```
+
+Stop before deletion if the key is not disabled, any identifier differs from
+the recorded one, the club is still active, or the result includes an unknown
+assignment. Stop and leave the key disabled if provider cleanup cannot be
+verified. Record only IDs, timestamps, and sanitized outcomes in the change
+record.
 
 ## Gate 5: provision WOTF and remove its fallback
 
@@ -150,7 +221,7 @@ npm run test:all
 npm run typecheck
 npm run build
 npx wrangler d1 migrations apply vibe-garden --remote
-npx wrangler d1 execute vibe-garden --remote --file scripts/verify-multi-club-migration.sql
+npx wrangler d1 execute vibe-garden --remote --file scripts/verify-multi-club-contract.sql
 ```
 
 Expected: club-owned tenant columns are required; `users.role`, `users.stage`,
@@ -187,3 +258,7 @@ if the Time Travel retention window has passed.
 - D1 stores encrypted OpenRouter credentials and hashed invitation tokens.
   Plaintext OpenRouter keys and raw invitation tokens are not recoverable from
   D1.
+- The local D1 gate supports at most five terms in a compound `UNION` query.
+  Both verifiers use independent named result statements so the same invariant
+  scripts run locally and in D1. The expand verifier additionally references
+  legacy `invites`; the contract verifier does not.

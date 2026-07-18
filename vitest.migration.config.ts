@@ -21,9 +21,21 @@ export default defineConfig({
           TEST_WOTF_BACKFILL_SQL: (
             await readFile(path.resolve("scripts/backfill-wotf.sql"), "utf8")
           ).replaceAll("\n", " "),
+          TEST_WOTF_VERIFY_SQL: (
+            await readFile(
+              path.resolve("scripts/verify-multi-club-migration.sql"),
+              "utf8",
+            )
+          ).replaceAll("\n", " "),
           TEST_CONTRACT_SQL: (
             await readFile(
               path.resolve("scripts/contract-multi-club.sql"),
+              "utf8",
+            )
+          ).replaceAll("\n", " "),
+          TEST_CONTRACT_VERIFY_SQL: (
+            await readFile(
+              path.resolve("scripts/verify-multi-club-contract.sql"),
               "utf8",
             )
           ).replaceAll("\n", " "),

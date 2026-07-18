@@ -147,6 +147,29 @@ test("expands and backfills a populated single-club database", async () => {
 
   await env.DB.exec(env.TEST_CONTRACT_SQL);
 
+  await expect(env.DB.exec(env.TEST_CONTRACT_VERIFY_SQL)).resolves.toEqual(
+    expect.objectContaining({ count: expect.any(Number) }),
+  );
+  expect(env.TEST_WOTF_VERIFY_SQL).toContain(
+    "violation:bootstrap_admin_not_wotf_sole_owner",
+  );
+
+  const bootstrapOwner = await env.DB.prepare(
+    `SELECT users.email, users.platform_role, club_memberships.role
+     FROM club_memberships
+     INNER JOIN users ON users.id = club_memberships.user_id
+     WHERE club_memberships.club_id = 'club_wotf' AND club_memberships.role = 'owner'`,
+  ).first<{
+    email: string;
+    platform_role: string;
+    role: string;
+  }>();
+  expect(bootstrapOwner).toEqual({
+    email: "dumky@motherduck.com",
+    platform_role: "super_admin",
+    role: "owner",
+  });
+
   for (const column of ["role", "stage", "model_pref"]) {
     const columns = await env.DB.prepare("PRAGMA table_info(users)").all<{
       name: string;
