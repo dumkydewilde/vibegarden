@@ -13,11 +13,12 @@ import {
   requireScope,
   runMcpTool,
 } from "~/lib/mcp/auth.server";
-import { RESPONSE_MAX_CHARS } from "~/lib/mcp/contracts";
+import { BODY_MAX_CHARS, RESPONSE_MAX_CHARS } from "~/lib/mcp/contracts";
 
 const generalLimit = vi.fn();
 const historyLimit = vi.fn();
 const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined);
+const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
 function mockMcpAuthContext(context: unknown) {
   mocks.getMcpAuthContext.mockReturnValue(context);
@@ -39,6 +40,7 @@ beforeEach(() => {
   generalLimit.mockResolvedValue({ success: true });
   historyLimit.mockResolvedValue({ success: true });
   consoleInfo.mockClear();
+  consoleError.mockClear();
 });
 
 afterEach(() => {
@@ -175,6 +177,39 @@ describe("MCP tool auth wrapper", () => {
 
     expect(JSON.stringify(result).length).toBeLessThanOrEqual(RESPONSE_MAX_CHARS);
     expect(result.isError).toBe(true);
+  });
+
+  it("rejects an individual textual response body over the body limit", async () => {
+    const result = await runMcpTool({
+      env: env(),
+      toolName: "read_article",
+      requestId: "request-1",
+      requiredScope: "content:read",
+      limiter: "general",
+    }, async () => ({
+      content: [{ type: "text", text: "x".repeat(BODY_MAX_CHARS + 1) }],
+    }));
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("internal_error");
+  });
+
+  it("does not log attacker-controlled properties from unexpected failures", async () => {
+    const attackerControlledName = "attacker-controlled-log-content";
+
+    await runMcpTool({
+      env: env(),
+      toolName: "read_article",
+      requestId: "request-1",
+      requiredScope: "content:read",
+      limiter: "general",
+    }, async () => Promise.reject({ constructor: { name: attackerControlledName } }));
+
+    const serialized = JSON.stringify(consoleError.mock.calls);
+    expect(serialized).not.toContain(attackerControlledName);
+    expect(JSON.parse(consoleError.mock.calls[0][0])).toMatchObject({
+      errorClass: "unexpected_error",
+    });
   });
 
   it("logs metadata without arguments or content", async () => {

@@ -2,6 +2,7 @@ import { getMcpAuthContext } from "agents/mcp";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   MCP_SCOPES,
+  BODY_MAX_CHARS,
   RESPONSE_MAX_CHARS,
   type McpPrincipal,
   type McpScope,
@@ -109,17 +110,20 @@ function isTemporaryFailure(error: unknown): boolean {
   return /\b(?:D1(?:[_\s-]?ERROR)?|network|fetch|connection|timeout|ECONN)\b/i.test(text);
 }
 
-function errorClass(error: unknown): string {
-  if (error && typeof error === "object" && "constructor" in error) {
-    const name = (error as { constructor?: { name?: unknown } }).constructor?.name;
-    if (typeof name === "string" && name) return name;
-  }
-  return typeof error;
+function hasOversizedTextualBody(result: CallToolResult): boolean {
+  return result.content.some((content) => (
+    content.type === "text" && content.text.length > BODY_MAX_CHARS
+  ) || (
+    content.type === "resource"
+    && "text" in content.resource
+    && content.resource.text.length > BODY_MAX_CHARS
+  ));
 }
 
 function cappedResult(value: McpToolValue): CallToolResult {
   const result = toToolResult(value);
-  if (JSON.stringify(result).length > RESPONSE_MAX_CHARS) {
+  if (hasOversizedTextualBody(result)
+    || JSON.stringify(result).length > RESPONSE_MAX_CHARS) {
     throw new McpPublicError(
       "internal_error",
       "The response could not be completed.",
@@ -174,7 +178,7 @@ export async function runMcpTool(
     if (!(error instanceof McpPublicError)) {
       console.error(JSON.stringify({
         event: "mcp_tool_error",
-        errorClass: errorClass(error),
+        errorClass: "unexpected_error",
         requestId: options.requestId,
       }));
     }
