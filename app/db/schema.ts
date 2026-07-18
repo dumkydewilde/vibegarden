@@ -208,6 +208,8 @@ export const clubAiCredentials = sqliteTable(
     candidateKeySuffix: text("candidate_key_suffix"),
     candidateCiphertext: text("candidate_ciphertext"),
     candidateIv: text("candidate_iv"),
+    provisioningLeaseToken: text("provisioning_lease_token"),
+    provisioningLeaseHeartbeatAt: integer("provisioning_lease_heartbeat_at"),
   },
   (table) => [index("club_ai_credentials_club_id_idx").on(table.clubId)],
 );

@@ -32,8 +32,20 @@ class FakeManagementClient implements ClubAiManagementClient {
   created = 0;
   failAssignments = false;
   failDisableHash: string | null = null;
+  failListKeys = false;
+  blockNextList: Promise<void> | null = null;
+  onListBlocked: (() => void) | null = null;
 
-  async listKeys() { return this.keys; }
+  async listKeys() {
+    if (this.failListKeys) throw new Error("provider stalled");
+    if (this.blockNextList) {
+      const gate = this.blockNextList;
+      this.blockNextList = null;
+      this.onListBlocked?.();
+      await gate;
+    }
+    return this.keys;
+  }
   async createKey(input: OpenRouterKeyInput): Promise<CreatedOpenRouterKey> {
     const key: OpenRouterKey = { hash: `hash-${++this.created}`, name: input.name, disabled: false, limit: input.limit, limitReset: input.limitReset, workspaceId: input.workspaceId };
     this.keys.push(key);
@@ -122,7 +134,7 @@ describe("club AI credential lifecycle", () => {
       "Club AI provisioning could not be completed.",
     );
     client.failDisableHash = null;
-    await rotateClubCredential(testEnv, "club-ai-rotate-retry", client);
+    await syncClubPolicy(testEnv, "club-ai-rotate-retry", client);
 
     expect(client.created).toBe(2);
     expect(client.keys.find((key) => key.hash === "hash-1")?.disabled).toBe(true);
@@ -148,6 +160,21 @@ describe("club AI credential lifecycle", () => {
     expect(await getClubChatCredential(testEnv, "club_wotf")).toBe("sk-hash-2");
   });
 
+  it("never widens the shared free guardrail when another club upgrades", async () => {
+    await club("club-ai-free-stays-free");
+    await club("club-ai-upgrade");
+    const client = new FakeManagementClient();
+    await provisionClubAi(testEnv, "club-ai-free-stays-free", client);
+    await provisionClubAi(testEnv, "club-ai-upgrade", client);
+
+    await env.DB.prepare("UPDATE clubs SET model_policy = 'all_models' WHERE id = ?")
+      .bind("club-ai-upgrade").run();
+    await syncClubPolicy(testEnv, "club-ai-upgrade", client);
+
+    expect(client.guardrails.find((guardrail) => guardrail.name === "vibegarden:free-only:v1")?.allowedModels)
+      .toEqual(["google/gemma-4-26b-a4b-it:free"]);
+  });
+
   it("leases reconciliation so concurrent provisioning cannot mint duplicate keys", async () => {
     await club("club-ai-concurrent");
     const client = new FakeManagementClient();
@@ -159,6 +186,27 @@ describe("club AI credential lifecycle", () => {
 
     expect(client.created).toBe(1);
     expect(await getClubChatCredential(testEnv, "club-ai-concurrent")).toBe("sk-hash-1");
+  });
+
+  it("reclaims an expired lease without letting its slow prior owner overwrite the result", async () => {
+    await club("club-ai-lease-reclaim");
+    const client = new FakeManagementClient();
+    await provisionClubAi(testEnv, "club-ai-lease-reclaim", client);
+    let release!: () => void;
+    let blocked!: () => void;
+    client.blockNextList = new Promise((resolve) => { release = resolve; });
+    client.onListBlocked = () => blocked();
+    const first = provisionClubAi(testEnv, "club-ai-lease-reclaim", client);
+    await new Promise<void>((resolve) => { blocked = resolve; });
+
+    await env.DB.prepare(
+      "UPDATE club_ai_credentials SET provisioning_lease_heartbeat_at = ? WHERE club_id = ?",
+    ).bind(Date.now() - 31_000, "club-ai-lease-reclaim").run();
+    await provisionClubAi(testEnv, "club-ai-lease-reclaim", client);
+    release();
+
+    await expect(first).rejects.toThrow("Club AI provisioning could not be completed.");
+    expect(await getClubChatCredential(testEnv, "club-ai-lease-reclaim")).toBe("sk-hash-1");
   });
 
   it("records only a sanitized error when provider reconciliation fails", async () => {
@@ -189,5 +237,15 @@ describe("club AI credential lifecycle", () => {
     await expect(getClubChatCredential(testEnv, "club-ai-lost")).rejects.toThrow(/not ready/i);
     expect(await clubCredentialNeedsProvisioning(testEnv, "club-ai-lost")).toBe(false);
     expect(client.keys[1].disabled).toBe(true);
+  });
+
+  it("sets local disabled state before a remote disable attempt can fail", async () => {
+    await club("club-ai-disable-first");
+    const client = new FakeManagementClient();
+    await provisionClubAi(testEnv, "club-ai-disable-first", client);
+    client.failListKeys = true;
+
+    await expect(setClubCredentialDisabled(testEnv, "club-ai-disable-first", true, client)).rejects.toThrow("provider stalled");
+    await expect(getClubChatCredential(testEnv, "club-ai-disable-first")).rejects.toThrow(/not ready/i);
   });
 });
