@@ -10,7 +10,7 @@
 	"vars": {
 		// Bootstrap admin: this email can always log in and gets the admin role.
 		"ADMIN_EMAIL": "dumky@motherduck.com",
-		"MAIL_FROM": "Vibe Garden <no-reply@vibegarden.dumky.net>"
+		"MAIL_FROM": "Vibe Garden <no-reply@vibegarden.club>"
 	},
 	"d1_databases": [
 		{
