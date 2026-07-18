@@ -227,6 +227,26 @@ async function completePromotedCandidate(
   return true;
 }
 
+/** A stored candidate is not usable until it has been promoted. Reconcile
+ * non-rotation retries by revoking it instead of silently leaving a spare key. */
+async function clearUnpromotedCandidate(
+  env: Env,
+  current: CredentialRow,
+  keys: OpenRouterKey[],
+  client: ClubAiManagementClient,
+  leaseToken: string,
+): Promise<boolean> {
+  if (!current.candidateKeyHash || current.candidateKeyHash === current.keyHash) return false;
+  await disableRemote(client, keys, [current.candidateKeyHash]);
+  const cleared = await env.DB.prepare(
+    `UPDATE club_ai_credentials SET candidate_key_hash = NULL, candidate_key_suffix = NULL,
+     candidate_ciphertext = NULL, candidate_iv = NULL
+     WHERE club_id = ? AND provisioning_lease_token = ?`,
+  ).bind(current.clubId, leaseToken).run();
+  if (cleared.meta.changes !== 1) throw new Error("Provisioning lease was lost.");
+  return true;
+}
+
 /** Reconciles the remote key and guardrail, remaining unavailable until both agree. */
 export async function provisionClubAi(env: Env, clubId: string, suppliedClient?: ClubAiManagementClient) {
   const client = clientFor(env, suppliedClient);
@@ -239,6 +259,7 @@ export async function provisionClubAi(env: Env, clubId: string, suppliedClient?:
     const keys = await client.listKeys(true);
     await requireLease(env, clubId, leaseToken);
     if (await completePromotedCandidate(env, clubRow, current, keys, client, leaseToken)) return;
+    await clearUnpromotedCandidate(env, current, keys, client, leaseToken);
     const remote = keys.find((key) => key.hash === current.keyHash);
     const usable = !!(
       current.keyHash && current.ciphertext && current.iv && remote && !remote.disabled

@@ -141,6 +141,26 @@ describe("club AI credential lifecycle", () => {
     expect(await getClubChatCredential(testEnv, "club-ai-rotate-retry")).toBe("sk-hash-2");
   });
 
+  it("disables an unpromoted candidate when assignment verification failed before retry", async () => {
+    await club("club-ai-unpromoted-candidate");
+    const client = new FakeManagementClient();
+    await provisionClubAi(testEnv, "club-ai-unpromoted-candidate", client);
+    client.failAssignments = true;
+
+    await expect(rotateClubCredential(testEnv, "club-ai-unpromoted-candidate", client)).rejects.toThrow(
+      "Club AI provisioning could not be completed.",
+    );
+    client.failAssignments = false;
+    await syncClubPolicy(testEnv, "club-ai-unpromoted-candidate", client);
+
+    expect(client.keys).toHaveLength(2);
+    expect(client.keys.find((key) => key.hash === "hash-2")?.disabled).toBe(true);
+    expect(await getClubChatCredential(testEnv, "club-ai-unpromoted-candidate")).toBe("sk-hash-1");
+    expect(await env.DB.prepare(
+      "SELECT candidate_key_hash AS candidateKeyHash FROM club_ai_credentials WHERE club_id = ?",
+    ).bind("club-ai-unpromoted-candidate").first()).toEqual({ candidateKeyHash: null });
+  });
+
   it("reuses the free guardrail while giving WOTF and every club its own key", async () => {
     await club("club-ai-free-a");
     await club("club_wotf", "all_models");
