@@ -50,7 +50,6 @@ export async function action({ request, context }: Route.ActionArgs) {
       createdAt: Date.now(),
     })
     .onConflictDoUpdate({
-      target: questionnaireResponses.userId,
       set: { answers: JSON.stringify(answers), createdAt: Date.now() },
     });
   await db

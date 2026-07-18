@@ -1,4 +1,5 @@
 import path from "node:path";
+import { readFile } from "node:fs/promises";
 import {
   cloudflareTest,
   readD1Migrations,
@@ -12,8 +13,15 @@ export default defineConfig({
       miniflare: {
         bindings: {
           TEST_MIGRATIONS: await readD1Migrations(path.resolve("drizzle")),
-          TEST_WOTF_BACKFILL_SQL: "",
-          TEST_CONTRACT_SQL: "",
+          TEST_WOTF_BACKFILL_SQL: (
+            await readFile(path.resolve("scripts/backfill-wotf.sql"), "utf8")
+          ).replaceAll("\n", " "),
+          TEST_CONTRACT_SQL: (
+            await readFile(
+              path.resolve("scripts/contract-multi-club.sql"),
+              "utf8",
+            )
+          ).replaceAll("\n", " "),
         },
       },
     })),
