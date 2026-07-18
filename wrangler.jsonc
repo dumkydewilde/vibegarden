@@ -34,6 +34,10 @@
 	 * - RESEND_API_KEY: optional, enables OTP email sending
 	 * - GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET: optional, enables Google login
 	 * - OPENROUTER_API_KEY: phase 3, the Gardener's LLM access
+	 * - OPENROUTER_MANAGEMENT_KEY: server-only management key for club API keys and guardrails
+	 * - OPENROUTER_CREDENTIAL_KEY_V1: base64-encoded 32-byte AES-GCM key for club credentials
+	 * - OPENROUTER_WORKSPACE_ID: optional OpenRouter workspace for managed club credentials
+	 * - ALLOW_WOTF_LEGACY_KEY: temporary 'true' fallback for WOTF while its club key is unavailable
 	 * - MOTHERDUCK_TOKEN: optional, enables the Gardener's fresh_reads tool
 	 *   (use a read-scaling token; MOTHERDUCK_PG_HOST/MOTHERDUCK_DATABASE
 	 *   override the pg endpoint host and initial database)
