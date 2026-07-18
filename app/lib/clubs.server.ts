@@ -4,6 +4,9 @@ import { clubMemberships, clubs, clubSlugAliases } from "~/db/schema";
 import { requireUser } from "~/lib/auth.server";
 import { getDb } from "~/lib/db.server";
 import { recordAuditEvent } from "~/lib/memberships.server";
+import { normalizeClubSlug } from "~/lib/club-path";
+
+export { normalizeClubSlug } from "~/lib/club-path";
 
 export const RESERVED_CLUB_SLUGS = new Set([
   "admin",
@@ -16,14 +19,6 @@ export const RESERVED_CLUB_SLUGS = new Set([
   "logout",
   "settings",
 ]);
-
-export function normalizeClubSlug(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
 
 export function isValidClubSlug(value: string) {
   return (

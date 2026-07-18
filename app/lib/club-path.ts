@@ -3,6 +3,15 @@ export function clubPath(slug: string, path = "") {
   return `/clubs/${encodeURIComponent(slug)}${suffix}`;
 }
 
+/** Produces an editable, URL-safe club slug on either the server or client. */
+export function normalizeClubSlug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 const LEGACY_CLUB_SECTIONS = new Set([
   "garden",
   "learning",

@@ -1,20 +1,24 @@
 import { Moon, Sun } from "lucide-react";
+import { useTheme } from "next-themes";
+import { useFetcher } from "react-router";
 import { Button } from "~/components/ui/button";
 
-function applyTheme(dark: boolean) {
-  document.documentElement.classList.toggle("dark", dark);
-  document.cookie = `vg-theme=${dark ? "dark" : "light"}; path=/; max-age=31536000; samesite=lax`;
-}
-
 export function ThemeToggle() {
+  const { resolvedTheme, setTheme } = useTheme();
+  const fetcher = useFetcher();
   return (
     <Button
       variant="ghost"
       size="icon"
       aria-label="Toggle theme"
-      onClick={() =>
-        applyTheme(!document.documentElement.classList.contains("dark"))
-      }
+      onClick={() => {
+        const theme = resolvedTheme === "dark" ? "light" : "dark";
+        setTheme(theme);
+        fetcher.submit(
+          { intent: "theme", theme },
+          { method: "post", action: "/settings" },
+        );
+      }}
     >
       <Sun className="size-4 dark:hidden" />
       <Moon className="size-4 hidden dark:block" />

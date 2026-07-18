@@ -14,8 +14,9 @@ import {
 } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
 import { clubPath } from "~/lib/club-path";
+import { ClubSwitcher, type ClubSwitcherProps } from "./club-switcher";
 
-export function LeftNav() {
+export function LeftNav({ current, clubs }: Pick<ClubSwitcherProps, "current" | "clubs">) {
   const [collapsed, setCollapsed] = useState(false);
   const { pathname } = useLocation();
   const { clubSlug } = useParams();
@@ -40,12 +41,14 @@ export function LeftNav() {
         {!collapsed && <span>Vibe Garden</span>}
       </Link>
 
+      <ClubSwitcher current={current} clubs={clubs} compact={collapsed} />
+
       <TooltipProvider>
         <ul className="flex flex-1 flex-col gap-1 p-2">
           {items.map((item) => {
             const to = clubPath(clubSlug ?? "", item.to);
             const isActive =
-              item.to === "/"
+              item.to === ""
                 ? pathname === to
                 : pathname.startsWith(to);
             return (

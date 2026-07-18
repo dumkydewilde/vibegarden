@@ -15,8 +15,9 @@ import {
 } from "~/components/ui/sheet";
 import { cn } from "~/lib/utils";
 import { clubPath } from "~/lib/club-path";
+import { ClubSwitcher, type ClubSwitcherProps } from "./club-switcher";
 
-export function MobileNav() {
+export function MobileNav({ current, clubs }: Pick<ClubSwitcherProps, "current" | "clubs">) {
   const [open, setOpen] = useState(false);
   const user = useAppUser();
   const { clubSlug } = useParams();
@@ -39,12 +40,15 @@ export function MobileNav() {
               Vibe Garden
             </SheetTitle>
           </SheetHeader>
+          <div className="border-b p-2">
+            <ClubSwitcher current={current} clubs={clubs} compact onNavigate={() => setOpen(false)} />
+          </div>
           <ul className="flex flex-col gap-1 p-2">
             {items.map((item) => (
               <li key={item.to}>
                 <NavLink
                   to={clubPath(clubSlug ?? "", item.to)}
-                  end={item.to === "/"}
+                  end={item.to === ""}
                   onClick={() => setOpen(false)}
                   className={({ isActive }) =>
                     cn(

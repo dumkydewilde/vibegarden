@@ -5,31 +5,21 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLoaderData,
 } from "react-router";
+import { ThemeProvider } from "next-themes";
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import { cloudflareContext } from "~/lib/context";
+import { getUser } from "~/lib/auth.server";
 
-export function loader({ request }: Route.LoaderArgs) {
-  const cookie = request.headers.get("Cookie") ?? "";
-  const theme = /vg-theme=dark/.test(cookie)
-    ? "dark"
-    : /vg-theme=light/.test(cookie)
-      ? "light"
-      : null;
-  return { theme };
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const { env } = context.get(cloudflareContext);
+  const user = await getUser(env, request);
+  const theme = user?.themePref;
+  return { theme: theme === "light" || theme === "dark" ? theme : "system" };
 }
-
-// Applies the stored or system theme before hydration so there is no flash
-// of the wrong theme. Runs once, inline, in <head>.
-const themeScript = `
-(function () {
-  var m = document.cookie.match(/vg-theme=(dark|light)/);
-  var dark = m ? m[1] === "dark"
-    : window.matchMedia("(prefers-color-scheme: dark)").matches;
-  if (dark) document.documentElement.classList.add("dark");
-})();
-`;
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -37,7 +27,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <Meta />
         <Links />
       </head>
@@ -51,7 +40,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  return <Outlet />;
+  const { theme } = useLoaderData<typeof loader>();
+  return (
+    <ThemeProvider attribute="class" defaultTheme={theme} enableSystem>
+      <Outlet />
+    </ThemeProvider>
+  );
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

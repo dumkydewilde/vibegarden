@@ -11,16 +11,30 @@ import { requireUser } from "~/lib/auth.server";
 import { requireClubContext } from "~/lib/clubs.server";
 import { clubPath } from "~/lib/club-path";
 import { activeThread, parseContext } from "~/lib/threads.server";
+import { listUserClubs } from "~/lib/clubs.server";
+import { models } from "~/lib/models";
+
+export type AppClub = {
+  id: string;
+  name: string;
+  slug: string;
+};
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
   const club = await requireClubContext(env, request, params.clubSlug ?? "");
+  // This runs only after canonical slug, active status, and access checks
+  // succeed. A failed switch therefore never displaces the user's last club.
+  await env.DB.prepare("UPDATE users SET last_club_id = ? WHERE id = ?")
+    .bind(club.club.id, user.id)
+    .run();
   // Progressive flow: newcomers answer the questionnaire first.
   // Admins bypass so the host is never locked out.
   if (club.membership?.onboardingStage === "invited" && !club.isSuperAdmin) {
     throw redirect(clubPath(club.club.slug, "welcome"));
   }
+  const memberships = await listUserClubs(env, user.id);
   const { threadId, messages: history } = await activeThread(env, {
     clubId: club.club.id,
     userId: user.id,
@@ -34,8 +48,21 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   return {
     club: {
       id: club.club.id,
+      name: club.club.name,
       slug: club.club.slug,
     },
+    explicitRole: club.membership?.role ?? null,
+    effectiveRole: club.effectiveRole,
+    clubs: memberships
+      .filter((entry) => entry.club.status === "active")
+      .map((entry) => ({
+        name: entry.club.name,
+        slug: entry.club.slug,
+        role: entry.membership.role,
+      })),
+    allowedModels: models
+      .filter((model) => club.club.modelPolicy === "all_models" || model.id.endsWith(":free"))
+      .map((model) => model.id),
     user: {
       email: user.email,
       name: user.name,
@@ -61,7 +88,11 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
       initialMessages={loaderData.gardener.messages}
       initialModelId={loaderData.gardener.modelId}
     >
-      <AppShell aside={<AgentSidebar />}>
+      <AppShell
+        club={loaderData.club}
+        clubs={loaderData.clubs}
+        aside={<AgentSidebar />}
+      >
         <Outlet />
       </AppShell>
     </GardenerProvider>

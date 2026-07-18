@@ -6,6 +6,7 @@ import {
 
 export default [
   index("routes/home.tsx"),
+  route("settings", "routes/settings.tsx"),
   route("join/:token", "routes/join.tsx"),
   route("clubs/:clubSlug/welcome", "routes/welcome.tsx"),
   route("clubs/:clubSlug/api/chat", "routes/api.chat.ts"),

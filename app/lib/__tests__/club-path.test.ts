@@ -29,3 +29,9 @@ describe("clubPath", () => {
     expect(legacyClubPath!("https://example.com/login", "login")).toBeNull();
   });
 });
+
+describe("normalizeClubSlug", () => {
+  it("formats a proposed club URL in browser code", () => {
+    expect(clubPaths.normalizeClubSlug("  Café -- Garden!  ")).toBe("caf-garden");
+  });
+});
