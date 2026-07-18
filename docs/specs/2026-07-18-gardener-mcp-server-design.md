@@ -1,6 +1,6 @@
 # The Gardener MCP Server: Design Spec
 
-**Date:** 2026-07-18  
+**Date:** 2026-07-18
 **Status:** Approved in conversation; written review pending
 
 ## Summary
