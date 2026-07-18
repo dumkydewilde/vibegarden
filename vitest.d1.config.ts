@@ -6,6 +6,11 @@ import {
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      "~": path.resolve("app"),
+    },
+  },
   plugins: [
     cloudflareTest(async () => ({
       wrangler: { configPath: "./wrangler.jsonc" },
