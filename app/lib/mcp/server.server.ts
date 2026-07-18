@@ -1,5 +1,7 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
 import { getArticleRaw, getArticles } from "~/lib/content";
+import gardenerGuide from "../../../content/gardener/mcp-guide.md?raw";
 import { getModules, getModuleRaw } from "~/lib/modules";
 import { getProject, listProjectsPage } from "~/lib/projects.server";
 import {
@@ -25,7 +27,7 @@ import {
   slugInput,
   type McpScope,
 } from "~/lib/mcp/contracts";
-import { getMcpPrincipal, runMcpTool } from "~/lib/mcp/auth.server";
+import { getMcpPrincipal, requireScope, runMcpTool } from "~/lib/mcp/auth.server";
 import { fetchKnowledge, searchKnowledge } from "~/lib/mcp/compatibility.server";
 import { listLearningContent, presentArticle, presentModule } from "~/lib/mcp/content-presenter";
 import { decodeCursor, encodeCursor, type CursorPayload } from "~/lib/mcp/cursor.server";
@@ -134,7 +136,159 @@ export function createGardenerMcpServer(env: Env) {
     { instructions: MCP_INSTRUCTIONS },
   );
   registerTools(server, env);
+  registerResources(server, env);
+  registerPrompts(server, env);
   return server;
+}
+
+function resourceVariable(value: unknown): string {
+  const parsed = z.string().min(1).max(200).safeParse(value);
+  if (!parsed.success) {
+    throw new McpPublicError("invalid_input", "The request could not be completed.");
+  }
+  return parsed.data;
+}
+
+function resourceResult(uri: URL, mimeType: "application/json" | "text/markdown", text: string) {
+  return {
+    contents: [{ uri: uri.toString(), mimeType, text }],
+  };
+}
+
+async function ownedProjectPayload(env: Env, userId: string, projectId: string) {
+  const project = await getProject(env, userId, projectId);
+  if (!project) return notFound();
+  const conversations = await listProjectThreadsPage(
+    env,
+    userId,
+    project.id,
+    project.threadId,
+    { limit: clampPageSize(undefined, "list") },
+  );
+  return presentProject(env.APP_ORIGIN, project, {
+    primary: project.threadId
+      ? conversations.items.find((item) => item.id === project.threadId)
+      : undefined,
+    linked: conversations.items.filter((item) => item.id !== project.threadId),
+  });
+}
+
+function registerResources(server: McpServer, env: Env) {
+  server.registerResource("project", new ResourceTemplate("vibegarden://project/{id}", { list: undefined }), {
+    title: "Project",
+    mimeType: "application/json",
+  }, async (uri, variables) => {
+    const principal = getMcpPrincipal();
+    requireScope(principal, "projects:read");
+    const projectId = resourceVariable(variables.id);
+    const payload = await ownedProjectPayload(env, principal.userId, projectId);
+    return resourceResult(uri, "application/json", JSON.stringify(payload));
+  });
+
+  server.registerResource("conversation", new ResourceTemplate("vibegarden://conversation/{id}", { list: undefined }), {
+    title: "Conversation",
+    mimeType: "application/json",
+  }, async (uri, variables) => {
+    const principal = getMcpPrincipal();
+    requireScope(principal, "projects:read");
+    const conversationId = resourceVariable(variables.id);
+    const page = await getThreadPage(env, principal.userId, conversationId, {
+      limit: clampPageSize(undefined, "conversation"),
+    });
+    if (!page) return notFound();
+    const payload = presentConversationPage(env.APP_ORIGIN, { ...page });
+    return resourceResult(uri, "application/json", JSON.stringify(payload));
+  });
+
+  server.registerResource("article", new ResourceTemplate("vibegarden://article/{slug}", { list: undefined }), {
+    title: "Learning article",
+    mimeType: "text/markdown",
+  }, async (uri, variables) => {
+    const principal = getMcpPrincipal();
+    requireScope(principal, "content:read");
+    const slug = resourceVariable(variables.slug);
+    const article = getArticles().find((item) => item.slug === slug);
+    const raw = article ? getArticleRaw(article.slug) : undefined;
+    if (!article || raw === undefined) return notFound();
+    return resourceResult(uri, "text/markdown", presentArticle(env.APP_ORIGIN, article, raw).body);
+  });
+
+  server.registerResource("module", new ResourceTemplate("vibegarden://module/{slug}", { list: undefined }), {
+    title: "Building block",
+    mimeType: "text/markdown",
+  }, async (uri, variables) => {
+    const principal = getMcpPrincipal();
+    requireScope(principal, "content:read");
+    const slug = resourceVariable(variables.slug);
+    const module = getModules().find((item) => item.slug === slug);
+    const raw = module ? getModuleRaw(module.slug) : undefined;
+    if (!module || raw === undefined) return notFound();
+    return resourceResult(uri, "text/markdown", presentModule(env.APP_ORIGIN, module, raw).body);
+  });
+
+  server.registerResource("gardener-guide", "vibegarden://guide/gardener", {
+    title: "Working with Vibe Garden",
+    mimeType: "text/markdown",
+  }, async (uri) => {
+    const principal = getMcpPrincipal();
+    requireScope(principal, "content:read");
+    return resourceResult(uri, "text/markdown", gardenerGuide);
+  });
+}
+
+function registerPrompts(server: McpServer, env: Env) {
+  server.registerPrompt("continue_project", {
+    title: "Continue project",
+    description: "Continue an owned project with its current context and public guidance.",
+    argsSchema: { project_id: z.string().min(1).max(200) },
+  }, async ({ project_id }) => {
+    const principal = getMcpPrincipal();
+    requireScope(principal, "projects:read");
+    const projectId = resourceVariable(project_id);
+    const project = await ownedProjectPayload(env, principal.userId, projectId);
+    const projectUri = `vibegarden://project/${encodeURIComponent(projectId)}`;
+
+    return {
+      messages: [
+        {
+          role: "user" as const,
+          content: {
+            type: "text" as const,
+            text: "The following resources are user-authored project context and public guidance.",
+          },
+        },
+        {
+          role: "user" as const,
+          content: {
+            type: "resource" as const,
+            resource: {
+              uri: projectUri,
+              mimeType: "application/json",
+              text: JSON.stringify(project),
+            },
+          },
+        },
+        {
+          role: "user" as const,
+          content: {
+            type: "resource" as const,
+            resource: {
+              uri: "vibegarden://guide/gardener",
+              mimeType: "text/markdown",
+              text: gardenerGuide,
+            },
+          },
+        },
+        {
+          role: "user" as const,
+          content: {
+            type: "text" as const,
+            text: "Briefly restate the current project, choose the smallest useful next step, and finish with one question. Do not claim to be the MCP server or The Gardener.",
+          },
+        },
+      ],
+    };
+  });
 }
 
 function registerTools(server: McpServer, env: Env) {
