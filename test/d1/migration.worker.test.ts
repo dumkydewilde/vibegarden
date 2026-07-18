@@ -229,4 +229,18 @@ test("keeps slug claims consistent for direct canonical and alias writes", async
       .bind("direct-first", "direct-second")
       .run(),
   ).rejects.toThrow();
+
+  await env.DB.prepare(
+    "INSERT INTO club_slug_aliases (slug, club_id, created_at) VALUES (?, ?, ?)",
+  ).bind("direct-first-alias", "direct-first", 23).run();
+  await expect(
+    env.DB.prepare("UPDATE club_slug_aliases SET slug = ? WHERE slug = ?")
+      .bind("direct-second", "direct-first-alias")
+      .run(),
+  ).rejects.toThrow();
+  await expect(
+    env.DB.prepare("UPDATE club_slug_aliases SET club_id = ? WHERE slug = ?")
+      .bind("direct-second", "direct-first-alias")
+      .run(),
+  ).rejects.toThrow();
 });

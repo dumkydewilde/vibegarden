@@ -48,3 +48,9 @@ BEGIN
     SELECT 1 FROM `club_slug_claims` WHERE `slug` = NEW.`slug`
   );
 END;
+--> statement-breakpoint
+CREATE TRIGGER `club_slug_aliases_are_immutable`
+BEFORE UPDATE OF `slug`, `club_id` ON `club_slug_aliases`
+BEGIN
+  SELECT RAISE(ABORT, 'club slug aliases are immutable');
+END;
