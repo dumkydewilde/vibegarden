@@ -23,6 +23,7 @@ import {
 import { createSessionCookie, getUser } from "~/lib/auth.server";
 import { googleEnabled } from "~/lib/google.server";
 import { requestLoginCode, verifyLoginCode } from "~/lib/otp.server";
+import { safeInternalPath } from "~/lib/return-path";
 
 export function meta({}: Route.MetaArgs) {
   return [{ title: "Sign in · Vibe Garden" }];
@@ -32,7 +33,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await getUser(env, request);
   if (user) throw redirect("/");
-  return { google: googleEnabled(env) };
+  return {
+    google: googleEnabled(env),
+    next: safeInternalPath(
+      request,
+      new URL(request.url).searchParams.get("next"),
+    ),
+  };
 }
 
 type ActionData =
@@ -74,9 +81,11 @@ export async function action({
       return { step: "code", email, error };
     }
     const cookie = await createSessionCookie(env, request, result.user.id);
-    const url = new URL(request.url);
-    const next = url.searchParams.get("next") ?? "/";
-    return redirect(next.startsWith("/") ? next : "/", {
+    const next = safeInternalPath(
+      request,
+      new URL(request.url).searchParams.get("next"),
+    );
+    return redirect(next, {
       headers: { "Set-Cookie": cookie },
     });
   }
@@ -104,6 +113,7 @@ export default function Login({
   const devCode =
     actionData && "devCode" in actionData ? actionData.devCode : undefined;
   const email = actionData && "email" in actionData ? actionData.email : "";
+  const formAction = searchParams.size ? `/login?${searchParams}` : "/login";
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-4 py-16">
@@ -125,7 +135,7 @@ export default function Login({
         </CardHeader>
         <CardContent className="space-y-4">
           {step === "email" ? (
-            <Form method="post" className="space-y-3">
+            <Form method="post" action={formAction} className="space-y-3">
               <input type="hidden" name="intent" value="request" />
               <Input
                 type="email"
@@ -147,7 +157,7 @@ export default function Login({
               </Button>
             </Form>
           ) : (
-            <Form method="post" className="space-y-3">
+            <Form method="post" action={formAction} className="space-y-3">
               <input type="hidden" name="email" value={email} />
               <div className="space-y-2">
                 <label htmlFor="login-code" className="text-sm font-medium">
@@ -218,7 +228,7 @@ export default function Login({
                 <span className="h-px flex-1 bg-border" />
               </div>
               <Button asChild variant="outline" className="w-full">
-                <a href="/auth/google">
+                <a href={`/auth/google?next=${encodeURIComponent(loaderData.next)}`}>
                   <GoogleIcon className="size-4" />
                   Continue with Google
                 </a>

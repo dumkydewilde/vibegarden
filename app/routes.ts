@@ -39,6 +39,7 @@ export default [
   route(":section", "routes/legacy.$section.tsx"),
   route(":section/*", "routes/legacy.$section.$.tsx"),
   route("login", "routes/login.tsx"),
+  route("authorize", "routes/oauth.authorize.tsx"),
   route("dev/login", "routes/dev.login.tsx"),
   route("logout", "routes/logout.tsx"),
   route("auth/google", "routes/auth.google.tsx"),
