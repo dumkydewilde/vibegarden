@@ -52,6 +52,26 @@ describe("MCP reviewer login", () => {
     );
   });
 
+  it("fails closed when the configured email belongs to a different user id", async () => {
+    upsertUser.mockResolvedValue(null);
+    const form = new FormData();
+    form.set("email", "review@example.test");
+    form.set("password", "correct");
+
+    await expect(action(args(new Request("https://garden.test/review/login", {
+      method: "POST",
+      body: form,
+    }), env))).resolves.toEqual({ error: "Invalid reviewer credentials" });
+
+    expect(createSessionCookie).not.toHaveBeenCalled();
+    expect(upsertUser).toHaveBeenCalledWith(
+      env,
+      "review@example.test",
+      "user",
+      "476a9495-bcec-58a9-a9cf-10eb4d580e4a",
+    );
+  });
+
   it.each(["GET", "PUT", "DELETE"])("rejects %s credential submissions", async (method) => {
     await expect(action(args(new Request("https://garden.test/review/login", { method }), env)))
       .rejects.toMatchObject({ status: 405 });

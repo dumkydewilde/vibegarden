@@ -17,6 +17,32 @@ function values(row) {
   return Object.values(row).map(literal).join(", ");
 }
 
+export function buildReviewerPreflightSql(rawEmail) {
+  const email = rawEmail.trim().toLowerCase();
+  if (!email) throw new Error("MCP_REVIEW_EMAIL must be set before seeding reviewer data.");
+  return `SELECT id FROM users WHERE email = ${literal(email)} LIMIT 1;`;
+}
+
+export function assertReviewerIdentity(rawEmail, preflightOutput) {
+  const email = rawEmail.trim().toLowerCase();
+  const expectedId = reviewerId(email, "user");
+  let result;
+  try {
+    result = JSON.parse(preflightOutput);
+  } catch {
+    throw new Error("Could not verify the existing reviewer identity before seeding.");
+  }
+  const rows = Array.isArray(result)
+    ? result.flatMap((entry) => Array.isArray(entry?.results) ? entry.results : [])
+    : [];
+  const existingId = rows[0]?.id;
+  if (existingId === undefined) return expectedId;
+  if (existingId !== expectedId) {
+    throw new Error("MCP_REVIEW_EMAIL already belongs to a different user; refusing to seed reviewer data.");
+  }
+  return expectedId;
+}
+
 export function buildReviewerSeedSql(rawEmail) {
   const email = rawEmail.trim().toLowerCase();
   if (!email) throw new Error("MCP_REVIEW_EMAIL must be set before seeding reviewer data.");
@@ -24,16 +50,14 @@ export function buildReviewerSeedSql(rawEmail) {
   const reviewer = reviewerId(email, "user");
   const threadOne = reviewerId(email, "conversation-1");
   const threadTwo = reviewerId(email, "conversation-2");
-  const reviewerUser = `(SELECT id FROM users WHERE email = ${literal(email)})`;
   const createdAt = 1_784_304_000_000;
   const statements = [
-    `INSERT INTO users (id, email, name, role, stage, model_pref, created_at) VALUES (${values({ id: reviewer, email, name: "MCP reviewer", role: "user", stage: "exploring", modelPref: null, createdAt })}) ON CONFLICT(email) DO NOTHING;`,
-    `UPDATE users SET name='MCP reviewer', role='user', stage='exploring', model_pref=NULL WHERE id=${literal(reviewer)};`,
-    `INSERT INTO chat_threads (id, user_id, title, project_id, created_at, updated_at) VALUES (${literal(threadOne)}, ${reviewerUser}, ${literal("Plan a neighbourhood herb garden")}, NULL, ${createdAt}, ${createdAt + 7}) ON CONFLICT(id) DO UPDATE SET title=excluded.title, project_id=NULL, updated_at=excluded.updated_at;`,
-    `INSERT INTO chat_threads (id, user_id, title, project_id, created_at, updated_at) VALUES (${literal(threadTwo)}, ${reviewerUser}, ${literal("Share the harvest")}, NULL, ${createdAt + 8}, ${createdAt + 15}) ON CONFLICT(id) DO UPDATE SET title=excluded.title, project_id=NULL, updated_at=excluded.updated_at;`,
-    `INSERT INTO projects (id, user_id, title, one_liner, modules, status, thread_id, created_at, updated_at) VALUES (${literal(reviewerId(email, "project-seed"))}, ${reviewerUser}, ${literal("Herb garden sketch")}, ${literal("A small shared planter for neighbours.")}, ${literal('["web-app"]')}, 'seed', ${literal(threadOne)}, ${createdAt}, ${createdAt}) ON CONFLICT(id) DO UPDATE SET title=excluded.title, one_liner=excluded.one_liner, modules=excluded.modules, status='seed', thread_id=excluded.thread_id, updated_at=excluded.updated_at;`,
-    `INSERT INTO projects (id, user_id, title, one_liner, modules, status, thread_id, created_at, updated_at) VALUES (${literal(reviewerId(email, "project-growing"))}, ${reviewerUser}, ${literal("Watering rota")}, ${literal("A friendly schedule for garden care.")}, ${literal('["scheduled-task","google-sheet"]')}, 'growing', ${literal(threadTwo)}, ${createdAt + 8}, ${createdAt + 8}) ON CONFLICT(id) DO UPDATE SET title=excluded.title, one_liner=excluded.one_liner, modules=excluded.modules, status='growing', thread_id=excluded.thread_id, updated_at=excluded.updated_at;`,
-    `INSERT INTO projects (id, user_id, title, one_liner, modules, status, thread_id, created_at, updated_at) VALUES (${literal(reviewerId(email, "project-bloomed"))}, ${reviewerUser}, ${literal("Harvest sharing board")}, ${literal("A simple way to offer extra herbs.")}, ${literal('["web-app","database"]')}, 'bloomed', NULL, ${createdAt + 16}, ${createdAt + 16}) ON CONFLICT(id) DO UPDATE SET title=excluded.title, one_liner=excluded.one_liner, modules=excluded.modules, status='bloomed', thread_id=NULL, updated_at=excluded.updated_at;`,
+    `INSERT INTO users (id, email, name, role, stage, model_pref, created_at) VALUES (${values({ id: reviewer, email, name: "MCP reviewer", role: "user", stage: "exploring", modelPref: null, createdAt })}) ON CONFLICT(id) DO UPDATE SET name=excluded.name, role='user', stage='exploring', model_pref=NULL;`,
+    `INSERT INTO chat_threads (id, user_id, title, project_id, created_at, updated_at) VALUES (${literal(threadOne)}, ${literal(reviewer)}, ${literal("Plan a neighbourhood herb garden")}, NULL, ${createdAt}, ${createdAt + 7}) ON CONFLICT(id) DO UPDATE SET title=excluded.title, project_id=NULL, updated_at=excluded.updated_at;`,
+    `INSERT INTO chat_threads (id, user_id, title, project_id, created_at, updated_at) VALUES (${literal(threadTwo)}, ${literal(reviewer)}, ${literal("Share the harvest")}, NULL, ${createdAt + 8}, ${createdAt + 15}) ON CONFLICT(id) DO UPDATE SET title=excluded.title, project_id=NULL, updated_at=excluded.updated_at;`,
+    `INSERT INTO projects (id, user_id, title, one_liner, modules, status, thread_id, created_at, updated_at) VALUES (${literal(reviewerId(email, "project-seed"))}, ${literal(reviewer)}, ${literal("Herb garden sketch")}, ${literal("A small shared planter for neighbours.")}, ${literal('["web-app"]')}, 'seed', ${literal(threadOne)}, ${createdAt}, ${createdAt}) ON CONFLICT(id) DO UPDATE SET title=excluded.title, one_liner=excluded.one_liner, modules=excluded.modules, status='seed', thread_id=excluded.thread_id, updated_at=excluded.updated_at;`,
+    `INSERT INTO projects (id, user_id, title, one_liner, modules, status, thread_id, created_at, updated_at) VALUES (${literal(reviewerId(email, "project-growing"))}, ${literal(reviewer)}, ${literal("Watering rota")}, ${literal("A friendly schedule for garden care.")}, ${literal('["scheduled-task","google-sheet"]')}, 'growing', ${literal(threadTwo)}, ${createdAt + 8}, ${createdAt + 8}) ON CONFLICT(id) DO UPDATE SET title=excluded.title, one_liner=excluded.one_liner, modules=excluded.modules, status='growing', thread_id=excluded.thread_id, updated_at=excluded.updated_at;`,
+    `INSERT INTO projects (id, user_id, title, one_liner, modules, status, thread_id, created_at, updated_at) VALUES (${literal(reviewerId(email, "project-bloomed"))}, ${literal(reviewer)}, ${literal("Harvest sharing board")}, ${literal("A simple way to offer extra herbs.")}, ${literal('["web-app","database"]')}, 'bloomed', NULL, ${createdAt + 16}, ${createdAt + 16}) ON CONFLICT(id) DO UPDATE SET title=excluded.title, one_liner=excluded.one_liner, modules=excluded.modules, status='bloomed', thread_id=NULL, updated_at=excluded.updated_at;`,
   ];
 
   const messages = [
@@ -59,6 +83,10 @@ export function buildReviewerSeedSql(rawEmail) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const email = process.env.MCP_REVIEW_EMAIL?.trim().toLowerCase();
   if (!email) throw new Error("MCP_REVIEW_EMAIL must be set before seeding reviewer data.");
+  const preflightOutput = execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--remote", "--json", "--command", buildReviewerPreflightSql(email)], {
+    encoding: "utf8",
+  });
+  assertReviewerIdentity(email, preflightOutput);
   execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--remote", "--command", buildReviewerSeedSql(email)], {
     stdio: "inherit",
   });

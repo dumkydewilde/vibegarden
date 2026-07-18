@@ -125,12 +125,15 @@ export async function upsertUser(
   email: string,
   forcedRole?: User["role"],
   forcedId?: string,
-): Promise<User> {
+): Promise<User | null> {
   const db = getDb(env);
   const existing = await db.query.users.findFirst({
     where: eq(users.email, email),
   });
   if (existing) {
+    if (forcedId && existing.id !== forcedId) {
+      return null;
+    }
     if (
       forcedRole
       && (existing.role !== forcedRole || existing.platformRole !== "user")

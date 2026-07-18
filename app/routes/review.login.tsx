@@ -53,6 +53,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   const user = await upsertUser(env, configuredEmail, "user", await reviewerUserId(configuredEmail));
+  if (!user) return { error: "Invalid reviewer credentials" };
   const cookie = await createSessionCookie(env, request, user.id);
   return redirect("/", { headers: { "Set-Cookie": cookie } });
 }

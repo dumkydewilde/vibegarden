@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildReviewerSeedSql } from "../../../scripts/seed-mcp-reviewer.mjs";
+import {
+  assertReviewerIdentity,
+  buildReviewerPreflightSql,
+  buildReviewerSeedSql,
+  reviewerId,
+} from "../../../scripts/seed-mcp-reviewer.mjs";
 
 describe("MCP reviewer seeder", () => {
   it("is deterministic and only updates deterministic reviewer rows", () => {
@@ -11,5 +16,20 @@ describe("MCP reviewer seeder", () => {
     expect(first).not.toMatch(/\bDELETE\b/i);
     expect(first).not.toMatch(/ON CONFLICT\(email\) DO UPDATE/i);
     expect(first).toContain("ON CONFLICT(id) DO UPDATE");
+  });
+
+  it("aborts the deterministic seed before writes when the email belongs to another user", () => {
+    const email = "review@example.test";
+    expect(buildReviewerPreflightSql(email)).toMatchInlineSnapshot(`"SELECT id FROM users WHERE email = 'review@example.test' LIMIT 1;"`);
+    expect(() => assertReviewerIdentity(email, JSON.stringify([
+      { results: [{ id: "participant-id" }], success: true },
+    ]))).toThrow("already belongs to a different user");
+  });
+
+  it("allows an existing deterministic reviewer identity", () => {
+    const email = "review@example.test";
+    expect(assertReviewerIdentity(email, JSON.stringify([
+      { results: [{ id: reviewerId(email, "user") }], success: true },
+    ]))).toBe(reviewerId(email, "user"));
   });
 });

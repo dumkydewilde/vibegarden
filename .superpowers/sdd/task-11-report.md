@@ -85,3 +85,35 @@ idempotent seed SQL, and the exact MCP return fields disclosed publicly.
 The MCP test run still emits third-party `@modelcontextprotocol/sdk` sourcemap
 warnings, and the build still emits its existing chunk-size advisory; both
 commands exit successfully.
+
+## Identity Collision Repair
+
+### RED
+
+Added regression coverage for a valid reviewer credential whose configured
+email is already owned by a different participant ID, an `upsertUser` call
+with a conflicting forced reviewer ID, and deterministic seeder preflight
+rejection before it can compose or execute sample-row writes. Added an
+idempotence assertion for an existing deterministic reviewer ID.
+
+### GREEN
+
+- `upsertUser` now returns `null` before changing any existing user whenever a
+  caller requires a different deterministic ID. Reviewer login turns that
+  result into the existing `Invalid reviewer credentials` response and creates
+  no session.
+- The reviewer seeder first executes a read-only JSON preflight for the email.
+  It aborts when the resolved ID differs from the deterministic reviewer ID;
+  subsequent seed SQL binds every sample row directly to the deterministic ID,
+  never an email lookup.
+
+### Verification
+
+| Command | Result |
+| --- | --- |
+| `npm test -- app/routes/__tests__/settings-connections.test.tsx app/routes/__tests__/review-login.test.tsx app/routes/__tests__/mcp-public-docs.test.tsx` | PASS — 3 files, 17 tests |
+| `npm run test:all` | PASS — 47 app files / 262 tests; 2 MCP files / 15 tests |
+| `npm run typecheck` | PASS |
+| `npm run build` | PASS |
+| `env -u MCP_REVIEW_EMAIL node scripts/seed-mcp-reviewer.mjs` | Expected failure before any Wrangler command: required-variable error |
+| `git diff --check` | PASS |
