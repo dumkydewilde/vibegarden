@@ -411,7 +411,9 @@ export function GardenerProvider({
           error?: string;
         } | null;
         throw new Error(
-          err?.error ?? "The Gardener could not answer just now.",
+          typeof err?.error === "string" && err.error.trim()
+            ? err.error
+            : "The Gardener could not answer just now.",
         );
       }
       const reader = res.body.getReader();

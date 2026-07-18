@@ -83,6 +83,26 @@ Set the two new secrets without echoing values to a terminal or shell history.
 Generate the credential-encryption key once, save it in the approved secret
 manager, and retain it for as long as its encrypted D1 records exist.
 
+### Approval gate: managed OpenRouter workspace configuration
+
+Before this deployment can create any club-managed OpenRouter key or
+guardrail, the change record must explicitly approve one exact
+`OPENROUTER_WORKSPACE_ID` for this target environment. Record the value and
+the approver; stop if it is absent, differs from the provider workspace named
+in the authorization, or is a production workspace approved only for staging.
+Do not rely on a default workspace.
+
+Configure that exact, approved ID as a Worker secret without printing it. This
+is a configuration step only: do not trigger retry/provisioning, create a
+club, or otherwise create a managed OpenRouter resource before the deployment
+verification below.
+
+```sh
+read -rs OPENROUTER_WORKSPACE_ID
+printf '%s' "$OPENROUTER_WORKSPACE_ID" | npx wrangler secret put OPENROUTER_WORKSPACE_ID --name vibe-garden
+unset OPENROUTER_WORKSPACE_ID
+```
+
 ```sh
 npx wrangler secret put OPENROUTER_MANAGEMENT_KEY --name vibe-garden
 openssl rand -base64 32 | npx wrangler secret put OPENROUTER_CREDENTIAL_KEY_V1 --name vibe-garden
@@ -93,6 +113,16 @@ npm run deploy
 Expected: each secret command confirms an update and the deploy returns a new
 Worker deployment/version. The legacy key remains available only for WOTF when
 its dedicated credential is not ready; no other club can use it.
+
+Before allowing a provisioning retry or creating a temporary smoke-test club,
+perform a post-deploy configuration review: confirm the deployed Worker has
+an `OPENROUTER_WORKSPACE_ID` binding and that the deployment/change record
+matches the exact approved value above. Independently issue a read-only
+OpenRouter management API list request scoped to that same recorded workspace
+ID, and record only the workspace ID, deployment/version, timestamp, and
+sanitized outcome. Stop if the binding is missing, the recorded ID differs,
+or the read-only response indicates a different workspace. Only then may Gate
+4 create managed resources; its exact-hash verification remains required.
 
 Verify all of the following before continuing:
 

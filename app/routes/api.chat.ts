@@ -245,8 +245,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   // config errors still surface as a JSON 502 instead of a broken stream.
   const first = await callUpstream(toolsAllowed);
   if (!first.ok || !first.body) {
-    const detail = await first.text().catch(() => "");
-    console.error("OpenRouter error", first.status, detail.slice(0, 500));
+    console.error("OpenRouter request failed", first.status, "upstream_rejected");
     return Response.json(
       { error: "The language model is not reachable right now. Try again, or pick another model." },
       { status: 502 },
@@ -304,12 +303,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
           // On the last allowed round, withhold tools to force a text answer.
           response = await callUpstream(toolsAllowed && round + 1 < MAX_TOOL_ROUNDS);
           if (!response.ok || !response.body) {
-            const detail = await response.text().catch(() => "");
-            console.error(
-              "OpenRouter error mid-conversation",
-              response.status,
-              detail.slice(0, 500),
-            );
+            console.error("OpenRouter stream request failed", response.status, "upstream_rejected");
             emit("\n\nI lost the connection to the model midway. Ask again?");
             break;
           }

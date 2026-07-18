@@ -54,6 +54,7 @@ async function runConditionalMutation(
   mutation: D1PreparedStatement,
   auditEvent: AuditEventInput,
   expectedChanges = 1,
+  followingMutations: D1PreparedStatement[] = [],
 ) {
   const result = await env.DB.batch([
     mutation,
@@ -72,6 +73,7 @@ async function runConditionalMutation(
         auditEvent.createdAt,
         expectedChanges,
       ),
+    ...followingMutations,
   ]);
   return result[0].meta.changes;
 }
@@ -237,6 +239,12 @@ export async function archiveClub(env: Env, context: ClubContext) {
       targetId: context.club.id,
       createdAt: now,
     },
+    1,
+    [
+      env.DB.prepare(
+        "UPDATE club_ai_credentials SET provisioning_state = 'disabled', synced_policy = NULL, provisioning_lease_token = NULL, provisioning_lease_heartbeat_at = NULL WHERE club_id = ?",
+      ).bind(context.club.id),
+    ],
   );
   if (changes === 0) throw conflict();
 }

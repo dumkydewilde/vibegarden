@@ -177,6 +177,22 @@ describe("GardenerProvider askFresh", () => {
     expect(postedChatBody(fetchMock).context).toEqual([]);
     expect(await screen.findByText("Help me start.")).toBeTruthy();
   });
+
+  it("shows a human-safe fallback when the API error is structured data", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 201 }))
+      .mockResolvedValueOnce(
+        Response.json({ error: { provider: "private diagnostic" } }, { status: 502 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+
+    expect(await screen.findByText("The Gardener could not answer just now.")).toBeTruthy();
+    expect(screen.queryByText("[object Object]")).toBeNull();
+  });
 });
 
 describe("GardenerProvider panel preference", () => {

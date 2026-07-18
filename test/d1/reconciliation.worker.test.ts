@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { reconcileClubAi, type ClubAiManagementClient } from "~/lib/club-ai.server";
+import { getClubChatCredential, reconcileClubAi, type ClubAiManagementClient } from "~/lib/club-ai.server";
 import type {
   CreatedOpenRouterKey,
   OpenRouterGuardrail,
@@ -42,14 +42,26 @@ class FakeManagementClient implements ClubAiManagementClient {
   async listKeyAssignments(id: string): Promise<string[]> { return [...(this.assignments.get(id) ?? [])]; }
 }
 
+const credentialKey = btoa(String.fromCharCode(...new Uint8Array(32).fill(11)));
+const testEnv = {
+  DB: env.DB,
+  OPENROUTER_CREDENTIAL_KEY_V1: credentialKey,
+} as Env;
+
 async function club(id: string, options: { hash?: string; guardrailId?: string; state?: string } = {}) {
   const now = Date.now();
   await env.DB.prepare(
     "INSERT INTO clubs (id, name, slug, model_policy, status, created_at, updated_at) VALUES (?, ?, ?, 'all_models', 'active', ?, ?)",
   ).bind(id, id, id, now, now).run();
   await env.DB.prepare(
-    "INSERT INTO club_ai_credentials (club_id, key_hash, remote_guardrail_id, provisioning_state) VALUES (?, ?, ?, ?)",
-  ).bind(id, options.hash ?? `hash-${id}`, options.guardrailId ?? `guardrail-${id}`, options.state ?? "ready").run();
+    "INSERT INTO club_ai_credentials (club_id, key_hash, ciphertext, iv, remote_guardrail_id, provisioning_state, synced_policy) VALUES (?, ?, ?, ?, ?, ?, 'all_models')",
+  ).bind(id, options.hash ?? `hash-${id}`, "ciphertext", "iv", options.guardrailId ?? `guardrail-${id}`, options.state ?? "ready").run();
+}
+
+async function credentialAvailability(id: string) {
+  return env.DB.prepare(
+    "SELECT provisioning_state AS state, synced_policy AS syncedPolicy FROM club_ai_credentials WHERE club_id = ?",
+  ).bind(id).first<{ state: string; syncedPolicy: string | null }>();
 }
 
 function managedKey(id: string, overrides: Partial<OpenRouterKey> = {}): OpenRouterKey {
@@ -76,6 +88,71 @@ describe("club AI reconciliation", () => {
     await reconcileClubAi(env, client);
 
     expect(client.assignments.get("guardrail-reconcile-assignment")).toEqual(new Set(["hash-reconcile-assignment"]));
+  });
+
+  it("fails closed when the assigned guardrail is missing", async () => {
+    await club("reconcile-missing-guardrail");
+    const client = new FakeManagementClient();
+    client.keys.push(managedKey("reconcile-missing-guardrail"));
+
+    await reconcileClubAi(testEnv, client);
+
+    expect(await credentialAvailability("reconcile-missing-guardrail")).toEqual({
+      state: "failed",
+      syncedPolicy: null,
+    });
+    await expect(getClubChatCredential(testEnv, "reconcile-missing-guardrail")).rejects.toThrow(/not ready/i);
+  });
+
+  it("fails closed while a widened model allowlist is being repaired", async () => {
+    await club("reconcile-widened-models");
+    const client = new FakeManagementClient();
+    client.keys.push(managedKey("reconcile-widened-models"));
+    client.guardrails.push(guardrail("reconcile-widened-models", {
+      allowedModels: ["google/gemma-4-26b-a4b-it:free", "paid/model"],
+    }));
+    let release!: () => void;
+    let updateStarted!: () => void;
+    const updateGate = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { updateStarted = resolve; });
+    client.updateGuardrail = async (id, patch) => {
+      updateStarted();
+      await updateGate;
+      const current = client.guardrails.find((item) => item.id === id)!;
+      Object.assign(current, patch);
+      return current;
+    };
+
+    const reconciliation = reconcileClubAi(testEnv, client);
+    await started;
+
+    expect(await credentialAvailability("reconcile-widened-models")).toEqual({
+      state: "pending",
+      syncedPolicy: null,
+    });
+    await expect(getClubChatCredential(testEnv, "reconcile-widened-models")).rejects.toThrow(/not ready/i);
+    release();
+    await reconciliation;
+    expect(await credentialAvailability("reconcile-widened-models")).toEqual({
+      state: "ready",
+      syncedPolicy: "all_models",
+    });
+  });
+
+  it("fails closed when a missing assignment cannot be repaired and confirmed", async () => {
+    await club("reconcile-assignment-failure");
+    const client = new FakeManagementClient();
+    client.keys.push(managedKey("reconcile-assignment-failure"));
+    client.guardrails.push(guardrail("reconcile-assignment-failure"));
+    client.assignKeyToGuardrail = async () => { throw new Error("provider rejected assignment"); };
+
+    await reconcileClubAi(testEnv, client);
+
+    expect(await credentialAvailability("reconcile-assignment-failure")).toEqual({
+      state: "failed",
+      syncedPolicy: null,
+    });
+    await expect(getClubChatCredential(testEnv, "reconcile-assignment-failure")).rejects.toThrow(/not ready/i);
   });
 
   it("repairs safe key and guardrail name and limit drift", async () => {

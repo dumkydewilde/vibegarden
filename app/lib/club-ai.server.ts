@@ -137,6 +137,37 @@ async function resolveFinding(env: Env, clubId: string, kind: ReconciliationFind
   ).bind(now, clubId, kind).run();
 }
 
+function hasGuardrailPolicy(
+  guardrail: OpenRouterGuardrail,
+  desired: OpenRouterGuardrailInput,
+) {
+  const actualModels = guardrail.allowedModels ?? [];
+  const desiredModels = desired.allowedModels ?? [];
+  return guardrail.name === desired.name
+    && guardrail.limitUsd === desired.limitUsd
+    && guardrail.resetInterval === desired.resetInterval
+    && actualModels.length === desiredModels.length
+    && actualModels.every((model) => desiredModels.includes(model));
+}
+
+async function markReconciliationPending(env: Env, clubId: string) {
+  await env.DB.prepare(
+    "UPDATE club_ai_credentials SET provisioning_state = 'pending', synced_policy = NULL, sanitized_error = NULL WHERE club_id = ? AND provisioning_state != 'disabled'",
+  ).bind(clubId).run();
+}
+
+async function markReconciliationFailed(env: Env, clubId: string) {
+  await env.DB.prepare(
+    "UPDATE club_ai_credentials SET provisioning_state = 'failed', synced_policy = NULL, sanitized_error = ? WHERE club_id = ? AND provisioning_state != 'disabled'",
+  ).bind(sanitizedFailure, clubId).run();
+}
+
+async function markReconciled(env: Env, clubId: string, policy: ModelPolicy) {
+  await env.DB.prepare(
+    "UPDATE club_ai_credentials SET provisioning_state = 'ready', synced_policy = ?, last_synced_at = ?, sanitized_error = NULL WHERE club_id = ? AND provisioning_state != 'disabled'",
+  ).bind(policy, Date.now(), clubId).run();
+}
+
 /**
  * Reconciles only unambiguous, non-secret remote metadata. A missing or
  * ambiguous credential becomes a review finding rather than a guessed repair.
@@ -151,53 +182,73 @@ export async function reconcileClubAi(env: Env, suppliedClient?: ClubAiManagemen
     ]);
 
     for (const row of rows) {
-      if (!row.keyHash) {
-        await openFinding(env, row.id, "orphaned_key");
-        await resolveFinding(env, row.id, "duplicate_key");
-        logOperation({ level: "warn", operation: "club_ai.reconcile", clubId: row.id, provisioningState: row.provisioningState, code: "orphaned_key" });
-        continue;
-      }
+      try {
+        if (!row.keyHash) {
+          await openFinding(env, row.id, "orphaned_key");
+          await resolveFinding(env, row.id, "duplicate_key");
+          await markReconciliationFailed(env, row.id);
+          logOperation({ level: "warn", operation: "club_ai.reconcile", clubId: row.id, provisioningState: row.provisioningState, code: "orphaned_key" });
+          continue;
+        }
 
-      const expectedKeyName = keyName(row.id);
-      const candidates = keys.filter((key) => key.hash === row.keyHash || key.name === expectedKeyName);
-      if (candidates.length > 1) {
-        await openFinding(env, row.id, "duplicate_key");
+        const expectedKeyName = keyName(row.id);
+        const candidates = keys.filter((key) => key.hash === row.keyHash || key.name === expectedKeyName);
+        if (candidates.length > 1) {
+          await openFinding(env, row.id, "duplicate_key");
+          await resolveFinding(env, row.id, "orphaned_key");
+          await markReconciliationFailed(env, row.id);
+          logOperation({ level: "warn", operation: "club_ai.reconcile", clubId: row.id, provisioningState: row.provisioningState, code: "duplicate_key" });
+          continue;
+        }
+
+        const key = candidates[0];
+        if (!key || key.hash !== row.keyHash || key.disabled) {
+          await openFinding(env, row.id, "orphaned_key");
+          await resolveFinding(env, row.id, "duplicate_key");
+          await markReconciliationFailed(env, row.id);
+          logOperation({ level: "warn", operation: "club_ai.reconcile", clubId: row.id, provisioningState: row.provisioningState, code: "orphaned_key" });
+          continue;
+        }
+
         await resolveFinding(env, row.id, "orphaned_key");
-        logOperation({ level: "warn", operation: "club_ai.reconcile", clubId: row.id, provisioningState: row.provisioningState, code: "duplicate_key" });
-        continue;
-      }
-
-      const key = candidates[0];
-      if (!key || key.hash !== row.keyHash || key.disabled) {
-        await openFinding(env, row.id, "orphaned_key");
         await resolveFinding(env, row.id, "duplicate_key");
-        logOperation({ level: "warn", operation: "club_ai.reconcile", clubId: row.id, provisioningState: row.provisioningState, code: "orphaned_key" });
-        continue;
-      }
+        if (key.name !== expectedKeyName || key.limit !== 0) {
+          await client.updateKey(key.hash, { name: expectedKeyName, limit: 0 });
+        }
 
-      await resolveFinding(env, row.id, "orphaned_key");
-      await resolveFinding(env, row.id, "duplicate_key");
-      if (key.name !== expectedKeyName || key.limit !== 0) {
-        await client.updateKey(key.hash, { name: expectedKeyName, limit: 0 });
-      }
+        const desiredGuardrail = guardrailInput(row);
+        const currentGuardrail = guardrails.find((item) => item.id === row.remoteGuardrailId)
+          ?? guardrails.find((item) => item.name === desiredGuardrail.name);
+        if (!currentGuardrail) {
+          await markReconciliationFailed(env, row.id);
+          logOperation({ level: "warn", operation: "club_ai.reconcile", clubId: row.id, provisioningState: row.provisioningState, code: "missing_guardrail" });
+          continue;
+        }
 
-      const desiredGuardrail = guardrailInput(row);
-      const guardrail = guardrails.find((item) => item.id === row.remoteGuardrailId)
-        ?? guardrails.find((item) => item.name === desiredGuardrail.name);
-      if (!guardrail) {
-        logOperation({ level: "warn", operation: "club_ai.reconcile", clubId: row.id, provisioningState: row.provisioningState, code: "missing_guardrail" });
-        continue;
+        let guardrail = currentGuardrail;
+        if (!hasGuardrailPolicy(guardrail, desiredGuardrail)) {
+          // A broadened or otherwise stale policy loses local chat access
+          // before the repair begins, then regains it only after the whole
+          // policy and assignment have been confirmed.
+          await markReconciliationPending(env, row.id);
+          guardrail = await client.updateGuardrail(guardrail.id, desiredGuardrail);
+          if (!hasGuardrailPolicy(guardrail, desiredGuardrail)) {
+            throw new Error("Guardrail policy was not confirmed.");
+          }
+        }
+        let assignments = await client.listKeyAssignments(guardrail.id);
+        if (!assignments.includes(key.hash)) {
+          await markReconciliationPending(env, row.id);
+          await client.assignKeyToGuardrail(guardrail.id, key.hash);
+          assignments = await client.listKeyAssignments(guardrail.id);
+        }
+        if (!assignments.includes(key.hash)) throw new Error("Guardrail assignment was not confirmed.");
+        await markReconciled(env, row.id, row.modelPolicy);
+        logOperation({ level: "info", operation: "club_ai.reconcile", clubId: row.id, provisioningState: "ready", code: "reconciled" });
+      } catch {
+        await markReconciliationFailed(env, row.id);
+        logOperation({ level: "warn", operation: "club_ai.reconcile", clubId: row.id, provisioningState: "failed", code: "repair_unconfirmed" });
       }
-
-      if (guardrail.name !== desiredGuardrail.name || guardrail.limitUsd !== desiredGuardrail.limitUsd) {
-        await client.updateGuardrail(guardrail.id, {
-          name: desiredGuardrail.name,
-          limitUsd: desiredGuardrail.limitUsd,
-        });
-      }
-      const assignments = await client.listKeyAssignments(guardrail.id);
-      if (!assignments.includes(key.hash)) await client.assignKeyToGuardrail(guardrail.id, key.hash);
-      logOperation({ level: "info", operation: "club_ai.reconcile", clubId: row.id, provisioningState: row.provisioningState, code: "reconciled" });
     }
     return { ok: true };
   } catch {

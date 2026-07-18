@@ -16,6 +16,7 @@ import {
   restoreClub,
   transferOwnership,
 } from "../../app/lib/memberships.server";
+import { getClubChatCredential } from "../../app/lib/club-ai.server";
 
 const testEnv = { DB: env.DB } as Env;
 
@@ -320,12 +321,21 @@ describe("membership lifecycle", () => {
       name: "Archive club",
       slug: "archive-club",
     });
+    await env.DB.prepare(
+      "UPDATE club_ai_credentials SET provisioning_state = 'ready', synced_policy = 'free_only', ciphertext = 'ciphertext', iv = 'iv' WHERE club_id = ?",
+    ).bind(club.id).run();
     await archiveClub(testEnv, context(club, (await membership(club.id, owner.id))!));
     expect(
       await env.DB.prepare("SELECT status FROM clubs WHERE id = ?")
         .bind(club.id)
         .first<{ status: string }>(),
     ).toEqual({ status: "archived" });
+    expect(
+      await env.DB.prepare(
+        "SELECT provisioning_state AS state, synced_policy AS syncedPolicy FROM club_ai_credentials WHERE club_id = ?",
+      ).bind(club.id).first(),
+    ).toEqual({ state: "disabled", syncedPolicy: null });
+    await expect(getClubChatCredential(testEnv, club.id)).rejects.toThrow(/not ready/i);
 
     expect(
       (await capturedResponse(() => restoreClub(testEnv, normalUser, club.id)))
