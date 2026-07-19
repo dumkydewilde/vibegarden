@@ -37,6 +37,7 @@ import { modules } from "~/lib/modules";
 import {
   deleteProject,
   getProject,
+  ProjectDeleteConflictError,
   updateProject,
 } from "~/lib/projects.server";
 import { statusLabel } from "~/lib/project-status";
@@ -71,8 +72,15 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const intent = form.get("intent");
 
   if (intent === "delete") {
-    await deleteProject(env, scope, params.id);
-    return redirect(clubPath(club.club.slug, "garden"));
+    try {
+      await deleteProject(env, scope, params.id);
+      return redirect(clubPath(club.club.slug, "garden"));
+    } catch (error) {
+      if (error instanceof ProjectDeleteConflictError) {
+        return { saved: false, deleteError: error.message };
+      }
+      throw error;
+    }
   }
 
   if (intent === "save") {
@@ -301,12 +309,25 @@ export default function ProjectDetail({
               <DialogDescription>
                 This removes "{project.title}" for good. Any linked
                 conversation stays in your garden.
+                {artifacts.length > 0 && (
+                  <span className="mt-2 block">
+                    Remove every artifact first. Deleted artifacts remain recoverable
+                    for 30 days, so restore one if needed, then remove it or wait for
+                    scheduled cleanup to permanently remove it.
+                  </span>
+                )}
+                {actionData?.deleteError && (
+                  <span className="mt-2 block text-destructive">
+                    {actionData.deleteError} Restore or remove the retained artifact,
+                    or wait for cleanup after its recovery window.
+                  </span>
+                )}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Form method="post">
                 <input type="hidden" name="intent" value="delete" />
-                <Button type="submit" variant="destructive" disabled={busy}>
+                <Button type="submit" variant="destructive" disabled={busy || artifacts.length > 0}>
                   Remove it
                 </Button>
               </Form>

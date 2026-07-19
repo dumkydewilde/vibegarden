@@ -5,6 +5,17 @@ import { chatThreads, projects, type Project } from "~/db/schema";
 
 export type ClubUserScope = { clubId: string; userId: string };
 
+export class ProjectDeleteConflictError extends Error {
+  readonly code = "artifact_conflict";
+  readonly status = 409;
+
+  constructor() {
+    super("Projects with retained artifacts cannot be removed.");
+    this.name = "ProjectDeleteConflictError";
+    Object.setPrototypeOf(this, ProjectDeleteConflictError.prototype);
+  }
+}
+
 export function parseModules(raw: string | null): string[] {
   if (!raw) return [];
   try {
@@ -207,6 +218,13 @@ export async function updateProject(
 }
 
 export async function deleteProject(env: Env, scope: ClubUserScope, id: string) {
+  const artifact = await env.DB.prepare(
+    `SELECT a.id FROM artifacts a
+     INNER JOIN projects p ON p.id = a.project_id
+     WHERE a.project_id = ? AND p.club_id = ? AND p.user_id = ?
+     LIMIT 1`,
+  ).bind(id, scope.clubId, scope.userId).first();
+  if (artifact) throw new ProjectDeleteConflictError();
   await getDb(env)
     .delete(projects)
     .where(
