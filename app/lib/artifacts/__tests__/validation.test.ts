@@ -229,6 +229,20 @@ describe("content inspection", () => {
     expectCode(() => inspectArtifactContent({ path, mimeType, content }), "invalid_type");
   });
 
+  it("rejects a detached Uint8Array before binary signature inspection", () => {
+    const content = bytes("PAR1dataPAR1");
+    structuredClone(content.buffer, { transfer: [content.buffer] });
+
+    expectCode(
+      () => inspectArtifactContent({
+        path: "data.parquet",
+        mimeType: "application/vnd.apache.parquet",
+        content,
+      }),
+      "invalid_input",
+    );
+  });
+
   it("stream-decodes UTF-8 text with fatal decoding", async () => {
     const valid = new ReadableStream<Uint8Array>({
       start(controller) {

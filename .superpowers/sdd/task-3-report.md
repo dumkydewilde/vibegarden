@@ -221,6 +221,10 @@ The final gate review found two further Important error-path gaps:
 1. `assertUtf8Stream()` must also contain exceptions thrown while calling `getReader()` itself.
 2. A supplied falsy `content` value must be rejected as malformed rather than treated as absent unless it is exactly `undefined`.
 
+## Last approval review finding
+
+The last reviewer found that a detached `Uint8Array` can pass nominal type validation but throw natively during Parquet signature inspection. It must be translated to a stable ArtifactError before binary inspection.
+
 ## Approval review fixes — 2026-07-19
 
 ### Scope
@@ -502,3 +506,56 @@ exit 0
 - The `getReader()` catch is intentionally narrow: a malformed stream factory gets `invalid_input`, while later decode and read failures preserve their existing `invalid_type` behavior.
 - Explicit `undefined` is the only bypass for content inspection. The cross-realm-safe `Uint8Array` predicate runs before byte-length access, and a zero-length byte array remains a valid supplied payload.
 - Focused artifact tests, typechecking, and whitespace validation passed. The pre-existing untracked `docs/plans/2026-07-18-artifact-upload-and-rendering.md` remains excluded.
+
+## Last approval review fix — 2026-07-19
+
+### Scope
+
+Resolved the detached-typed-array malformed-input gap:
+
+1. The `Uint8Array` guard now confirms the real typed-array view remains usable by invoking the intrinsic `Uint8Array.prototype.slice` with an empty range. A detached backing buffer throws at that boundary and is rejected as the stable `invalid_input` `ArtifactError` before MIME or binary-signature inspection.
+2. Added a regression test that detaches a genuine `Uint8Array` through the runtime-supported `structuredClone(..., { transfer: [...] })` mechanism and verifies `inspectArtifactContent()` reports `invalid_input` for a Parquet payload.
+
+### TDD evidence
+
+RED (test added before production changes):
+
+```text
+npm test -- app/lib/artifacts/__tests__/validation.test.ts
+exit 1
+1 test file run; 72 tests run; 71 passed and 1 failed.
+
+Expected failure:
+- the detached Parquet `Uint8Array` was accepted by the nominal typed-array guard and reached content inspection, returning `invalid_type` instead of the stable malformed-input `invalid_input` ArtifactError.
+```
+
+GREEN (after the minimal usable-view guard):
+
+```text
+npm test -- app/lib/artifacts/__tests__/validation.test.ts app/lib/artifacts/__tests__/manifest.test.ts
+exit 0
+2 test files passed; 95 tests passed.
+
+npm run typecheck
+react-router typegen && tsc
+exit 0
+
+git diff --check
+exit 0
+```
+
+### Files changed
+
+- `app/lib/artifacts/validation.ts`
+- `app/lib/artifacts/__tests__/validation.test.ts`
+- `.superpowers/sdd/task-3-report.md`
+
+### Commit
+
+`HEAD` — `fix: reject detached artifact content`
+
+### Self-review
+
+- The validation uses the intrinsic typed-array method, so a user-defined `slice` property cannot affect the detached-buffer check.
+- A valid empty `Uint8Array` remains accepted; only a view whose backing buffer has been detached is rejected.
+- The change is limited to the existing typed-array boundary guard. No unrelated tracked files were changed, and the pre-existing untracked documentation plan remains excluded.

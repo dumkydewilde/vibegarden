@@ -237,7 +237,15 @@ function isTextMime(mimeType: string): boolean {
 }
 
 function isUint8Array(value: unknown): value is Uint8Array {
-  return ArrayBuffer.isView(value) && Object.prototype.toString.call(value) === "[object Uint8Array]";
+  if (!ArrayBuffer.isView(value) || Object.prototype.toString.call(value) !== "[object Uint8Array]") {
+    return false;
+  }
+  try {
+    Uint8Array.prototype.slice.call(value, 0, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function inspectArtifactContent(input: Pick<ArtifactPackageFile, "path" | "mimeType" | "content">): void {
