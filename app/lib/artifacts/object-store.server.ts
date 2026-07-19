@@ -81,11 +81,14 @@ export async function putLeasedObject(
     written = await env.ARTIFACTS.put(key, input.body, {
       sha256: input.sha256,
       httpMetadata: { contentType: input.mimeType },
+      onlyIf: { etagDoesNotMatch: "*" },
     });
   } catch (error) {
     // R2 verifies streamed bodies using the supplied checksum.
     throw r2WriteError(error);
   }
+
+  if (!written) throw new ArtifactError("state_conflict");
 
   const writtenChecksum = hex(written.checksums.sha256);
   let stored: R2Object | null;

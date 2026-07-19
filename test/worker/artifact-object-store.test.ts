@@ -47,4 +47,25 @@ describe("private artifact object store", () => {
       getVersionObject(env, "artifacts/artifact-metadata/versions/version-1", "../secret.txt"),
     ).rejects.toMatchObject({ code: "invalid_path" });
   });
+
+  it("rejects attempts to overwrite an immutable artifact object key", async () => {
+    const key = artifactObjectKey("artifact-create-only", "version-1", "index.html");
+    await putLeasedObject(env, {
+      r2Key: key,
+      body: "hello",
+      mimeType: "text/html",
+      sha256: SHA256_HELLO,
+    });
+
+    await expect(
+      putLeasedObject(env, {
+        r2Key: key,
+        body: "goodbye",
+        mimeType: "text/html",
+        sha256: "82e35a63ceba37e9646434c5dd412ea577147f1e4a41ccde1614253187e3dbf9",
+      }),
+    ).rejects.toMatchObject({ code: "state_conflict" });
+
+    await expect((await env.ARTIFACTS.get(key))?.text()).resolves.toBe("hello");
+  });
 });
