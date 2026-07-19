@@ -4,6 +4,7 @@ import type { Route } from "./+types/join";
 import { cloudflareContext } from "~/lib/context";
 import { getUser } from "~/lib/auth.server";
 import { getInvitePreview, joinWithInviteLink } from "~/lib/invites.server";
+import { clubPath } from "~/lib/club-path";
 import { Button } from "~/components/ui/button";
 import {
   Card,
@@ -33,7 +34,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   }
 
   const result = await joinWithInviteLink(env, user, token);
-  return result.ok ? { joined: true } : { unavailable: true };
+  return result.ok
+    ? redirect(clubPath(result.clubSlug))
+    : { unavailable: true };
 }
 
 export default function Join({
@@ -58,19 +61,6 @@ export default function Join({
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground">{unavailableMessage}</p>
-          </CardContent>
-        </Card>
-      ) : actionData?.joined ? (
-        <Card className="mt-8">
-          <CardHeader>
-            <CardTitle className="font-serif text-2xl font-normal">
-              You are in
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">
-              You have joined {loaderData.clubName}.
-            </p>
           </CardContent>
         </Card>
       ) : (

@@ -328,6 +328,7 @@ export async function revokeInviteLink(
 type AvailableInviteLink = {
   id: string;
   clubId: string;
+  clubSlug: string;
   clubName: string;
   expiresAt: number | null;
   maxJoins: number | null;
@@ -340,7 +341,8 @@ async function availableInviteLink(env: Env, token: string) {
   const tokenHash = await hashInviteToken(token);
   const link = await env.DB
     .prepare(
-      `SELECT link.id, link.club_id AS clubId, club.name AS clubName,
+      `SELECT link.id, link.club_id AS clubId, club.slug AS clubSlug,
+              club.name AS clubName,
               link.expires_at AS expiresAt, link.max_joins AS maxJoins,
               link.current_joins AS currentJoins, link.revoked_at AS revokedAt
          FROM club_invite_links link
@@ -375,7 +377,9 @@ export async function getInvitePreview(
     : { clubName: null, available: false };
 }
 
-export type JoinWithInviteLinkResult = { ok: true } | { ok: false };
+export type JoinWithInviteLinkResult =
+  | { ok: true; clubSlug: string }
+  | { ok: false };
 
 /**
  * Consume one link slot and create membership in one D1 transaction. A normal
@@ -395,7 +399,7 @@ export async function joinWithInviteLink(
     )
     .bind(link.clubId, user.id)
     .first();
-  if (existing) return { ok: true };
+  if (existing) return { ok: true, clubSlug: link.clubSlug };
 
   const now = Date.now();
   try {
@@ -439,7 +443,9 @@ export async function joinWithInviteLink(
       )
       .bind(link.clubId, user.id)
       .first();
-    return membership ? { ok: true } : { ok: false };
+    return membership
+      ? { ok: true, clubSlug: link.clubSlug }
+      : { ok: false };
   }
 
   const membership = await env.DB
@@ -448,5 +454,7 @@ export async function joinWithInviteLink(
     )
     .bind(link.clubId, user.id)
     .first();
-  return membership ? { ok: true } : { ok: false };
+  return membership
+    ? { ok: true, clubSlug: link.clubSlug }
+    : { ok: false };
 }
