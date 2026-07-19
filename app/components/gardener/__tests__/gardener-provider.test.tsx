@@ -36,10 +36,11 @@ function GardenerHarness({
 }
 
 function Probe() {
-  const { open, setOpen } = useGardener();
+  const { open, setOpen, webSearch } = useGardener();
   return (
     <>
       <span>{open ? "open" : "closed"}</span>
+      <span>{webSearch ? "web search on" : "web search off"}</span>
       <button type="button" onClick={() => setOpen(false)}>
         close
       </button>
@@ -196,6 +197,12 @@ describe("GardenerProvider askFresh", () => {
 });
 
 describe("GardenerProvider panel preference", () => {
+  it("enables web search for a new conversation", () => {
+    renderProvider();
+
+    expect(screen.getByText("web search on")).toBeTruthy();
+  });
+
   it("restores the open preference and persists later changes", () => {
     storage.setItem(OPEN_KEY, "true");
     renderProvider();
