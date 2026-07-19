@@ -63,6 +63,18 @@ const noServiceCalls = () => {
   }
 };
 
+const dispatchThroughWorker = async (path: string, method: string, body?: string) => {
+  const { handleReactRouterRequest } = await import("../../../workers/react-router");
+  const headers = new Headers();
+  if (!["GET", "HEAD", "OPTIONS"].includes(method)) headers.set("Origin", "https://vibegarden.club");
+  if (body) headers.set("Content-Type", "application/json");
+  return handleReactRouterRequest(
+    new Request(`https://vibegarden.club${path}`, { method, headers, body }),
+    { WEB_ALLOWED_ORIGINS: "https://vibegarden.club" } as Env,
+    {} as ExecutionContext,
+  );
+};
+
 describe("artifact browser routes", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -220,6 +232,72 @@ describe("artifact browser routes", () => {
     expect(response.status).toBe(302);
     expect(response.headers.get("Location")).toBe("/login?next=%2Fartifacts");
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    noServiceCalls();
+  });
+});
+
+describe("artifact resource framework dispatch", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    requireUser.mockResolvedValue({ id: "session-user" });
+  });
+
+  it.each([
+    ["upload creation", "/api/artifact-uploads", "PATCH"],
+    ["upload file", "/api/artifact-uploads/upload-1/files", "POST"],
+    ["upload finalization", "/api/artifact-uploads/upload-1/finalize", "PUT"],
+    ["upload abort", "/api/artifact-uploads/upload-1/abort", "DELETE"],
+    ["link creation", "/api/artifacts/links", "PATCH"],
+    ["link version creation", "/api/artifacts/artifact-1/link-version", "PUT"],
+    ["artifact mutations", "/api/artifacts/artifact-1", "PUT"],
+    ["version restoration", "/api/artifacts/artifact-1/restore-version", "PATCH"],
+    ["gallery mutations", "/api/artifacts/artifact-1/gallery", "POST"],
+  ])("keeps an alternate mutation for %s inside artifact policy", async (_name, path, method) => {
+    const response = await dispatchThroughWorker(path, method);
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(requireUser).not.toHaveBeenCalled();
+    noServiceCalls();
+  });
+
+  it.each([
+    ["upload creation", "/api/artifact-uploads"],
+    ["upload file", "/api/artifact-uploads/upload-1/files"],
+    ["upload finalization", "/api/artifact-uploads/upload-1/finalize"],
+    ["upload abort", "/api/artifact-uploads/upload-1/abort"],
+    ["link creation", "/api/artifacts/links"],
+    ["link version creation", "/api/artifacts/artifact-1/link-version"],
+    ["artifact mutations", "/api/artifacts/artifact-1"],
+    ["version restoration", "/api/artifacts/artifact-1/restore-version"],
+    ["gallery mutations", "/api/artifacts/artifact-1/gallery"],
+  ])("keeps safe %s dispatches inside artifact policy", async (_name, path) => {
+    for (const method of ["GET", "HEAD", "OPTIONS"]) {
+      const response = await dispatchThroughWorker(path, method);
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    }
+    expect(requireUser).not.toHaveBeenCalled();
+    noServiceCalls();
+  });
+
+  it("keeps capability GET authenticated and fail-closed while rejecting every other dispatch", async () => {
+    const get = await dispatchThroughWorker("/api/artifacts/artifact-1/capability", "GET");
+
+    expect(get.status).toBe(404);
+    expect(get.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(requireUser).toHaveBeenCalledOnce();
+
+    vi.clearAllMocks();
+    for (const method of ["HEAD", "OPTIONS", "POST"]) {
+      const response = await dispatchThroughWorker("/api/artifacts/artifact-1/capability", method);
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    }
+    expect(requireUser).not.toHaveBeenCalled();
     noServiceCalls();
   });
 });

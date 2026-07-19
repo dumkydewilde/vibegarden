@@ -1,9 +1,13 @@
 import type { Route } from "./+types/api.artifact-uploads.$uploadId.finalize";
 import { ArtifactError } from "~/lib/artifacts/contracts";
-import { artifactJson, artifactJsonAction, artifactRequireMethod } from "~/lib/artifacts/http.server";
+import { artifactJson, artifactJsonAction, artifactRejectMethod, artifactRequireMethod } from "~/lib/artifacts/http.server";
 import { finalizeUpload } from "~/lib/artifacts/service.server";
 import { requireArtifactUser } from "~/lib/artifacts/auth.server";
 import { cloudflareContext } from "~/lib/context";
+
+export function loader() {
+  return artifactRejectMethod();
+}
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   const methodError = artifactRequireMethod(request, "POST");

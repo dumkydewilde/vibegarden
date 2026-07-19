@@ -15,3 +15,11 @@ Verification: `npm test -- app/routes/__tests__/artifact-api.test.ts app/routes/
 RED: Added direct-handler regression cases for an alternate verb in every action route family. They demonstrated that handlers authenticated and, for several routes, delegated before rejecting unsupported methods. Added unauthenticated redirect coverage for every artifact route family; these cases demonstrated that `requireUser` redirects escaped the artifact response helper without `Cache-Control: private, no-store`.
 
 GREEN: Added a shared artifact method gate that returns the safe no-store response before authentication, body parsing, or service delegation. Each action route now declares only its registered verb or verbs. Added an artifact-only authentication adapter that preserves the thrown auth response's status and `Location`, while adding `Cache-Control: private, no-store`; the global `requireUser` behavior remains unchanged for non-artifact routes. The expanded artifact API suite passes with 26 tests.
+
+## Review remediation: React Router framework dispatch
+
+RED: Added Worker-path integration coverage backed by the real React Router request handler and resource-route manifest. Before the fix, GET, HEAD, and OPTIONS to action-only artifact resources were rejected by the framework before artifact code and returned no `Cache-Control`; a POST to the loader-only capability route likewise bypassed artifact policy.
+
+GREEN: Every action-only artifact resource now exports a loader that rejects safely before authentication, parsing, or service work. The capability route gates its loader to GET before authentication and adds an action that safely rejects mutations. `artifactRejectMethod` centralizes the private no-store response used for these explicit dispatches. The Worker-path suite covers GET/HEAD/OPTIONS and alternate mutation verbs across all action-only resources, plus authenticated fail-closed capability GET and its rejected alternate dispatches.
+
+Verification: RED `npm test -- app/routes/__tests__/artifact-api.test.ts` (10 expected dispatch failures); GREEN `npm test -- app/routes/__tests__/artifact-api.test.ts app/routes/__tests__/artifact-origin.test.ts` (107 passed) and `npm run typecheck` passed.

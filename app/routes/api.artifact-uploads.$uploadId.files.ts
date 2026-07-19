@@ -1,6 +1,6 @@
 import type { Route } from "./+types/api.artifact-uploads.$uploadId.files";
 import { ArtifactError } from "~/lib/artifacts/contracts";
-import { artifactJson, artifactJsonAction, artifactRequireMethod } from "~/lib/artifacts/http.server";
+import { artifactJson, artifactJsonAction, artifactRejectMethod, artifactRequireMethod } from "~/lib/artifacts/http.server";
 import { putUploadFile } from "~/lib/artifacts/service.server";
 import { requireArtifactUser } from "~/lib/artifacts/auth.server";
 import { cloudflareContext } from "~/lib/context";
@@ -23,6 +23,10 @@ function uploadHeaders(request: Request) {
   const byteSize = Number(declaredBytes);
   if (!Number.isSafeInteger(byteSize) || byteSize < 0 || mimeType.length > 128) inputError();
   return { path, mimeType, byteSize, sha256 };
+}
+
+export function loader() {
+  return artifactRejectMethod();
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {

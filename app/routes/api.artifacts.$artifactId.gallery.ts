@@ -1,9 +1,13 @@
 import type { Route } from "./+types/api.artifacts.$artifactId.gallery";
 import { ArtifactError } from "~/lib/artifacts/contracts";
-import { artifactEmpty, artifactJsonAction, artifactRequireMethod, readArtifactJson } from "~/lib/artifacts/http.server";
+import { artifactEmpty, artifactJsonAction, artifactRejectMethod, artifactRequireMethod, readArtifactJson } from "~/lib/artifacts/http.server";
 import { shareArtifactVersion, unshareArtifact } from "~/lib/artifacts/service.server";
 import { requireArtifactUser } from "~/lib/artifacts/auth.server";
 import { cloudflareContext } from "~/lib/context";
+
+export function loader() {
+  return artifactRejectMethod();
+}
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   const methodError = artifactRequireMethod(request, "PUT", "DELETE");

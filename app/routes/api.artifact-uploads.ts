@@ -3,7 +3,11 @@ import { ArtifactError } from "~/lib/artifacts/contracts";
 import { requireArtifactUser } from "~/lib/artifacts/auth.server";
 import { cloudflareContext } from "~/lib/context";
 import { createUploadSession } from "~/lib/artifacts/service.server";
-import { artifactJson, artifactJsonAction, artifactRequireMethod, readArtifactJson } from "~/lib/artifacts/http.server";
+import { artifactJson, artifactJsonAction, artifactRejectMethod, artifactRequireMethod, readArtifactJson } from "~/lib/artifacts/http.server";
+
+export function loader() {
+  return artifactRejectMethod();
+}
 
 export async function action({ request, context }: Route.ActionArgs) {
   const methodError = artifactRequireMethod(request, "POST");

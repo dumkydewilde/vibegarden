@@ -52,10 +52,15 @@ export function artifactEmpty(status = 204): Response {
   return new Response(null, { status, headers: NO_STORE_HEADERS });
 }
 
+/** Returns the artifact-policy response for a route dispatch it does not own. */
+export function artifactRejectMethod(): Response {
+  return artifactJson(new ArtifactError("invalid_input").toPublic(), { status: 400 });
+}
+
 /** Reject an unsupported verb before authentication, parsing, or delegation. */
 export function artifactRequireMethod(request: Request, ...methods: string[]): Response | null {
   if (methods.includes(request.method)) return null;
-  return artifactJson(new ArtifactError("invalid_input").toPublic(), { status: 400 });
+  return artifactRejectMethod();
 }
 
 /**
