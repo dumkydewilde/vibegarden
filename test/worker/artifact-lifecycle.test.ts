@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ArtifactError, ARTIFACT_LIMITS } from "../../app/lib/artifacts/contracts";
 import {
   deleteArtifact,
+  createTextArtifactVersion,
   getGalleryArtifact,
   getOwnedArtifact,
+  listGalleryArtifacts,
   recoverArtifact,
   restoreArtifactVersion,
   setArtifactVisibility,
@@ -13,6 +15,7 @@ import {
   unshareArtifact,
   updateArtifactMetadata,
 } from "../../app/lib/artifacts/service.server";
+import { presentGalleryArtifact } from "../../app/lib/artifacts/presenters.server";
 
 const timestamp = 1_784_880_000_000;
 
@@ -46,17 +49,28 @@ beforeEach(async () => {
 });
 
 describe("artifact lifecycle visibility state table", () => {
-  it("keeps creation private, shares an exact version, and never lets later uploads replace that gallery pointer", async () => {
+  it("keeps creation private, shares an exact version, and only moves current when a later upload finalizes", async () => {
     await expect(getOwnedArtifact(env, "owner", "artifact")).resolves.toMatchObject({ version: { id: "version-2" } });
     await expect(getGalleryArtifact(env, "artifact")).resolves.toBeNull();
 
     await shareArtifactVersion(env, "owner", "artifact", "version-1");
     const gallery = await getGalleryArtifact(env, "artifact");
     expect(gallery).toMatchObject({ version: { id: "version-1" }, participantDisplayName: "Owner Name" });
-    expect(JSON.stringify(gallery)).not.toMatch(/owner@example|\"owner\"|version-2/);
+    expect(JSON.stringify(gallery)).not.toMatch(/projectId|owner@example|\"owner\"|currentVersion|version-2/);
+    const galleryList = await listGalleryArtifacts(env);
+    expect(presentGalleryArtifact(galleryList[0]!)).toMatchObject({
+      project: { title: "Garden project" },
+      participant: { displayName: "Owner Name" },
+      version: { id: "version-1" },
+    });
 
-    await env.DB.prepare("UPDATE artifacts SET current_version_id = ? WHERE id = ?").bind("version-2", "artifact").run();
-    await expect(getOwnedArtifact(env, "owner", "artifact")).resolves.toMatchObject({ version: { id: "version-2" } });
+    const uploaded = await createTextArtifactVersion(env, "owner", {
+      artifactId: "artifact",
+      title: "Current-only upload",
+      idempotencyKey: "current-only-upload",
+      files: [{ path: "index.html", content: "<h1>Current only</h1>" }],
+    });
+    await expect(getOwnedArtifact(env, "owner", "artifact")).resolves.toMatchObject({ version: { id: uploaded.versionId } });
     await expect(getGalleryArtifact(env, "artifact")).resolves.toMatchObject({ version: { id: "version-1" } });
   });
 
@@ -79,6 +93,18 @@ describe("artifact lifecycle visibility state table", () => {
     await expect(env.DB.prepare("SELECT title, description FROM artifacts WHERE id = ?").bind("artifact").first()).resolves.toEqual({ title: "Renamed", description: "Changed" });
     await expect(env.DB.prepare("SELECT COUNT(*) AS count FROM artifact_versions WHERE artifact_id = ?").bind("artifact").first()).resolves.toEqual({ count: 2 });
     await expect(shareArtifactVersion(env, "other", "artifact", "version-1")).rejects.toMatchObject({ code: "not_found" } satisfies Partial<ArtifactError>);
+  });
+
+  it("caps arbitrarily long metadata after trimming instead of rejecting it", async () => {
+    const title = `  ${"t".repeat(10_001)}  `;
+    const description = `  ${"d".repeat(100_001)}  `;
+
+    await updateArtifactMetadata(env, "owner", "artifact", { title, description });
+
+    await expect(env.DB.prepare("SELECT title, description FROM artifacts WHERE id = ?").bind("artifact").first()).resolves.toEqual({
+      title: "t".repeat(ARTIFACT_LIMITS.titleChars),
+      description: "d".repeat(ARTIFACT_LIMITS.descriptionChars),
+    });
   });
 
   it("hides soft-deleted artifacts immediately and recovers only during the exact 30-day window", async () => {

@@ -46,7 +46,18 @@ describe("artifact presenters", () => {
   });
 
   it("presents the exact gallery version and a display name without account identifiers", () => {
-    const gallery = presentGalleryArtifact({ ...artifact, participantDisplayName: "Mina Garden" });
+    const galleryRead = {
+      id: "artifact-1",
+      projectTitle: "Garden project",
+      title: "  Tide chart  ",
+      description: "  A small chart.  ",
+      type: "html" as const,
+      participantDisplayName: "Mina Garden",
+      version: artifact.galleryVersion,
+      updatedAt: 200,
+    };
+    // Gallery reads must be directly consumable and must not carry owner-only state.
+    const gallery = presentGalleryArtifact(galleryRead);
     expect(gallery).toEqual({
       id: "artifact-1",
       project: { title: "Garden project" },
@@ -58,6 +69,7 @@ describe("artifact presenters", () => {
       updatedAt: 200,
       url: "/artifacts/artifact-1",
     });
+    expect(JSON.stringify(galleryRead)).not.toMatch(/projectId|user|email|currentVersion|version-2/i);
     expect(JSON.stringify(gallery)).not.toMatch(/user|email|version-2/i);
   });
 

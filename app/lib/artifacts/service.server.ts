@@ -20,6 +20,8 @@ import {
 import type {
   ArtifactDetailPresentation,
   ArtifactFile,
+  GalleryArtifactDetailPresentation,
+  GalleryArtifactPresentation,
   ArtifactPresentation,
   ArtifactVersionDetail,
   ArtifactVersionSummary,
@@ -83,10 +85,7 @@ export type UploadedFileResult = {
 export type ArtifactMutationResult = { artifactId: string; versionId: string };
 
 export type ArtifactRead = ArtifactPresentation & { version: ArtifactVersionDetail };
-export type GalleryArtifactRead = Omit<ArtifactPresentation, "currentVersion" | "galleryVersion"> & {
-  participantDisplayName: string;
-  version: ArtifactVersionDetail;
-};
+export type GalleryArtifactRead = GalleryArtifactDetailPresentation;
 
 type StoredUpload = {
   id: string;
@@ -948,7 +947,6 @@ export async function getGalleryArtifact(env: Env, artifactId: string): Promise<
   };
   return {
     id: row.id,
-    projectId: row.project_id,
     projectTitle: row.project_title,
     title: row.title,
     description: row.description,
@@ -977,7 +975,7 @@ export async function listOwnedArtifacts(env: Env, userId: string): Promise<Arti
 }
 
 /** Gallery summaries use the saved gallery pointer and expose no account identity. */
-export async function listGalleryArtifacts(env: Env): Promise<Array<Omit<ArtifactPresentation, "currentVersion" | "galleryVersion"> & { participantDisplayName: string; version: ArtifactVersionSummary }>> {
+export async function listGalleryArtifacts(env: Env): Promise<GalleryArtifactPresentation[]> {
   const rows = await env.DB.prepare(
     `SELECT a.id, a.project_id, p.title AS project_title, a.title, a.description, a.type,
        a.visibility, a.current_version_id, a.gallery_version_id, a.updated_at, u.name AS participant_name,
@@ -1005,7 +1003,6 @@ export async function listGalleryArtifacts(env: Env): Promise<Array<Omit<Artifac
     };
     return {
       id: row.id,
-      projectId: row.project_id,
       projectTitle: row.project_title,
       title: row.title,
       description: row.description,
@@ -1029,10 +1026,16 @@ export async function listOwnedArtifactVersions(env: Env, userId: string, artifa
 
 export async function updateArtifactMetadata(env: Env, userId: string, artifactId: string, input: unknown): Promise<void> {
   assertFields(input, ["title", "description"]);
-  const rawTitle = input.title === undefined ? undefined : stringField(input.title, 10_000)!;
+  const rawTitle = input.title === undefined
+    ? undefined
+    : typeof input.title === "string"
+      ? input.title
+      : artifactError("invalid_input");
   const rawDescription = input.description === undefined || input.description === null
     ? input.description
-    : stringField(input.description, 100_000)!;
+    : typeof input.description === "string"
+      ? input.description
+      : artifactError("invalid_input");
   if (rawTitle === undefined && rawDescription === undefined) artifactError("invalid_input");
   const title = rawTitle === undefined ? undefined : trimAndCap(rawTitle, ARTIFACT_LIMITS.titleChars);
   if (title !== undefined && !title) artifactError("invalid_input");

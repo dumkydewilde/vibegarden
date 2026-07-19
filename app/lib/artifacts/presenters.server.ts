@@ -40,6 +40,25 @@ export type ArtifactDetailPresentation = ArtifactPresentation & {
   version: ArtifactVersionDetail;
 };
 
+/**
+ * Gallery reads deliberately carry only the fields a participant may see.
+ * It is also the direct input contract for the gallery presenter.
+ */
+export type GalleryArtifactPresentation = {
+  id: string;
+  projectTitle: string;
+  title: string;
+  description: string | null;
+  type: ArtifactType;
+  participantDisplayName: string;
+  version: ArtifactVersionSummary;
+  updatedAt: number;
+};
+
+export type GalleryArtifactDetailPresentation = Omit<GalleryArtifactPresentation, "version"> & {
+  version: ArtifactVersionDetail;
+};
+
 function artifactUrl(id: string): string {
   return `/artifacts/${encodeURIComponent(id)}`;
 }
@@ -61,8 +80,7 @@ export function presentOwnedArtifact(artifact: ArtifactPresentation) {
 }
 
 /** Gallery cards are deliberately limited to the exact gallery version. */
-export function presentGalleryArtifact(artifact: ArtifactPresentation & { participantDisplayName: string }) {
-  if (!artifact.galleryVersion) throw new Error("Gallery artifacts require a gallery version.");
+export function presentGalleryArtifact(artifact: GalleryArtifactPresentation) {
   return {
     id: artifact.id,
     project: { title: artifact.projectTitle },
@@ -70,7 +88,7 @@ export function presentGalleryArtifact(artifact: ArtifactPresentation & { partic
     description: artifact.description,
     type: artifact.type,
     participant: { displayName: artifact.participantDisplayName },
-    version: artifact.galleryVersion,
+    version: artifact.version,
     updatedAt: artifact.updatedAt,
     url: artifactUrl(artifact.id),
   };
