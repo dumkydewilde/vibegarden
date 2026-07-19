@@ -34,15 +34,17 @@ export function MobileNav({ current, clubs }: Pick<ClubSwitcherProps, "current" 
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-64 p-0">
-          <SheetHeader className="border-b">
-            <SheetTitle className="flex items-center gap-2 font-serif text-lg font-normal">
+          <SheetHeader className="border-b p-0 text-left">
+            <div className="flex gap-2 px-4 py-3">
               <Sprout className="size-5 text-primary" />
-              Vibe Garden
-            </SheetTitle>
+              <div className="min-w-0 flex-1">
+                <SheetTitle className="block font-serif text-lg leading-5 font-normal">
+                  Vibe Garden
+                </SheetTitle>
+                <ClubSwitcher current={current} clubs={clubs} onNavigate={() => setOpen(false)} />
+              </div>
+            </div>
           </SheetHeader>
-          <div className="border-b p-2">
-            <ClubSwitcher current={current} clubs={clubs} compact onNavigate={() => setOpen(false)} />
-          </div>
           <ul className="flex flex-col gap-1 p-2">
             {items.map((item) => (
               <li key={item.to}>
