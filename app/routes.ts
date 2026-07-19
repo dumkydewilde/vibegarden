@@ -39,6 +39,7 @@ export default [
       "routes/admin.conversations.$id.tsx",
     ),
   ]),
+  route("artifacts/:id/fullscreen", "routes/artifacts.$id.fullscreen.tsx"),
   route("join", "routes/join.tsx"),
   route("welcome", "routes/welcome.tsx"),
   route("api/chat", "routes/api.chat.ts"),

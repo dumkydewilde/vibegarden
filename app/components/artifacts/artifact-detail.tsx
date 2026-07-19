@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, ExternalLink, File, Pencil, Trash2 } from "lucide-react";
+import { Download, ExternalLink, File, Maximize2, Pencil, Trash2 } from "lucide-react";
 import { Link } from "react-router";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -8,6 +8,7 @@ import type { ArtifactProject } from "./artifact-upload-dialog";
 import { ArtifactUploadDialog } from "./artifact-upload-dialog";
 import { ArtifactPublishControls } from "./artifact-publish-controls";
 import { ArtifactVersionHistory, type ArtifactVersion } from "./artifact-version-history";
+import { ArtifactFrame } from "./artifact-frame";
 
 export type ArtifactDetailData = {
   id: string;
@@ -86,7 +87,7 @@ export function ArtifactDetail({
 
       <section className="mt-6 rounded-lg border p-4" aria-labelledby="artifact-content-heading">
         <h2 id="artifact-content-heading" className="text-lg">Artifact</h2>
-        {artifact.version.externalUrl ? <a href={artifact.version.externalUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline"><ExternalLink className="size-4" /> Open external link</a> : <div className="mt-3"><p className="text-sm text-muted-foreground">Files are downloaded separately; they are never rendered inline here.</p><ul className="mt-3 divide-y rounded-md border">{artifact.version.files.map((file) => <li key={file.path} className="flex items-center justify-between gap-3 px-3 py-2"><span className="flex min-w-0 items-center gap-2 text-sm"><File className="size-4 shrink-0" />{file.path}</span><span className="inline-flex shrink-0 items-center gap-1 text-sm text-muted-foreground" aria-label={`Download ${file.path} unavailable until secure delivery is ready`}><Download className="size-3" /> Download unavailable</span></li>)}</ul></div>}
+        {artifact.type === "html" ? <div className="mt-3 space-y-3"><ArtifactFrame artifactId={artifact.id} title={artifact.title} /><Link to={`/artifacts/${encodeURIComponent(artifact.id)}/fullscreen`} className="inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline"><Maximize2 className="size-4" /> Open full screen</Link></div> : artifact.version.externalUrl ? <a href={artifact.version.externalUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline"><ExternalLink className="size-4" /> Open external link</a> : <div className="mt-3"><p className="text-sm text-muted-foreground">Files are downloaded separately; they are never rendered inline here.</p><ul className="mt-3 divide-y rounded-md border">{artifact.version.files.map((file) => <li key={file.path} className="flex items-center justify-between gap-3 px-3 py-2"><span className="flex min-w-0 items-center gap-2 text-sm"><File className="size-4 shrink-0" />{file.path}</span><a href={`/artifacts/${encodeURIComponent(artifact.id)}/download?path=${encodeURIComponent(file.path)}`} className="inline-flex shrink-0 items-center gap-1 text-sm text-primary underline-offset-4 hover:underline" aria-label={`Download ${file.path}`}><Download className="size-3" /> Download</a></li>)}</ul></div>}
         {!owner && <p className="mt-4 text-sm text-muted-foreground">Shared in the gallery. You can view this saved version, but only its owner can edit or replace it.</p>}
       </section>
 

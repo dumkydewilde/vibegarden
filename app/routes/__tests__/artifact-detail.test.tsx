@@ -68,8 +68,7 @@ describe("Artifact detail", () => {
     expect(screen.queryByRole("button", { name: /delete artifact/i })).not.toBeInTheDocument();
     expect(screen.queryByTitle(/preview/i)).not.toBeInTheDocument();
     expect(document.querySelector("iframe")).toBeNull();
-    expect(screen.getByLabelText(/download report\.csv unavailable until secure delivery is ready/i)).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /download report\.csv/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /download report\.csv/i })).toHaveAttribute("href", "/artifacts/artifact-1/download?path=report.csv");
   });
 
   it("keeps an owner-recoverable deletion visible after a detail reload", async () => {

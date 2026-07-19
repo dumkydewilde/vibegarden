@@ -14,6 +14,7 @@ const restoreArtifactVersion = vi.fn();
 const shareArtifactVersion = vi.fn();
 const unshareArtifact = vi.fn();
 const getOwnedArtifact = vi.fn();
+const getGalleryArtifact = vi.fn();
 
 vi.mock("~/lib/auth.server", () => ({ requireUser }));
 vi.mock("~/lib/artifacts/service.server", () => ({
@@ -30,6 +31,7 @@ vi.mock("~/lib/artifacts/service.server", () => ({
   shareArtifactVersion,
   unshareArtifact,
   getOwnedArtifact,
+  getGalleryArtifact,
 }));
 
 vi.mock("~/lib/context", () => ({
@@ -37,7 +39,12 @@ vi.mock("~/lib/context", () => ({
 }));
 
 const context = {
-  get: () => ({ env: { DB: {} } }),
+  get: () => ({ env: {
+    DB: {},
+    RENDERER_ORIGIN: "https://usercontent.vibegarden.club",
+    RENDERER_SIGNING_SECRET: "renderer-secret",
+    SESSION_SECRET: "session-secret",
+  } }),
 };
 
 const actionArgs = (request: Request, params: Record<string, string> = {}) => ({
@@ -61,6 +68,7 @@ const noServiceCalls = () => {
     shareArtifactVersion,
     unshareArtifact,
     getOwnedArtifact,
+    getGalleryArtifact,
   ]) {
     expect(service).not.toHaveBeenCalled();
   }
@@ -224,15 +232,20 @@ describe("artifact browser routes", () => {
     });
   });
 
-  it("defines the authenticated download endpoint but fails closed until renderer capability issuance exists", async () => {
-    getOwnedArtifact.mockResolvedValueOnce({ id: "artifact-1" });
+  it("redirects an authenticated file download to a renderer capability", async () => {
+    getOwnedArtifact.mockResolvedValueOnce({
+      id: "artifact-1",
+      title: "Report",
+      type: "file",
+      version: { id: "version-1", entryPath: null, allowedDataOrigins: [], files: [{ path: "report.csv" }] },
+    });
     const { loader } = await import("../artifacts.$id.download");
 
     const response = await loader(actionArgs(new Request("https://vibegarden.club/artifacts/artifact-1/download"), { id: "artifact-1" }));
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(302);
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
-    expect(response.headers.get("Location")).toBeNull();
+    expect(response.headers.get("Location")).toMatch(/^https:\/\/usercontent\.vibegarden\.club\/v1\//u);
   });
 
   it.each([

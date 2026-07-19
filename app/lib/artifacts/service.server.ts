@@ -1030,7 +1030,10 @@ export async function listOwnedProjectArtifacts(env: Env, userId: string, projec
 }
 
 /** Gallery summaries use the saved gallery pointer and expose no account identity. */
-export async function listGalleryArtifacts(env: Env): Promise<GalleryArtifactPresentation[]> {
+export async function listGalleryArtifacts(
+  env: Env,
+  clubId?: string,
+): Promise<GalleryArtifactPresentation[]> {
   const rows = await env.DB.prepare(
     `SELECT a.id, a.project_id, p.title AS project_title, a.title, a.description, a.type,
        a.visibility, a.current_version_id, a.gallery_version_id, a.updated_at, u.name AS participant_name,
@@ -1041,8 +1044,9 @@ export async function listGalleryArtifacts(env: Env): Promise<GalleryArtifactPre
      INNER JOIN users u ON u.id = a.user_id
      INNER JOIN artifact_versions v ON v.id = a.gallery_version_id AND v.artifact_id = a.id
      WHERE a.visibility = 'gallery' AND a.deleted_at IS NULL
+       AND (? IS NULL OR p.club_id = ?)
      ORDER BY a.updated_at DESC, a.id`,
-  ).all<ArtifactRow & { participant_name: string | null; version_id: string; version_created_at: number } & Omit<VersionRow, "id" | "created_at">>();
+  ).bind(clubId ?? null, clubId ?? null).all<ArtifactRow & { participant_name: string | null; version_id: string; version_created_at: number } & Omit<VersionRow, "id" | "created_at">>();
   return rows.results.map((row) => {
     const version: VersionRow = {
       id: row.version_id,
