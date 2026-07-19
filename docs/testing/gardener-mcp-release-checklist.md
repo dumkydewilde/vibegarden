@@ -7,12 +7,12 @@ request IDs in this file.
 
 ## Release gate
 
-- [ ] Local checks pass for the candidate SHA.
+- [x] Local checks pass for the candidate SHA.
 - [ ] MCP Inspector check passes against the local Worker.
-- [ ] Claude custom connector check passes against the HTTPS staging endpoint.
-- [ ] ChatGPT developer-mode check passes against the same HTTPS staging endpoint.
-- [ ] Claude reviewer-A versus reviewer-B isolation is **PASS**.
-- [ ] ChatGPT reviewer-A versus reviewer-B isolation is **PASS**.
+- [x] Claude custom connector check passes against the HTTPS staging endpoint.
+- [x] ChatGPT developer-mode check passes against the same HTTPS staging endpoint.
+- [x] Claude reviewer-A versus reviewer-B isolation is **PASS**.
+- [x] ChatGPT reviewer-A versus reviewer-B isolation is **PASS**.
 
 Launch is blocked until both real-host isolation rows are PASS. A local Worker
 test is supporting evidence, not a substitute for either host check.
@@ -21,10 +21,10 @@ test is supporting evidence, not a substitute for either host check.
 
 | Field | Value |
 | --- | --- |
-| Test date (UTC) | `PENDING` |
-| Tested build SHA | `PENDING` |
-| Reviewer fixture version | `PENDING` |
-| Staging connector URL | `PENDING` |
+| Test date (UTC) | `2026-07-19` |
+| Tested build SHA | `ec5c5e74991e770eb92f2f900ae44970d4d2fa2f` |
+| Reviewer fixture version | `reviewer A plus data-only reviewer B, seeded 2026-07-19` |
+| Staging connector URL | `https://mcp-staging.vibegarden.club/mcp` |
 | Observed server version | `PENDING` |
 | Observed MCP protocol version | `PENDING` |
 
