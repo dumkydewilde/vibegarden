@@ -363,6 +363,10 @@ describe("content inspection", () => {
 });
 
 describe("artifact URLs and origins", () => {
+  it("allows only the explicit local security-fixture website origin", () => {
+    expect(normalizeArtifactOrigins(["http://vibegarden.test:8788"])).toEqual(["http://vibegarden.test:8788"]);
+  });
+
   it("allows HTTPS links and removes a default port", () => {
     expect(normalizeArtifactLink("https://Example.COM:443/report?q=1")).toBe(
       "https://example.com/report?q=1",

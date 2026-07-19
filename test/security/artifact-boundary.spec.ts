@@ -7,6 +7,12 @@ async function seed(page: import("@playwright/test").Page, fixture: "forbidden" 
 }
 
 test("uploaded content remains in an opaque, capability-only iframe", async ({ page }) => {
+  await page.context().addCookies([{
+    name: "session",
+    value: "browser-session-forbidden-write",
+    url: "http://vibegarden.test:8788",
+    sameSite: "Lax",
+  }]);
   const fixture = await seed(page, "forbidden");
   await page.setExtraHTTPHeaders({ "Sec-Fetch-Dest": "iframe", "Sec-Fetch-Mode": "navigate" });
   await page.goto(`/__fixture/wrapper?src=${encodeURIComponent(fixture.previewUrl)}`);
@@ -17,6 +23,7 @@ test("uploaded content remains in an opaque, capability-only iframe", async ({ p
     cookies: "blocked",
     storage: "blocked",
     indexedDb: "blocked",
+    form: "blocked",
     popup: "blocked",
     topNavigation: "blocked",
     websiteWrite: "blocked",
@@ -32,6 +39,20 @@ test("uploaded content remains in an opaque, capability-only iframe", async ({ p
   await expect(frame.locator("body")).toContainText("security probe complete");
   await expect(page.locator("#parent-marker")).toHaveText("parent intact");
   await expect(page.locator("iframe")).toHaveAttribute("sandbox", "allow-scripts");
+
+  await expect.poll(async () => {
+    return page.evaluate(async () => {
+      const response = await fetch("/__fixture/write-attempts");
+      const body = response.ok ? await response.json() : null;
+      return body ?? { status: response.status };
+    });
+  }).toEqual({
+    requests: 1,
+    cookies: [],
+    mutations: 0,
+    rejectedByOriginGuard: 1,
+    formRequests: 0,
+  });
 });
 
 test("direct, expired, and tampered renderer capabilities fail safely", async ({ page }) => {

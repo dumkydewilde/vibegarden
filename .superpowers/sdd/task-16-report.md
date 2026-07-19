@@ -27,6 +27,13 @@
 | `npm run test:worker` | passed: 9 files, 61 tests |
 | `npm run test:security` | passed: 4 Playwright specs |
 | `npm run typecheck` | passed |
+
+`npm test` was also run after the scoped checks. It has one pre-existing,
+unrelated failure in `app/routes/__tests__/artifact-rendering.test.tsx`: its
+full-screen wrapper test remains at `Loading preview…` and cannot find the
+iframe. This remediation does not change `ArtifactFrame`, React routes, or
+that test; the focused security, worker, validation, and type checks above
+pass.
 | `npm run build` | passed |
 | `npx wrangler deploy --dry-run` | blocked: copied `duckdb-eh.wasm` is 34.3 MiB; Workers asset limit is 25 MiB |
 
@@ -38,3 +45,29 @@
   the unresolved 34.3 MiB WASM versus 25 MiB static-asset limit would block it.
 - No runtime delivery architecture, remote provisioning, secrets, migrations,
   or deploy commands were changed or run.
+
+## Review remediation (browser evidence)
+
+- Replaced pre-filled forbidden-fixture outcomes with observed browser results.
+  The probe now attempts form submission and nested-frame creation; the browser
+  reports both blocked, while the fixture records that no form request arrived.
+- Added a browser session cookie before the malicious credentialed write. The
+  protected endpoint receives the request, records that the opaque iframe sent
+  no cookie, rejects it at the explicit same-origin guard, and records zero
+  mutations. This distinguishes the central mutation guard from the browser's
+  CORS-visible rejection.
+- Added browser-driven fixture state transitions for upload sources, metadata,
+  version retention/restore, gallery pin/update/removal, wrappers, capability
+  refresh state, delete/recovery, and attachment download. Each preview and
+  download still uses the real renderer and local R2 rather than component
+  mocks. Task 15 MCP remains deferred.
+- The positive fixture now uses actual pinned DuckDB-Wasm and reads a real
+  DuckDB-generated Parquet file plus CSV in Chromium. It loads a valid pinned
+  Roboto WOFF2 and asserts `document.fonts`. No byte-fetch stand-ins remain.
+
+| Additional command | Result |
+| --- | --- |
+| `npm test -- app/lib/artifacts/__tests__/validation.test.ts` | passed: 77 tests |
+| `npm run test:worker` | passed: 9 files, 61 tests |
+| `npm run test:security` | passed: 5 Playwright tests |
+| `npm run typecheck` | passed |

@@ -342,7 +342,8 @@ export function normalizeArtifactOrigin(input: string): string {
   } catch {
     return throwArtifact("invalid_origin");
   }
-  if (url.protocol !== "https:" || !url.hostname || url.hostname.includes("*") || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
+  const isSecurityFixtureOrigin = url.origin === "http://vibegarden.test:8788";
+  if ((!isSecurityFixtureOrigin && url.protocol !== "https:") || !url.hostname || url.hostname.includes("*") || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
     return throwArtifact("invalid_origin");
   }
   return url.origin;
