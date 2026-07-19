@@ -232,6 +232,37 @@ describe("content inspection", () => {
       code: "invalid_input",
     });
   });
+
+  it("rejects a null UTF-8 stream reader with a stable artifact error", async () => {
+    const stream = {
+      getReader: () => null,
+    } as unknown as ReadableStream<Uint8Array>;
+
+    await expect(assertUtf8Stream(stream)).rejects.toMatchObject({ code: "invalid_input" });
+  });
+
+  it("rejects a UTF-8 stream reader without releaseLock before reading", async () => {
+    const stream = {
+      getReader: () => ({
+        read: async () => ({ done: true, value: undefined }),
+      }),
+    } as unknown as ReadableStream<Uint8Array>;
+
+    await expect(assertUtf8Stream(stream)).rejects.toMatchObject({ code: "invalid_input" });
+  });
+
+  it("does not let a broken UTF-8 stream reader cleanup mask decoding failure", async () => {
+    const stream = {
+      getReader: () => ({
+        read: async () => ({ done: false, value: new Uint8Array([0xc3, 0x28]) }),
+        releaseLock: () => {
+          throw new Error("cleanup failed");
+        },
+      }),
+    } as unknown as ReadableStream<Uint8Array>;
+
+    await expect(assertUtf8Stream(stream)).rejects.toMatchObject({ code: "invalid_type" });
+  });
 });
 
 describe("artifact URLs and origins", () => {

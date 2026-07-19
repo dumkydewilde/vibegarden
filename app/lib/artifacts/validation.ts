@@ -261,6 +261,14 @@ export async function assertUtf8Stream(stream: ReadableStream<Uint8Array>): Prom
     throwArtifact("invalid_input");
   }
   const reader = stream.getReader();
+  if (
+    !reader ||
+    typeof reader !== "object" ||
+    typeof reader.read !== "function" ||
+    typeof reader.releaseLock !== "function"
+  ) {
+    throwArtifact("invalid_input");
+  }
   const decoder = new TextDecoder("utf-8", { fatal: true });
   try {
     while (true) {
@@ -272,7 +280,11 @@ export async function assertUtf8Stream(stream: ReadableStream<Uint8Array>): Prom
   } catch {
     throwArtifact("invalid_type");
   } finally {
-    reader.releaseLock();
+    try {
+      reader.releaseLock();
+    } catch {
+      // Cleanup must not replace the stream's validation result.
+    }
   }
 }
 

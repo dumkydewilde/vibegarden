@@ -210,6 +210,10 @@ The gate review found two further Important runtime-type gaps:
 1. `validateZipArtifactEntry`, `inspectArtifactContent`, and `assertUtf8Stream` access properties or methods before validating root input types.
 2. `inspectArtifactContent` does not require a supplied `content` value to be a real `Uint8Array` before binary inspection.
 
+## Final boundary review finding
+
+The final reviewer found that `assertUtf8Stream()` validates only the existence of `getReader`; a malformed result can make cleanup throw a native error and mask the intended stable ArtifactError.
+
 ## Approval review fixes — 2026-07-19
 
 ### Scope
@@ -380,3 +384,59 @@ exit 0
 - The content guard combines `ArrayBuffer.isView()` with the typed-array brand, accepting valid cross-realm `Uint8Array` values while rejecting structural byte lookalikes.
 - Existing valid content-signature and incremental UTF-8 tests remain green, preserving supported inputs.
 - The pre-existing untracked `docs/plans/2026-07-18-artifact-upload-and-rendering.md` remains excluded from the commit.
+
+## Final boundary review fix — 2026-07-19
+
+### Scope
+
+Hardened `assertUtf8Stream()` against malformed results from `getReader()`:
+
+1. The returned reader must be a non-null object with callable `read` and `releaseLock` methods before any stream read begins. Invalid reader shapes reject with the stable `invalid_input` `ArtifactError`.
+2. Reader cleanup is now best-effort. A missing reader cleanup method is rejected before use, and a throwing `releaseLock()` is ignored so it cannot mask an expected decoding or read-validation `ArtifactError`.
+
+### TDD evidence
+
+RED (tests added before production changes):
+
+```text
+npm test -- app/lib/artifacts/__tests__/validation.test.ts app/lib/artifacts/__tests__/manifest.test.ts
+exit 1
+2 test files run; 1 passed and 1 failed.
+88 tests run; 85 passed and 3 failed.
+
+Expected failures:
+- `getReader(): null` was masked by a native TypeError while accessing `releaseLock`;
+- a reader without `releaseLock` was masked by a native "not a function" TypeError;
+- a throwing `releaseLock()` masked the expected `invalid_type` error for malformed UTF-8.
+```
+
+GREEN:
+
+```text
+npm test -- app/lib/artifacts/__tests__/validation.test.ts app/lib/artifacts/__tests__/manifest.test.ts
+exit 0
+2 test files passed; 88 tests passed.
+
+npm run typecheck
+react-router typegen && tsc
+exit 0
+
+git diff --check
+exit 0
+```
+
+### Files changed
+
+- `app/lib/artifacts/validation.ts`
+- `app/lib/artifacts/__tests__/validation.test.ts`
+- `.superpowers/sdd/task-3-report.md`
+
+### Commit
+
+`HEAD` — `fix: harden UTF-8 stream reader validation`
+
+### Self-review
+
+- Reader-surface validation occurs before the first `read()` call, including the explicit `releaseLock` check required for deterministic cleanup.
+- Cleanup errors are intentionally swallowed only after a usable cleanup method has been established, preserving the primary stable result.
+- The unrelated untracked documentation plan remains excluded from the commit.
