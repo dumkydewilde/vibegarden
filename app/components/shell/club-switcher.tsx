@@ -30,7 +30,11 @@ export function ClubSwitcher({
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          className={compact ? "w-full justify-between" : "mx-2 w-[calc(100%-1rem)] justify-between"}
+          className={
+            compact
+              ? "w-full justify-between"
+              : "mt-0.5 h-7 w-full justify-between px-0 font-normal has-[>svg]:px-0 text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+          }
           aria-label={`Switch club, current club ${current.name}`}
         >
           <span className="min-w-0 truncate">{current.name}</span>
