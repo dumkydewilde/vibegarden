@@ -138,6 +138,52 @@ describe("owned artifact repository", () => {
     expect(artifact).toEqual({ current_version_id: "version-a-next", gallery_version_id: "version-a-gallery" });
   });
 
+  it("rejects an expired finalizing upload without committing artifact state", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO artifact_uploads (id, user_id, artifact_id, version_id, project_id, type, title, allowed_data_origins, source, status, idempotency_key, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'html', ?, '[]', 'web', 'finalizing', ?, ?, ?, ?)").bind("upload-expired", "user-a", "artifact-expired", "version-expired", "project-a", "Expired artifact", "upload-key-expired", now - 1, now, now),
+      env.DB.prepare("INSERT INTO artifact_upload_files (upload_id, path, r2_key, mime_type, byte_size, sha256, created_at) VALUES (?, ?, ?, 'text/html', 5, ?, ?)").bind("upload-expired", "index.html", "artifacts/artifact-expired/versions/version-expired/index.html", "f".repeat(64), now),
+      env.DB.prepare("INSERT INTO artifact_object_leases (r2_key, upload_id, user_id, byte_size, sha256, expires_at, created_at) VALUES (?, ?, ?, 5, ?, ?, ?)").bind("artifacts/artifact-expired/versions/version-expired/index.html", "upload-expired", "user-a", "f".repeat(64), now + 1, now),
+    ]);
+
+    await expect(
+      finalizeNewArtifact(env, "user-a", { uploadId: "upload-expired", now }),
+    ).rejects.toMatchObject({ code: "state_conflict" });
+
+    const artifact = await env.DB.prepare("SELECT id FROM artifacts WHERE id = ?").bind("artifact-expired").first();
+    const version = await env.DB.prepare("SELECT id FROM artifact_versions WHERE id = ?").bind("version-expired").first();
+    const file = await env.DB.prepare("SELECT r2_key FROM artifact_files WHERE version_id = ?").bind("version-expired").first();
+    const upload = await env.DB.prepare("SELECT status FROM artifact_uploads WHERE id = ?").bind("upload-expired").first<{ status: string }>();
+    const lease = await env.DB.prepare("SELECT r2_key FROM artifact_object_leases WHERE upload_id = ?").bind("upload-expired").first();
+    expect(artifact).toBeNull();
+    expect(version).toBeNull();
+    expect(file).toBeNull();
+    expect(upload).toEqual({ status: "finalizing" });
+    expect(lease).toEqual({ r2_key: "artifacts/artifact-expired/versions/version-expired/index.html" });
+  });
+
+  it("rejects an expired finalization lease without committing version state", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO artifact_uploads (id, user_id, artifact_id, version_id, project_id, type, title, allowed_data_origins, source, status, idempotency_key, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'html', ?, '[]', 'web', 'finalizing', ?, ?, ?, ?)").bind("upload-expired-lease", "user-a", "artifact-a", "version-expired-lease", "project-a", "Artifact A", "upload-key-expired-lease", now + 1, now, now),
+      env.DB.prepare("INSERT INTO artifact_upload_files (upload_id, path, r2_key, mime_type, byte_size, sha256, created_at) VALUES (?, ?, ?, 'text/html', 5, ?, ?)").bind("upload-expired-lease", "index.html", "artifacts/artifact-a/versions/version-expired-lease/index.html", "1".repeat(64), now),
+      env.DB.prepare("INSERT INTO artifact_object_leases (r2_key, upload_id, user_id, byte_size, sha256, expires_at, created_at) VALUES (?, ?, ?, 5, ?, ?, ?)").bind("artifacts/artifact-a/versions/version-expired-lease/index.html", "upload-expired-lease", "user-a", "1".repeat(64), now - 1, now),
+    ]);
+
+    await expect(
+      finalizeExistingArtifactVersion(env, "user-a", { uploadId: "upload-expired-lease", now }),
+    ).rejects.toMatchObject({ code: "state_conflict" });
+
+    const version = await env.DB.prepare("SELECT id FROM artifact_versions WHERE id = ?").bind("version-expired-lease").first();
+    const file = await env.DB.prepare("SELECT r2_key FROM artifact_files WHERE version_id = ?").bind("version-expired-lease").first();
+    const artifact = await env.DB.prepare("SELECT current_version_id FROM artifacts WHERE id = ?").bind("artifact-a").first<{ current_version_id: string }>();
+    const upload = await env.DB.prepare("SELECT status FROM artifact_uploads WHERE id = ?").bind("upload-expired-lease").first<{ status: string }>();
+    const lease = await env.DB.prepare("SELECT r2_key FROM artifact_object_leases WHERE upload_id = ?").bind("upload-expired-lease").first();
+    expect(version).toBeNull();
+    expect(file).toBeNull();
+    expect(artifact).toEqual({ current_version_id: "version-a-current" });
+    expect(upload).toEqual({ status: "finalizing" });
+    expect(lease).toEqual({ r2_key: "artifacts/artifact-a/versions/version-expired-lease/index.html" });
+  });
+
   it("atomically creates a private link artifact with its first current version", async () => {
     await finalizeNewLinkArtifact(env, "user-a", {
       artifact: { id: "artifact-link", projectId: "project-a", type: "link", title: "Link", description: null },
@@ -152,5 +198,22 @@ describe("owned artifact repository", () => {
     const version = await env.DB.prepare("SELECT version_number, external_url, file_count FROM artifact_versions WHERE id = ?").bind("version-link").first<{ version_number: number; external_url: string; file_count: number }>();
     expect(artifact).toEqual({ current_version_id: "version-link", gallery_version_id: null, visibility: "private" });
     expect(version).toEqual({ version_number: 1, external_url: "https://example.com/report", file_count: 0 });
+  });
+
+  it("rejects link creation in another user's project without relying on the project trigger", async () => {
+    await expect(
+      finalizeNewLinkArtifact(env, "user-a", {
+        artifact: { id: "artifact-cross-project", projectId: "project-b", type: "link", title: "Cross project", description: null },
+        versionId: "version-cross-project",
+        source: "browser",
+        externalUrl: "https://example.com/cross-project",
+        allowedDataOrigins: "[]",
+        now,
+      }),
+    ).rejects.toMatchObject({ code: "state_conflict" });
+
+    await expect(findOwnedArtifact(env, "user-a", "artifact-cross-project")).resolves.toBeNull();
+    const version = await env.DB.prepare("SELECT id FROM artifact_versions WHERE id = ?").bind("version-cross-project").first();
+    expect(version).toBeNull();
   });
 });

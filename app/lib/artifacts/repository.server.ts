@@ -192,16 +192,16 @@ export async function finalizeNewArtifact(
         `INSERT INTO artifacts (id, user_id, project_id, type, title, description, visibility, current_version_id, created_at, updated_at)
          SELECT u.artifact_id, u.user_id, u.project_id, u.type, u.title, u.description, 'private', NULL, ?, ?
          FROM artifact_uploads u
-         WHERE u.id = ? AND u.user_id = ? AND u.status = 'finalizing'
+         WHERE u.id = ? AND u.user_id = ? AND u.status = 'finalizing' AND u.expires_at > ?
            AND NOT EXISTS (
              SELECT 1 FROM artifact_upload_files f
              WHERE f.upload_id = u.id AND NOT EXISTS (
                SELECT 1 FROM artifact_object_leases l
                WHERE l.r2_key = f.r2_key AND l.upload_id = u.id AND l.user_id = u.user_id
-                 AND l.byte_size = f.byte_size AND l.sha256 = f.sha256
+                 AND l.byte_size = f.byte_size AND l.sha256 = f.sha256 AND l.expires_at > ?
              )
            )`,
-      ).bind(input.now, input.now, input.uploadId, userId),
+      ).bind(input.now, input.now, input.uploadId, userId, input.now, input.now),
       env.DB.prepare(
         `INSERT INTO artifact_versions (id, artifact_id, version_number, source, entry_path, external_url, allowed_data_origins, file_count, total_bytes, created_by, created_at)
          SELECT u.version_id, u.artifact_id, 1, u.source,
@@ -209,63 +209,85 @@ export async function finalizeNewArtifact(
            NULL, u.allowed_data_origins, COUNT(f.r2_key), COALESCE(SUM(f.byte_size), 0), u.user_id, ?
          FROM artifact_uploads u
          LEFT JOIN artifact_upload_files f ON f.upload_id = u.id
-         WHERE u.id = ? AND u.user_id = ? AND u.status = 'finalizing'
+         WHERE u.id = ? AND u.user_id = ? AND u.status = 'finalizing' AND u.expires_at > ?
            AND NOT EXISTS (
              SELECT 1 FROM artifact_upload_files required_file
              WHERE required_file.upload_id = u.id AND NOT EXISTS (
                SELECT 1 FROM artifact_object_leases l
                WHERE l.r2_key = required_file.r2_key AND l.upload_id = u.id AND l.user_id = u.user_id
-                 AND l.byte_size = required_file.byte_size AND l.sha256 = required_file.sha256
+                 AND l.byte_size = required_file.byte_size AND l.sha256 = required_file.sha256 AND l.expires_at > ?
              )
            )
          GROUP BY u.id`,
-      ).bind(input.now, input.uploadId, userId),
+      ).bind(input.now, input.uploadId, userId, input.now, input.now),
       env.DB.prepare(
         `INSERT INTO artifact_files (version_id, path, r2_key, mime_type, byte_size, sha256, created_at)
          SELECT u.version_id, f.path, f.r2_key, f.mime_type, f.byte_size, f.sha256, ?
          FROM artifact_uploads u
          INNER JOIN artifact_upload_files f ON f.upload_id = u.id
-         WHERE u.id = ? AND u.user_id = ? AND u.status = 'finalizing'
+         WHERE u.id = ? AND u.user_id = ? AND u.status = 'finalizing' AND u.expires_at > ?
            AND NOT EXISTS (
              SELECT 1 FROM artifact_upload_files required_file
              WHERE required_file.upload_id = u.id AND NOT EXISTS (
                SELECT 1 FROM artifact_object_leases l
                WHERE l.r2_key = required_file.r2_key AND l.upload_id = u.id AND l.user_id = u.user_id
-                 AND l.byte_size = required_file.byte_size AND l.sha256 = required_file.sha256
+                 AND l.byte_size = required_file.byte_size AND l.sha256 = required_file.sha256 AND l.expires_at > ?
              )
            )`,
-      ).bind(input.now, input.uploadId, userId),
+      ).bind(input.now, input.uploadId, userId, input.now, input.now),
       env.DB.prepare(
         `UPDATE artifacts SET current_version_id = (
            SELECT version_id FROM artifact_uploads
-           WHERE id = ? AND user_id = ? AND status = 'finalizing'
+           WHERE id = ? AND user_id = ? AND status = 'finalizing' AND expires_at > ?
          ), updated_at = ?
-         WHERE id = (SELECT artifact_id FROM artifact_uploads WHERE id = ? AND user_id = ? AND status = 'finalizing')
+         WHERE id = (SELECT artifact_id FROM artifact_uploads WHERE id = ? AND user_id = ? AND status = 'finalizing' AND expires_at > ?)
            AND user_id = ? AND deleted_at IS NULL
            AND EXISTS (
              SELECT 1 FROM artifact_versions v
              WHERE v.id = (
                SELECT version_id FROM artifact_uploads
-               WHERE id = ? AND user_id = ? AND status = 'finalizing'
+               WHERE id = ? AND user_id = ? AND status = 'finalizing' AND expires_at > ?
              ) AND v.artifact_id = artifacts.id
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM artifact_upload_files f
+             WHERE f.upload_id = ? AND NOT EXISTS (
+               SELECT 1 FROM artifact_object_leases l
+               WHERE l.r2_key = f.r2_key AND l.upload_id = ? AND l.user_id = ?
+                 AND l.byte_size = f.byte_size AND l.sha256 = f.sha256 AND l.expires_at > ?
+             )
            )`,
-      ).bind(input.uploadId, userId, input.now, input.uploadId, userId, userId, input.uploadId, userId),
+      ).bind(input.uploadId, userId, input.now, input.now, input.uploadId, userId, input.now, userId, input.uploadId, userId, input.now, input.uploadId, input.uploadId, userId, input.now),
       env.DB.prepare(
         `UPDATE artifact_uploads SET status = 'complete', updated_at = ?
-         WHERE id = ? AND user_id = ? AND status = 'finalizing'
+         WHERE id = ? AND user_id = ? AND status = 'finalizing' AND expires_at > ?
            AND EXISTS (
              SELECT 1 FROM artifact_versions v
              WHERE v.id = artifact_uploads.version_id AND v.artifact_id = artifact_uploads.artifact_id
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM artifact_upload_files f
+             WHERE f.upload_id = artifact_uploads.id AND NOT EXISTS (
+               SELECT 1 FROM artifact_object_leases l
+               WHERE l.r2_key = f.r2_key AND l.upload_id = artifact_uploads.id AND l.user_id = artifact_uploads.user_id
+                 AND l.byte_size = f.byte_size AND l.sha256 = f.sha256 AND l.expires_at > ?
+             )
            )`,
-      ).bind(input.now, input.uploadId, userId),
+      ).bind(input.now, input.uploadId, userId, input.now, input.now),
       env.DB.prepare(
         `DELETE FROM artifact_object_leases
-         WHERE upload_id = ? AND user_id = ?
+         WHERE upload_id = ? AND user_id = ? AND expires_at > ?
+           AND EXISTS (
+             SELECT 1 FROM artifact_uploads u
+             WHERE u.id = artifact_object_leases.upload_id
+               AND u.user_id = artifact_object_leases.user_id
+               AND u.status = 'complete' AND u.expires_at > ?
+           )
            AND EXISTS (
              SELECT 1 FROM artifact_upload_files f
              WHERE f.upload_id = artifact_object_leases.upload_id AND f.r2_key = artifact_object_leases.r2_key
            )`,
-      ).bind(input.uploadId, userId),
+      ).bind(input.uploadId, userId, input.now, input.now),
     ]);
     if (results[0].meta.changes !== 1 || results[1].meta.changes !== 1 || results[3].meta.changes !== 1 || results[4].meta.changes !== 1) {
       throw new ArtifactError("state_conflict");
@@ -294,62 +316,84 @@ export async function finalizeExistingArtifactVersion(
            u.user_id, ?
          FROM artifact_uploads u
          INNER JOIN artifacts a ON a.id = u.artifact_id AND a.user_id = u.user_id AND a.project_id = u.project_id AND a.type = u.type
-         WHERE u.id = ? AND u.user_id = ? AND u.status = 'finalizing' AND a.deleted_at IS NULL
+         WHERE u.id = ? AND u.user_id = ? AND u.status = 'finalizing' AND u.expires_at > ? AND a.deleted_at IS NULL
            AND NOT EXISTS (
              SELECT 1 FROM artifact_upload_files required_file
              WHERE required_file.upload_id = u.id AND NOT EXISTS (
                SELECT 1 FROM artifact_object_leases l
                WHERE l.r2_key = required_file.r2_key AND l.upload_id = u.id AND l.user_id = u.user_id
-                 AND l.byte_size = required_file.byte_size AND l.sha256 = required_file.sha256
+                 AND l.byte_size = required_file.byte_size AND l.sha256 = required_file.sha256 AND l.expires_at > ?
              )
            )`,
-      ).bind(input.now, input.uploadId, userId),
+      ).bind(input.now, input.uploadId, userId, input.now, input.now),
       env.DB.prepare(
         `INSERT INTO artifact_files (version_id, path, r2_key, mime_type, byte_size, sha256, created_at)
          SELECT u.version_id, f.path, f.r2_key, f.mime_type, f.byte_size, f.sha256, ?
          FROM artifact_uploads u
          INNER JOIN artifact_upload_files f ON f.upload_id = u.id
-         WHERE u.id = ? AND u.user_id = ? AND u.status = 'finalizing'
+         WHERE u.id = ? AND u.user_id = ? AND u.status = 'finalizing' AND u.expires_at > ?
            AND NOT EXISTS (
              SELECT 1 FROM artifact_upload_files required_file
              WHERE required_file.upload_id = u.id AND NOT EXISTS (
                SELECT 1 FROM artifact_object_leases l
                WHERE l.r2_key = required_file.r2_key AND l.upload_id = u.id AND l.user_id = u.user_id
-                 AND l.byte_size = required_file.byte_size AND l.sha256 = required_file.sha256
+                 AND l.byte_size = required_file.byte_size AND l.sha256 = required_file.sha256 AND l.expires_at > ?
              )
            )`,
-      ).bind(input.now, input.uploadId, userId),
+      ).bind(input.now, input.uploadId, userId, input.now, input.now),
       env.DB.prepare(
         `UPDATE artifacts SET current_version_id = (
            SELECT version_id FROM artifact_uploads
-           WHERE id = ? AND user_id = ? AND status = 'finalizing'
+           WHERE id = ? AND user_id = ? AND status = 'finalizing' AND expires_at > ?
          ), updated_at = ?
-         WHERE id = (SELECT artifact_id FROM artifact_uploads WHERE id = ? AND user_id = ? AND status = 'finalizing')
+         WHERE id = (SELECT artifact_id FROM artifact_uploads WHERE id = ? AND user_id = ? AND status = 'finalizing' AND expires_at > ?)
            AND user_id = ? AND deleted_at IS NULL
            AND EXISTS (
              SELECT 1 FROM artifact_versions v
              WHERE v.id = (
                SELECT version_id FROM artifact_uploads
-               WHERE id = ? AND user_id = ? AND status = 'finalizing'
+               WHERE id = ? AND user_id = ? AND status = 'finalizing' AND expires_at > ?
              ) AND v.artifact_id = artifacts.id
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM artifact_upload_files f
+             WHERE f.upload_id = ? AND NOT EXISTS (
+               SELECT 1 FROM artifact_object_leases l
+               WHERE l.r2_key = f.r2_key AND l.upload_id = ? AND l.user_id = ?
+                 AND l.byte_size = f.byte_size AND l.sha256 = f.sha256 AND l.expires_at > ?
+             )
            )`,
-      ).bind(input.uploadId, userId, input.now, input.uploadId, userId, userId, input.uploadId, userId),
+      ).bind(input.uploadId, userId, input.now, input.now, input.uploadId, userId, input.now, userId, input.uploadId, userId, input.now, input.uploadId, input.uploadId, userId, input.now),
       env.DB.prepare(
         `UPDATE artifact_uploads SET status = 'complete', updated_at = ?
-         WHERE id = ? AND user_id = ? AND status = 'finalizing'
+         WHERE id = ? AND user_id = ? AND status = 'finalizing' AND expires_at > ?
            AND EXISTS (
              SELECT 1 FROM artifact_versions v
              WHERE v.id = artifact_uploads.version_id AND v.artifact_id = artifact_uploads.artifact_id
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM artifact_upload_files f
+             WHERE f.upload_id = artifact_uploads.id AND NOT EXISTS (
+               SELECT 1 FROM artifact_object_leases l
+               WHERE l.r2_key = f.r2_key AND l.upload_id = artifact_uploads.id AND l.user_id = artifact_uploads.user_id
+                 AND l.byte_size = f.byte_size AND l.sha256 = f.sha256 AND l.expires_at > ?
+             )
            )`,
-      ).bind(input.now, input.uploadId, userId),
+      ).bind(input.now, input.uploadId, userId, input.now, input.now),
       env.DB.prepare(
         `DELETE FROM artifact_object_leases
-         WHERE upload_id = ? AND user_id = ?
+         WHERE upload_id = ? AND user_id = ? AND expires_at > ?
+           AND EXISTS (
+             SELECT 1 FROM artifact_uploads u
+             WHERE u.id = artifact_object_leases.upload_id
+               AND u.user_id = artifact_object_leases.user_id
+               AND u.status = 'complete' AND u.expires_at > ?
+           )
            AND EXISTS (
              SELECT 1 FROM artifact_upload_files f
              WHERE f.upload_id = artifact_object_leases.upload_id AND f.r2_key = artifact_object_leases.r2_key
            )`,
-      ).bind(input.uploadId, userId),
+      ).bind(input.uploadId, userId, input.now, input.now),
     ]);
     if (results[0].meta.changes !== 1 || results[2].meta.changes !== 1 || results[3].meta.changes !== 1) {
       throw new ArtifactError("state_conflict");
@@ -365,19 +409,26 @@ export async function finalizeNewLinkArtifact(
   input: NewLinkFinalization,
 ): Promise<void> {
   try {
-    await env.DB.batch([
+    const results = await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO artifacts (id, user_id, project_id, type, title, description, visibility, current_version_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'private', NULL, ?, ?)`,
-      ).bind(input.artifact.id, userId, input.artifact.projectId, input.artifact.type, input.artifact.title, input.artifact.description, input.now, input.now),
+         SELECT ?, ?, p.id, ?, ?, ?, 'private', NULL, ?, ?
+         FROM projects p
+         WHERE p.id = ? AND p.user_id = ?`,
+      ).bind(input.artifact.id, userId, input.artifact.type, input.artifact.title, input.artifact.description, input.now, input.now, input.artifact.projectId, userId),
       env.DB.prepare(
         `INSERT INTO artifact_versions (id, artifact_id, version_number, source, entry_path, external_url, allowed_data_origins, file_count, total_bytes, created_by, created_at)
-         VALUES (?, ?, 1, ?, NULL, ?, ?, 0, 0, ?, ?)`,
-      ).bind(input.versionId, input.artifact.id, databaseSource(input.source), input.externalUrl, input.allowedDataOrigins, userId, input.now),
+         SELECT ?, a.id, 1, ?, NULL, ?, ?, 0, 0, ?, ?
+         FROM artifacts a
+         WHERE a.id = ? AND a.user_id = ? AND a.project_id = ? AND a.deleted_at IS NULL`,
+      ).bind(input.versionId, databaseSource(input.source), input.externalUrl, input.allowedDataOrigins, userId, input.now, input.artifact.id, userId, input.artifact.projectId),
       env.DB.prepare(
         "UPDATE artifacts SET current_version_id = ?, updated_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
       ).bind(input.versionId, input.now, input.artifact.id, userId),
     ]);
+    if (results[0].meta.changes !== 1 || results[1].meta.changes !== 1 || results[2].meta.changes !== 1) {
+      throw new ArtifactError("state_conflict");
+    }
   } catch (error) {
     stateConflict(error);
   }
