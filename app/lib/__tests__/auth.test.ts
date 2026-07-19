@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { signValue, verifyValue } from "~/lib/auth.server";
+import {
+  createSessionCookie,
+  destroySessionCookie,
+  signValue,
+  verifyValue,
+} from "~/lib/auth.server";
+import { getDb } from "~/lib/db.server";
 import {
   googleAuthRedirect,
   handleGoogleCallback,
@@ -10,6 +16,10 @@ import {
   isValidEmail,
   normalizeEmail,
 } from "~/lib/otp.server";
+
+vi.mock("~/lib/db.server", () => ({ getDb: vi.fn() }));
+
+const mockedGetDb = vi.mocked(getDb);
 
 describe("session cookie signing", () => {
   const secret = "test-secret";
@@ -120,6 +130,53 @@ describe("Google OAuth login state", () => {
         ),
       ),
     ).resolves.toEqual({ ok: false, error: "bad-state" });
+  });
+});
+
+describe("authentication cookies", () => {
+  it("uses a secure, host-only session cookie over HTTPS", async () => {
+    mockedGetDb.mockReturnValue({
+      insert: () => ({ values: async () => undefined }),
+    } as ReturnType<typeof getDb>);
+
+    const cookie = await createSessionCookie(
+      { SESSION_SECRET: "test-secret" } as Env,
+      new Request("https://vibegarden.club/login"),
+      "user-1",
+    );
+
+    expect(cookie).toContain("Secure");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Lax");
+    expect(cookie).not.toMatch(/;\s*Domain=/i);
+  });
+
+  it("uses a secure, host-only OAuth state cookie over HTTPS", async () => {
+    const { stateCookie } = await googleAuthRedirect(
+      {
+        GOOGLE_CLIENT_ID: "client-id",
+        GOOGLE_CLIENT_SECRET: "client-secret",
+        SESSION_SECRET: "test-secret",
+      } as Env,
+      new Request("https://vibegarden.club/auth/google"),
+    );
+
+    expect(stateCookie).toContain("Secure");
+    expect(stateCookie).toContain("HttpOnly");
+    expect(stateCookie).toContain("SameSite=Lax");
+    expect(stateCookie).not.toMatch(/;\s*Domain=/i);
+  });
+
+  it("uses a secure, host-only cookie when ending an HTTPS session", async () => {
+    const cookie = await destroySessionCookie(
+      { SESSION_SECRET: "test-secret" } as Env,
+      new Request("https://vibegarden.club/logout"),
+    );
+
+    expect(cookie).toContain("Secure");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Lax");
+    expect(cookie).not.toMatch(/;\s*Domain=/i);
   });
 });
 
