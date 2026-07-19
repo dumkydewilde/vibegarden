@@ -6,12 +6,19 @@
 	"vars": {
 		"PARENT_ORIGIN": "http://vibegarden.test:8788",
 		"RENDERER_ORIGIN": "http://usercontent.vibegarden.test:8788",
+		"WEB_ALLOWED_ORIGINS": "http://vibegarden.test:8788",
 		"RENDERER_SIGNING_SECRET": "security-fixture-renderer-secret",
 		"SESSION_SECRET": "security-fixture-session-secret"
 	},
 	"r2_buckets": [{
 		"binding": "ARTIFACTS",
 		"bucket_name": "vibe-garden-security-fixture"
+	}],
+	"d1_databases": [{
+		"binding": "DB",
+		"database_name": "vibe-garden-security-fixture",
+		"database_id": "vibe-garden-security-fixture",
+		"migrations_dir": "drizzle"
 	}],
 	"rules": [{
 		"type": "Text",

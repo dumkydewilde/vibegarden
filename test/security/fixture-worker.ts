@@ -1,35 +1,41 @@
 import { issueCapability, type RendererCapability } from "../../app/lib/artifacts/capability";
 import renderer, { type RendererEnv } from "../../workers/renderer";
+import { assertWebsiteWriteOrigin } from "../../app/lib/request-security.server";
+import {
+  createLinkArtifact,
+  createUploadSession,
+  deleteArtifact,
+  finalizeUpload,
+  getGalleryArtifact,
+  getOwnedArtifact,
+  getOwnedRecoverableArtifact,
+  listOwnedArtifactVersions,
+  putUploadFile,
+  recoverArtifact,
+  restoreArtifactVersion,
+  shareArtifactVersion,
+  unshareArtifact,
+  updateArtifactMetadata,
+} from "../../app/lib/artifacts/service.server";
+import { issueRendererCapability, resolveVisibleArtifact } from "../../app/lib/artifacts/renderer.server";
 import forbidden from "./fixtures/forbidden.html";
 import forbiddenScript from "./fixtures/forbidden.js";
 import positive from "./fixtures/positive.html";
 
 type SecurityFixtureEnv = {
   ARTIFACTS: R2Bucket;
+  DB: D1Database;
   PARENT_ORIGIN: string;
   RENDERER_ORIGIN: string;
   RENDERER_SIGNING_SECRET: string;
   SESSION_SECRET: string;
-};
-
-type FlowArtifact = {
-  id: string;
-  projectId: string;
-  title: string;
-  type: "html" | "file" | "link";
-  visibility: "private" | "gallery";
-  currentVersionId: string;
-  galleryVersionId: string | null;
-  deleted: boolean;
-  versions: string[];
+  WEB_ALLOWED_ORIGINS: string;
 };
 
 const prefix = "artifacts/security-artifact/versions/security-version";
 const runtimePrefix = "/runtime/duckdb/1.33.1-dev57.0";
 const fontUrl = "https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.2.10/files/roboto-greek-ext-100-normal.woff2";
 const html = (body: string) => new Response(body, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
-const flowArtifacts = new Map<string, FlowArtifact>();
-let flowSequence = 0;
 let writeAttempts = { requests: 0, cookies: [] as string[], mutations: 0, rejectedByOriginGuard: 0, formRequests: 0 };
 
 function fixtureKind(url: URL): "forbidden" | "positive" | null {
@@ -134,62 +140,103 @@ function wrapper(src: string, env: SecurityFixtureEnv, state = "") : Response {
   return html(`<!doctype html><html><body><p id="parent-marker">parent intact</p><p data-wrapper-state="${state}"></p><iframe title="Artifact preview" sandbox="allow-scripts" src="${src.replaceAll("&", "&amp;").replaceAll('"', "&quot;")}"></iframe><script>window.artifactAttempts=null;addEventListener('message',(event)=>{if(event.source===document.querySelector('iframe').contentWindow&&event.data&&event.data.type==='artifact-security-attempts')window.artifactAttempts=event.data.attempts;});</script></body></html>`);
 }
 
-function flowSnapshot(artifact: FlowArtifact) {
-  return { id: artifact.id, projectId: artifact.projectId, title: artifact.title, type: artifact.type, visibility: artifact.visibility, versionId: artifact.currentVersionId, versionNumber: artifact.versions.indexOf(artifact.currentVersionId) + 1, retainedVersionId: artifact.versions.find((id) => id !== artifact.currentVersionId) ?? null, galleryVersionId: artifact.galleryVersionId, deleted: artifact.deleted };
+type FlowRequest = { action?: string; artifactId?: string; actor?: string; source?: string; projectId?: string; title?: string; versionId?: string };
+
+const fixtureUser = "user-a";
+
+async function checksum(body: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body));
+  return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
-async function putFlowVersion(env: SecurityFixtureEnv, artifact: FlowArtifact, versionId: string): Promise<void> {
-  const base = `artifacts/${artifact.id}/versions/${versionId}`;
-  if (artifact.type === "file") await env.ARTIFACTS.put(`${base}/download.txt`, "safe attachment", { httpMetadata: { contentType: "text/plain" } });
-  if (artifact.type === "html") await env.ARTIFACTS.put(`${base}/index.html`, "<!doctype html><title>flow artifact</title><p>flow artifact</p>", { httpMetadata: { contentType: "text/html" } });
+async function clearFixtureState(env: SecurityFixtureEnv): Promise<void> {
+  const keys = (await env.ARTIFACTS.list({ prefix: "artifacts/" })).objects.map((object) => object.key);
+  if (keys.length) await env.ARTIFACTS.delete(keys);
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM artifact_idempotency"), env.DB.prepare("DELETE FROM artifact_object_leases"),
+    env.DB.prepare("DELETE FROM artifact_upload_files"), env.DB.prepare("DELETE FROM artifact_uploads"),
+    env.DB.prepare("DELETE FROM artifact_files"), env.DB.prepare("DELETE FROM artifact_versions"),
+    env.DB.prepare("DELETE FROM artifacts"), env.DB.prepare("DELETE FROM projects"), env.DB.prepare("DELETE FROM users"),
+    env.DB.prepare("INSERT INTO users (id, email, name, created_at) VALUES ('user-a', 'a@example.test', 'Fixture owner', ?)").bind(Date.now()),
+    env.DB.prepare("INSERT INTO users (id, email, name, created_at) VALUES ('user-b', 'b@example.test', 'Fixture reader', ?)").bind(Date.now()),
+    env.DB.prepare("INSERT INTO projects (id, user_id, title, status, created_at, updated_at) VALUES ('existing-project', 'user-a', 'Existing project', 'seed', ?, ?)").bind(Date.now(), Date.now()),
+    env.DB.prepare("INSERT INTO projects (id, user_id, title, status, created_at, updated_at) VALUES ('seed-project', 'user-a', 'Seed project', 'seed', ?, ?)").bind(Date.now(), Date.now()),
+  ]);
 }
 
-async function flowCapability(env: SecurityFixtureEnv, artifact: FlowArtifact, mode: "preview" | "download", expiresAt: number): Promise<string> {
-  const entryPath = mode === "download" ? "download.txt" : "index.html";
-  const capability = await issueCapability({ tokenVersion: 1, policyVersion: 1, mode, versionId: artifact.currentVersionId, prefix: `artifacts/${artifact.id}/versions/${artifact.currentVersionId}`, entryPath, allowedDataOrigins: [], exp: expiresAt }, { rendererSigningSecret: env.RENDERER_SIGNING_SECRET, sessionSecret: env.SESSION_SECRET }, { now: expiresAt - 300 });
-  return `${env.RENDERER_ORIGIN}/v1/${capability}/${entryPath}`;
+async function uploadTextVersion(env: Env, userId: string, input: { artifactId?: string; projectId: string; type: "html" | "file"; title: string; key: string; content: string }): Promise<{ artifactId: string; versionId: string }> {
+  const path = input.type === "html" ? "index.html" : "download.txt";
+  const mimeType = input.type === "html" ? "text/html" : "text/plain";
+  const body = new TextEncoder().encode(input.content);
+  const session = await createUploadSession(env, userId, {
+    project: { projectId: input.projectId }, type: input.type, title: input.title, idempotencyKey: input.key,
+    ...(input.artifactId ? { artifactId: input.artifactId } : {}),
+  });
+  await putUploadFile(env, userId, session.uploadId, { path, mimeType, byteSize: body.byteLength, sha256: await checksum(input.content) }, body.buffer);
+  return finalizeUpload(env, userId, session.uploadId);
 }
 
 async function flow(request: Request, env: SecurityFixtureEnv): Promise<Response> {
-  const body = await request.json<{ action?: string; artifactId?: string; source?: string; projectId?: string; title?: string; versionId?: string }>();
-  const artifact = body.artifactId ? flowArtifacts.get(body.artifactId) : undefined;
-  if (body.action === "reset") { flowArtifacts.clear(); flowSequence = 0; return Response.json({ ok: true }); }
+  const body = await request.json<FlowRequest>();
+  const actor = body.actor ?? fixtureUser;
+  const appEnv = env as unknown as Env;
+  if (body.action === "reset") { await clearFixtureState(env); return Response.json({ ok: true, backend: "artifact-service" }); }
   if (body.action === "create") {
-    const type = body.source === "safe_file" ? "file" : body.source === "https_link" ? "link" : "html";
-    const id = `flow-artifact-${++flowSequence}`;
-    const versionId = `${id}-v1`;
-    const created: FlowArtifact = { id, projectId: body.projectId ?? "seed-project", title: body.title ?? body.source ?? "untitled", type, visibility: "private", currentVersionId: versionId, galleryVersionId: null, deleted: false, versions: [versionId] };
-    flowArtifacts.set(id, created); await putFlowVersion(env, created, versionId);
-    return Response.json({ artifact: flowSnapshot(created) });
+    let mutation: { artifactId: string; versionId: string };
+    if (body.source === "https_link") mutation = await createLinkArtifact(appEnv, actor, { project: { projectId: body.projectId ?? "seed-project" }, title: body.title ?? "HTTPS link", url: "https://example.test/reference", idempotencyKey: crypto.randomUUID() });
+    else if (body.source === "inline_seed") {
+      const content = "<!doctype html><title>inline seed</title><p>inline seed</p>";
+      const bytes = new TextEncoder().encode(content);
+      const session = await createUploadSession(appEnv, actor, { project: { projectDraft: { title: "Inline fixture project" } }, type: "html", title: "Inline seed", idempotencyKey: crypto.randomUUID() });
+      await putUploadFile(appEnv, actor, session.uploadId, { path: "index.html", mimeType: "text/html", byteSize: bytes.byteLength, sha256: await checksum(content) }, bytes.buffer);
+      mutation = await finalizeUpload(appEnv, actor, session.uploadId);
+    } else mutation = await uploadTextVersion(appEnv, actor, { projectId: body.projectId ?? "seed-project", type: body.source === "safe_file" ? "file" : "html", title: body.title ?? body.source ?? "Artifact", key: crypto.randomUUID(), content: body.source === "safe_file" ? "safe attachment" : "<!doctype html><title>artifact</title><p>artifact</p>" });
+    const artifact = await getOwnedArtifact(appEnv, actor, mutation.artifactId);
+    return Response.json({ artifact });
   }
-  if (!artifact) return Response.json({ error: "not_found" }, { status: 404 });
-  if (body.action === "get") return Response.json({ artifact: flowSnapshot(artifact) });
-  if (body.action === "metadata") artifact.title = body.title ?? artifact.title;
-  if (body.action === "version") { const versionId = `${artifact.id}-v${artifact.versions.length + 1}`; artifact.versions.push(versionId); artifact.currentVersionId = versionId; await putFlowVersion(env, artifact, versionId); }
-  if (body.action === "restore" && body.versionId && artifact.versions.includes(body.versionId)) artifact.currentVersionId = body.versionId;
-  if (body.action === "gallery") { artifact.visibility = "gallery"; artifact.galleryVersionId = artifact.currentVersionId; }
-  if (body.action === "unshare") { artifact.visibility = "private"; artifact.galleryVersionId = null; }
-  if (body.action === "delete") artifact.deleted = true;
-  if (body.action === "recover") artifact.deleted = false;
-  if (body.action === "download") return Response.json({ url: await flowCapability(env, artifact, "download", Math.floor(Date.now() / 1000) + 300) });
-  if (body.action === "refresh-capability") {
-    const now = Math.floor(Date.now() / 1000);
-    return Response.json({ state: "preserved", previousUrl: await flowCapability(env, artifact, "preview", now + 299), url: await flowCapability(env, artifact, "preview", now + 300) });
+  if (!body.artifactId) return Response.json({ error: "not_found" }, { status: 404 });
+  if (body.action === "get") {
+    const artifact = await getOwnedArtifact(appEnv, actor, body.artifactId);
+    return artifact ? Response.json({ artifact }) : Response.json({ error: "not_found" }, { status: 404 });
   }
-  if (body.action === "wrappers") {
-    const src = await flowCapability(env, artifact, "preview", Math.floor(Date.now() / 1000) + 300);
-    const query = encodeURIComponent(src);
-    return Response.json({ detailUrl: `/__fixture/flow/detail/${artifact.id}?src=${query}`, fullscreenUrl: `/__fixture/flow/fullscreen/${artifact.id}?src=${query}` });
+  const owned = body.action === "recover"
+    ? await getOwnedRecoverableArtifact(appEnv, actor, body.artifactId)
+    : await getOwnedArtifact(appEnv, actor, body.artifactId);
+  if (!owned) return Response.json({ error: "not_found" }, { status: 404 });
+  if (body.action === "metadata") await updateArtifactMetadata(appEnv, actor, owned.id, { title: body.title ?? owned.title });
+  if (body.action === "version") await uploadTextVersion(appEnv, actor, { artifactId: owned.id, projectId: owned.projectId, type: owned.type === "file" ? "file" : "html", title: owned.title, key: crypto.randomUUID(), content: owned.type === "file" ? "safe attachment version" : `<!doctype html><title>${body.source ?? "version"}</title>` });
+  if (body.action === "restore" && body.versionId) await restoreArtifactVersion(appEnv, actor, owned.id, body.versionId);
+  if (body.action === "gallery") await shareArtifactVersion(appEnv, actor, owned.id, owned.version.id);
+  if (body.action === "unshare") await unshareArtifact(appEnv, actor, owned.id);
+  if (body.action === "delete") await deleteArtifact(appEnv, actor, owned.id);
+  if (body.action === "recover") await recoverArtifact(appEnv, actor, owned.id);
+  if (body.action === "download") {
+    const visible = await resolveVisibleArtifact(appEnv, actor, owned.id);
+    if (!visible || visible.type !== "file") return Response.json({ error: "not_found" }, { status: 404 });
+    return Response.json(await issueRendererCapability(appEnv, visible, "download", visible.version.files[0]!.path));
   }
-  return Response.json({ artifact: flowSnapshot(artifact) });
+  if (body.action === "versions") return Response.json({ versions: await listOwnedArtifactVersions(appEnv, actor, owned.id) });
+  if (body.action === "refresh-capability" || body.action === "wrappers") {
+    const visible = await resolveVisibleArtifact(appEnv, actor, owned.id);
+    if (!visible || visible.type !== "html" || !visible.version.entryPath) return Response.json({ error: "not_found" }, { status: 404 });
+    const capability = await issueRendererCapability(appEnv, visible, "preview", visible.version.entryPath);
+    if (body.action === "refresh-capability") return Response.json({ state: "preserved", url: capability.url });
+    const query = encodeURIComponent(capability.url);
+    return Response.json({ detailUrl: `/__fixture/flow/detail/${owned.id}?src=${query}`, fullscreenUrl: `/__fixture/flow/fullscreen/${owned.id}?src=${query}` });
+  }
+  const artifact = body.action === "recover" ? await getOwnedRecoverableArtifact(appEnv, actor, owned.id) : await getOwnedArtifact(appEnv, actor, owned.id);
+  const gallery = body.action === "gallery" ? await getGalleryArtifact(appEnv, owned.id) : null;
+  return Response.json({ artifact, gallery });
 }
 
 function protectedWrite(request: Request, env: SecurityFixtureEnv): Response {
   writeAttempts.requests++;
   const cookie = request.headers.get("Cookie");
   if (cookie) writeAttempts.cookies.push(cookie);
-  const sameOrigin = request.headers.get("Origin") === env.PARENT_ORIGIN && request.headers.get("Sec-Fetch-Site") === "same-origin";
-  if (!sameOrigin) { writeAttempts.rejectedByOriginGuard++; return new Response("Forbidden", { status: 403, headers: { "Cache-Control": "no-store" } }); }
+  try { assertWebsiteWriteOrigin(request, env as unknown as Env); } catch (error) {
+    if (error instanceof Response) { writeAttempts.rejectedByOriginGuard++; return error; }
+    throw error;
+  }
   writeAttempts.mutations++;
   return Response.json({ ok: true });
 }

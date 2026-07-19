@@ -27,7 +27,7 @@ export default defineConfig({
     },
   }],
   webServer: {
-    command: `npx wrangler dev --config wrangler.security.jsonc --port ${port} --ip 127.0.0.1`,
+    command: `npx wrangler d1 migrations apply DB --local --config wrangler.security.jsonc && npx wrangler dev --config wrangler.security.jsonc --port ${port} --ip 127.0.0.1`,
     url: `http://127.0.0.1:${port}/__fixture/health`,
     reuseExistingServer: false,
     timeout: 30_000,

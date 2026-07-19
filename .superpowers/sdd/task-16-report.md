@@ -28,6 +28,38 @@
 | `npm run test:security` | passed: 4 Playwright specs |
 | `npm run typecheck` | passed |
 
+## P1 remediation: real product-flow fixture
+
+- Replaced the `FlowArtifact` map and handwritten state transitions in
+  `test/security/fixture-worker.ts`. The flow endpoint now creates browser
+  uploads (session, R2 write, manifest, and finalize), links, inline draft
+  projects, versions, metadata, restore, gallery pin/removal, delete/recovery,
+  and capabilities through the production artifact service/repository.
+- The security fixture now has a local D1 binding, applies the real `drizzle`
+  migrations before Playwright starts, and resets only its local D1/R2 fixture
+  data. Renderer preview and attachment URLs are issued by the production
+  renderer capability service and served by the unchanged second renderer host.
+- Protected fixture writes now call `assertWebsiteWriteOrigin`; the browser
+  proof still verifies an opaque iframe reaches that guard without a cookie and
+  causes no mutation. No fixture-owned origin predicate remains.
+
+### RED/GREEN evidence
+
+- **RED:** added a browser request in which `user-b` reads a private artifact
+  ID made by `user-a`. The prior map implementation returned `200`; the test
+  failed with `Expected: 404, Received: 200`.
+- **GREEN:** the same flow now returns `404` through `getOwnedArtifact`, while
+  the owner flow passes using actual D1 ownership, current/gallery pointers,
+  retained versions, and R2 objects.
+
+| Command | Result |
+| --- | --- |
+| `npx playwright test test/security/artifact-flows.spec.ts --grep 'browser product flow'` | passed |
+| `npm run test:security` | passed: 5 Playwright tests |
+| `npm run test:worker` | passed: 9 files, 61 tests |
+| `npm run typecheck` | passed |
+| `git diff --check` | passed |
+
 `npm test` was also run after the scoped checks. It has one pre-existing,
 unrelated failure in `app/routes/__tests__/artifact-rendering.test.tsx`: its
 full-screen wrapper test remains at `Loading preview…` and cannot find the

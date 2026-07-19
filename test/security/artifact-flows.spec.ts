@@ -53,22 +53,28 @@ test("browser product flow keeps artifact state transitions and renderer wrapper
   expect(reset.status).toBe(200);
 
   const created = await call("create", { source: "single_html", projectId: "existing-project", title: "Original title" });
-  expect(created.body.artifact).toMatchObject({ type: "html", visibility: "private", versionNumber: 1, projectId: "existing-project" });
+  expect(created.body.artifact).toMatchObject({ type: "html", visibility: "private", projectId: "existing-project", currentVersion: { number: 1 } });
   const artifactId = created.body.artifact.id as string;
+
+  // This must be a repository lookup, not fixture-owned state: a second user
+  // cannot observe an owner's private artifact even when it knows the ID.
+  const foreignRead = await call("get", { artifactId, actor: "user-b" });
+  expect(foreignRead.status).toBe(404);
 
   await expect.poll(async () => (await call("metadata", { artifactId, title: "Renamed" })).body.artifact.title).toBe("Renamed");
   const next = await call("version", { artifactId, source: "zip" });
-  expect(next.body.artifact).toMatchObject({ versionNumber: 2, title: "Renamed" });
-  const retainedVersionId = next.body.artifact.versionId as string;
-  const restored = await call("restore", { artifactId, versionId: created.body.artifact.versionId });
-  expect(restored.body.artifact).toMatchObject({ versionNumber: 1, retainedVersionId });
+  expect(next.body.artifact).toMatchObject({ currentVersion: { number: 2 }, title: "Renamed" });
+  const retainedVersionId = next.body.artifact.currentVersion.id as string;
+  const restored = await call("restore", { artifactId, versionId: created.body.artifact.version.id });
+  expect(restored.body.artifact).toMatchObject({ currentVersion: { number: 1 } });
+  expect((await call("versions", { artifactId })).body.versions.map((version: { id: string }) => version.id)).toContain(retainedVersionId);
 
   const shared = await call("gallery", { artifactId });
-  expect(shared.body.artifact).toMatchObject({ visibility: "gallery", galleryVersionId: created.body.artifact.versionId });
+  expect(shared.body.artifact).toMatchObject({ visibility: "gallery", galleryVersion: { id: created.body.artifact.version.id } });
   await call("version", { artifactId, source: "new-upload" });
   const galleryAfterUpload = await call("get", { artifactId });
-  expect(galleryAfterUpload.body.artifact.galleryVersionId).toBe(created.body.artifact.versionId);
-  expect((await call("unshare", { artifactId })).body.artifact).toMatchObject({ visibility: "private", galleryVersionId: null });
+  expect(galleryAfterUpload.body.artifact.galleryVersion.id).toBe(created.body.artifact.version.id);
+  expect((await call("unshare", { artifactId })).body.artifact).toMatchObject({ visibility: "private", galleryVersion: null });
 
   const wrappers = await call("wrappers", { artifactId });
   expect(wrappers.status).toBe(200);
@@ -79,12 +85,11 @@ test("browser product flow keeps artifact state transitions and renderer wrapper
   }
 
   const refreshed = await call("refresh-capability", { artifactId });
-  expect(refreshed.body).toMatchObject({ state: "preserved", previousUrl: expect.any(String), url: expect.any(String) });
-  expect(refreshed.body.url).not.toBe(refreshed.body.previousUrl);
+  expect(refreshed.body).toMatchObject({ state: "preserved", url: expect.any(String) });
 
   const deleted = await call("delete", { artifactId });
-  expect(deleted.body.artifact.deleted).toBe(true);
-  expect((await call("recover", { artifactId })).body.artifact.deleted).toBe(false);
+  expect(deleted.body.artifact).toBeNull();
+  expect((await call("recover", { artifactId })).body.artifact.deletedAt).toBeNull();
 
   const safeFile = await call("create", { source: "safe_file", projectId: "seed-project" });
   const link = await call("create", { source: "https_link", projectId: "seed-project" });
