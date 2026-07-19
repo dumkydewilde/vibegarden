@@ -43,6 +43,10 @@ describe("artifact paths", () => {
     ["nested/../index.html", "invalid_path"],
     ["nested//index.html", "invalid_path"],
     ["nested\\index.html", "invalid_path"],
+    ["C:/artifact/index.html", "invalid_path"],
+    ["C:artifact/index.html", "invalid_path"],
+    ["nested/\uD800index.html", "invalid_path"],
+    ["nested/\uDC00index.html", "invalid_path"],
     ["nested/\u0000index.html", "invalid_path"],
     [".DS_Store", "invalid_path"],
     ["__MACOSX/index.html", "invalid_path"],
@@ -62,6 +66,16 @@ describe("artifact paths", () => {
       () => normalizeArtifactPath(`a/${"b".repeat(ARTIFACT_LIMITS.pathBytes)}`),
       "invalid_path",
     );
+  });
+});
+
+describe("public artifact errors", () => {
+  it("projects only the safe message, status, and retryability", () => {
+    expect(new ArtifactError("storage_unavailable").toPublic()).toEqual({
+      message: "Artifact storage is temporarily unavailable.",
+      status: 503,
+      retryable: true,
+    });
   });
 });
 

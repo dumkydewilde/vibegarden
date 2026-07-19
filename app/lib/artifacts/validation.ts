@@ -68,6 +68,7 @@ export const STATIC_DEPENDENCY_ORIGINS = [
 type MimeMap = Record<string, string>;
 const encoder = new TextEncoder();
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/u;
+const WINDOWS_DRIVE_QUALIFIED_PATH = /^[a-z]:/iu;
 const SHA256 = /^[a-fA-F0-9]{64}$/;
 const DATA_OR_MEDIA_MIME = /^(?:audio|video)\//u;
 const DATA_MIME_TYPES = new Set([
@@ -101,8 +102,29 @@ function throwArtifact(code: ConstructorParameters<typeof ArtifactError>[0]): ne
   throw new ArtifactError(code);
 }
 
+function hasUnpairedUtf16Surrogate(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next < 0xdc00 || next > 0xdfff) return true;
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function normalizeArtifactPath(input: string): string {
-  if (typeof input !== "string" || !input || input.includes("\\") || CONTROL_CHARACTERS.test(input)) {
+  if (
+    typeof input !== "string" ||
+    !input ||
+    input.includes("\\") ||
+    WINDOWS_DRIVE_QUALIFIED_PATH.test(input) ||
+    hasUnpairedUtf16Surrogate(input) ||
+    CONTROL_CHARACTERS.test(input)
+  ) {
     return throwArtifact("invalid_path");
   }
 
@@ -305,25 +327,57 @@ export async function manifestHash(files: readonly ArtifactManifestFile[]): Prom
   return sha256Hex(canonicalManifest(files));
 }
 
-function canonicalMutationValue(value: unknown, key?: string): unknown {
-  if (key && /(?:^|_)(?:content|body|raw_content)$/iu.test(key)) throwArtifact("invalid_input");
-  if (Array.isArray(value)) {
-    if (key === "origins" || key === "allowedDataOrigins") {
-      if (!value.every((item): item is string => typeof item === "string")) throwArtifact("invalid_input");
-      return normalizeArtifactOrigins(value);
+const MUTATION_FIELDS = new Set(["title", "description", "allowedDataOrigins", "files"]);
+const MUTATION_FILE_FIELDS = new Set(["path", "mimeType", "byteSize", "sha256"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function assertKnownFields(value: Record<string, unknown>, fields: ReadonlySet<string>): void {
+  if (Object.keys(value).some((key) => !fields.has(key))) throwArtifact("invalid_input");
+}
+
+function canonicalMutationFile(value: unknown): Record<string, string | number> {
+  if (!isRecord(value)) return throwArtifact("invalid_input");
+  assertKnownFields(value, MUTATION_FILE_FIELDS);
+  const canonical: Record<string, string | number> = {};
+  for (const key of [...MUTATION_FILE_FIELDS].sort()) {
+    const field = value[key];
+    if (field === undefined) continue;
+    if ((key === "byteSize" && (!Number.isSafeInteger(field) || (field as number) < 0)) ||
+      (key !== "byteSize" && typeof field !== "string")) {
+      return throwArtifact("invalid_input");
     }
-    return value.map((item) => canonicalMutationValue(item));
+    canonical[key] = field as string | number;
   }
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
-  if (typeof value !== "object") throwArtifact("invalid_input");
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([childKey, childValue]) => [childKey, canonicalMutationValue(childValue, childKey)]),
-  );
+  return canonical;
+}
+
+function canonicalMutationValue(input: Record<string, unknown>): Record<string, unknown> {
+  assertKnownFields(input, MUTATION_FIELDS);
+  const canonical: Record<string, unknown> = {};
+  for (const key of [...MUTATION_FIELDS].sort()) {
+    const value = input[key];
+    if (value === undefined) continue;
+    if (key === "allowedDataOrigins") {
+      if (!Array.isArray(value) || !value.every((item): item is string => typeof item === "string")) {
+        return throwArtifact("invalid_input");
+      }
+      canonical[key] = normalizeArtifactOrigins(value);
+    } else if (key === "files") {
+      if (!Array.isArray(value)) return throwArtifact("invalid_input");
+      canonical[key] = value.map(canonicalMutationFile);
+    } else if (typeof value === "string") {
+      canonical[key] = value;
+    } else {
+      return throwArtifact("invalid_input");
+    }
+  }
+  return canonical;
 }
 
 export async function mutationFingerprint(input: Record<string, unknown>): Promise<string> {
-  if (!input || Array.isArray(input)) throwArtifact("invalid_input");
+  if (!isRecord(input)) throwArtifact("invalid_input");
   return sha256Hex(JSON.stringify(canonicalMutationValue(input)));
 }

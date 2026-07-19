@@ -64,7 +64,7 @@ export class ArtifactError extends Error {
   }
 
   toPublic() {
-    return { code: this.code, message: this.message, status: this.status, retryable: this.retryable };
+    return { message: this.message, status: this.status, retryable: this.retryable };
   }
 }
 

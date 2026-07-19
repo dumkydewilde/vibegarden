@@ -49,9 +49,12 @@ describe("mutation fingerprints", () => {
     expect(first).toBe(second);
   });
 
-  it("rejects a raw-content mutation field", async () => {
-    await expect(mutationFingerprint({ content: "<secret>" })).rejects.toMatchObject({
-      code: "invalid_input",
-    });
+  it.each([
+    { htmlContent: "<secret>" },
+    { sourceBody: "<secret>" },
+    { payload: "<secret>" },
+    { files: [{ path: "index.html", sha256: "a".repeat(64), byteSize: 12, payload: "<secret>" }] },
+  ])("rejects unrecognized mutation fields that could contain raw content: %o", async (input) => {
+    await expect(mutationFingerprint(input)).rejects.toMatchObject({ code: "invalid_input" });
   });
 });
