@@ -63,10 +63,18 @@ const noServiceCalls = () => {
   }
 };
 
-const dispatchThroughWorker = async (path: string, method: string, body?: string) => {
+const dispatchThroughWorker = async (
+  path: string,
+  method: string,
+  body?: string,
+  requestOptions?: { origin?: string | null },
+) => {
   const { handleReactRouterRequest } = await import("../../../workers/react-router");
   const headers = new Headers();
-  if (!["GET", "HEAD", "OPTIONS"].includes(method)) headers.set("Origin", "https://vibegarden.club");
+  const origin = requestOptions ? requestOptions.origin : "https://vibegarden.club";
+  if (!["GET", "HEAD", "OPTIONS"].includes(method) && origin !== undefined) {
+    headers.set("Origin", origin ?? "null");
+  }
   if (body) headers.set("Content-Type", "application/json");
   return handleReactRouterRequest(
     new Request(`https://vibegarden.club${path}`, { method, headers, body }),
@@ -242,6 +250,23 @@ describe("artifact resource framework dispatch", () => {
     vi.clearAllMocks();
     requireUser.mockResolvedValue({ id: "session-user" });
   });
+
+  it.each([undefined, null, "https://evil.example"])(
+    "returns a private no-store 403 before dispatching an unsafe artifact upload from origin %s",
+    async (origin) => {
+      const response = await dispatchThroughWorker(
+        "/api/artifact-uploads",
+        "POST",
+        undefined,
+        { origin },
+      );
+
+      expect(response.status).toBe(403);
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+      expect(requireUser).not.toHaveBeenCalled();
+      noServiceCalls();
+    },
+  );
 
   it.each([
     ["upload creation", "/api/artifact-uploads", "PATCH"],

@@ -23,3 +23,11 @@ RED: Added Worker-path integration coverage backed by the real React Router requ
 GREEN: Every action-only artifact resource now exports a loader that rejects safely before authentication, parsing, or service work. The capability route gates its loader to GET before authentication and adds an action that safely rejects mutations. `artifactRejectMethod` centralizes the private no-store response used for these explicit dispatches. The Worker-path suite covers GET/HEAD/OPTIONS and alternate mutation verbs across all action-only resources, plus authenticated fail-closed capability GET and its rejected alternate dispatches.
 
 Verification: RED `npm test -- app/routes/__tests__/artifact-api.test.ts` (10 expected dispatch failures); GREEN `npm test -- app/routes/__tests__/artifact-api.test.ts app/routes/__tests__/artifact-origin.test.ts` (107 passed) and `npm run typecheck` passed.
+
+## P1 review remediation: origin-rejection cache policy
+
+RED: Added a real Worker-dispatch regression for unsafe artifact upload requests with a missing, `null`, or disallowed `Origin`. All three reached the central write-origin rejection and returned `403` without `Cache-Control`, bypassing the artifact route policy before authentication or service work.
+
+GREEN: The central unsafe-origin rejection now includes `Cache-Control: private, no-store`. This narrow, general boundary policy covers pre-router rejections for artifact requests while preserving the existing `403 Forbidden` behavior for every other website write.
+
+Verification: RED `npm test -- app/routes/__tests__/artifact-api.test.ts` (3 expected cache-header failures); GREEN `npm test -- app/routes/__tests__/artifact-api.test.ts app/routes/__tests__/artifact-origin.test.ts` (110 passed), `npm test -- app/lib/artifacts app/routes/__tests__/artifact-origin.test.ts` (167 passed), `npm run test:worker` (44 passed), and `npm run typecheck` passed. `npm run test:security` remains blocked before test execution because Playwright discovery loads Vitest test modules and Vite-only `import.meta.glob` code; this remediation does not modify that harness.

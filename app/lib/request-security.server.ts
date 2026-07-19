@@ -26,6 +26,9 @@ export function assertWebsiteWriteOrigin(request: Request, env: Env): void {
 
   const origin = request.headers.get("Origin");
   if (!origin || origin === "null" || !allowedWebsiteOrigins(env).has(origin)) {
-    throw new Response("Forbidden", { status: 403 });
+    throw new Response("Forbidden", {
+      status: 403,
+      headers: { "Cache-Control": "private, no-store" },
+    });
   }
 }
