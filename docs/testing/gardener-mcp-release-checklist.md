@@ -9,10 +9,10 @@ request IDs in this file.
 
 - [x] Local checks pass for the candidate SHA.
 - [ ] MCP Inspector check passes against the local Worker.
-- [x] Claude custom connector check passes against the HTTPS staging endpoint.
-- [x] ChatGPT developer-mode check passes against the same HTTPS staging endpoint.
-- [x] Claude reviewer-A versus reviewer-B isolation is **PASS**.
-- [x] ChatGPT reviewer-A versus reviewer-B isolation is **PASS**.
+- [ ] Claude custom connector check passes against the HTTPS staging endpoint.
+- [ ] ChatGPT developer-mode check passes against the same HTTPS staging endpoint.
+- [ ] Claude reviewer-A versus reviewer-B isolation is **PASS**.
+- [ ] ChatGPT reviewer-A versus reviewer-B isolation is **PASS**.
 
 Launch is blocked until both real-host isolation rows are PASS. A local Worker
 test is supporting evidence, not a substitute for either host check.
