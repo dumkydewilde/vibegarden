@@ -38,6 +38,7 @@ export type ArtifactPresentation = {
 
 export type ArtifactDetailPresentation = ArtifactPresentation & {
   version: ArtifactVersionDetail;
+  deletedAt?: number | null;
 };
 
 /**
@@ -113,6 +114,7 @@ function presentVersion(version: ArtifactVersionDetail) {
 export function presentArtifactDetail(artifact: ArtifactDetailPresentation) {
   return {
     ...presentOwnedArtifact(artifact),
+    ...(artifact.deletedAt === undefined ? {} : { deletedAt: artifact.deletedAt }),
     version: presentVersion(artifact.version),
   };
 }

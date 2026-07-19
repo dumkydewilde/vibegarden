@@ -75,6 +75,20 @@ export async function findOwnedArtifact(env: Env, userId: string, artifactId: st
   ).bind(artifactId, userId).first<StoredArtifact>();
 }
 
+/** A deleted artifact remains owner-readable only for the exact recovery window. */
+export async function findOwnedRecoverableArtifact(
+  env: Env,
+  userId: string,
+  artifactId: string,
+  recoveryCutoff: number,
+): Promise<StoredArtifact | null> {
+  return env.DB.prepare(
+    `SELECT * FROM artifacts
+     WHERE id = ? AND user_id = ? AND (deleted_at IS NULL OR deleted_at >= ?)
+     LIMIT 1`,
+  ).bind(artifactId, userId, recoveryCutoff).first<StoredArtifact>();
+}
+
 export async function findOwnedVersion(
   env: Env,
   userId: string,

@@ -10,6 +10,7 @@ import {
   finalizeExistingArtifactVersion,
   finalizeNewArtifact,
   findOwnedArtifact,
+  findOwnedRecoverableArtifact,
   findOwnedIdempotency,
   findOwnedProject,
   findOwnedUpload,
@@ -86,6 +87,8 @@ export type UploadedFileResult = {
 export type ArtifactMutationResult = { artifactId: string; versionId: string };
 
 export type ArtifactRead = ArtifactPresentation & { version: ArtifactVersionDetail };
+export type RecoverableArtifactRead = ArtifactRead & { deletedAt: number | null };
+export type RecoverableArtifactPresentation = ArtifactPresentation & { deletedAt: number | null };
 export type GalleryArtifactRead = GalleryArtifactDetailPresentation;
 
 type StoredUpload = {
@@ -845,6 +848,7 @@ type ArtifactRow = {
   current_version_id: string | null;
   gallery_version_id: string | null;
   updated_at: number;
+  deleted_at: number | null;
 };
 
 function versionSummary(version: VersionRow | null): ArtifactVersionSummary | null {
@@ -900,13 +904,13 @@ async function filesForVersion(env: Env, versionId: string): Promise<ArtifactFil
   }));
 }
 
-async function ownedArtifactRow(env: Env, userId: string, artifactId: string): Promise<ArtifactRow | null> {
+async function ownedArtifactRow(env: Env, userId: string, artifactId: string, includeRecoverable = false): Promise<ArtifactRow | null> {
   return env.DB.prepare(
     `SELECT a.id, a.project_id, p.title AS project_title, a.title, a.description, a.type,
-       a.visibility, a.current_version_id, a.gallery_version_id, a.updated_at
+       a.visibility, a.current_version_id, a.gallery_version_id, a.updated_at, a.deleted_at
      FROM artifacts a INNER JOIN projects p ON p.id = a.project_id AND p.user_id = a.user_id
-     WHERE a.id = ? AND a.user_id = ? AND a.deleted_at IS NULL LIMIT 1`,
-  ).bind(artifactId, userId).first<ArtifactRow>();
+     WHERE a.id = ? AND a.user_id = ? AND ${includeRecoverable ? "(a.deleted_at IS NULL OR a.deleted_at >= ?)" : "a.deleted_at IS NULL"} LIMIT 1`,
+  ).bind(artifactId, userId, ...(includeRecoverable ? [now() - ARTIFACT_LIMITS.recoveryMs] : [])).first<ArtifactRow>();
 }
 
 async function versionById(env: Env, artifactId: string, versionId: string | null): Promise<VersionRow | null> {
@@ -929,6 +933,23 @@ export async function getOwnedArtifact(env: Env, userId: string, artifactId: str
   if (!currentVersion) return null;
   return {
     ...presentation(artifact, currentVersion, galleryVersion),
+    version: versionDetail(currentVersion, await filesForVersion(env, currentVersion.id)),
+  };
+}
+
+/** Owners can reopen a deleted artifact only while its 30-day recovery window is still active. */
+export async function getOwnedRecoverableArtifact(env: Env, userId: string, artifactId: string): Promise<RecoverableArtifactRead | null> {
+  if (!await findOwnedRecoverableArtifact(env, userId, artifactId, now() - ARTIFACT_LIMITS.recoveryMs)) return null;
+  const artifact = await ownedArtifactRow(env, userId, artifactId, true);
+  if (!artifact || !artifact.current_version_id) return null;
+  const [currentVersion, galleryVersion] = await Promise.all([
+    versionById(env, artifact.id, artifact.current_version_id),
+    versionById(env, artifact.id, artifact.gallery_version_id),
+  ]);
+  if (!currentVersion) return null;
+  return {
+    ...presentation(artifact, currentVersion, galleryVersion),
+    deletedAt: artifact.deleted_at,
     version: versionDetail(currentVersion, await filesForVersion(env, currentVersion.id)),
   };
 }
@@ -975,7 +996,7 @@ export async function getGalleryArtifact(env: Env, artifactId: string): Promise<
 export async function listOwnedArtifacts(env: Env, userId: string): Promise<ArtifactPresentation[]> {
   const rows = await env.DB.prepare(
     `SELECT a.id, a.project_id, p.title AS project_title, a.title, a.description, a.type,
-       a.visibility, a.current_version_id, a.gallery_version_id, a.updated_at
+       a.visibility, a.current_version_id, a.gallery_version_id, a.updated_at, a.deleted_at
      FROM artifacts a INNER JOIN projects p ON p.id = a.project_id AND p.user_id = a.user_id
      WHERE a.user_id = ? AND a.deleted_at IS NULL AND a.visibility IN ('private', 'gallery')
      ORDER BY a.updated_at DESC, a.id`,
@@ -985,6 +1006,27 @@ export async function listOwnedArtifacts(env: Env, userId: string): Promise<Arti
     await versionById(env, artifact.id, artifact.current_version_id),
     await versionById(env, artifact.id, artifact.gallery_version_id),
   )));
+}
+
+/** Project pages include the owner's still-recoverable deletions, but never expired rows. */
+export async function listOwnedProjectArtifacts(env: Env, userId: string, projectId: string): Promise<RecoverableArtifactPresentation[]> {
+  const rows = await env.DB.prepare(
+    `SELECT a.id, a.project_id, p.title AS project_title, a.title, a.description, a.type,
+       a.visibility, a.current_version_id, a.gallery_version_id, a.updated_at, a.deleted_at
+     FROM artifacts a INNER JOIN projects p ON p.id = a.project_id AND p.user_id = a.user_id
+     WHERE a.user_id = ? AND a.project_id = ?
+       AND (a.deleted_at IS NULL OR a.deleted_at >= ?)
+       AND a.visibility IN ('private', 'gallery')
+     ORDER BY a.updated_at DESC, a.id`,
+  ).bind(userId, projectId, now() - ARTIFACT_LIMITS.recoveryMs).all<ArtifactRow>();
+  return Promise.all(rows.results.map(async (artifact) => ({
+    ...presentation(
+      artifact,
+      await versionById(env, artifact.id, artifact.current_version_id),
+      await versionById(env, artifact.id, artifact.gallery_version_id),
+    ),
+    deletedAt: artifact.deleted_at,
+  })));
 }
 
 /** Gallery summaries use the saved gallery pointer and expose no account identity. */

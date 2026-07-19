@@ -16,6 +16,7 @@ export type ArtifactDetailData = {
   description: string | null;
   type: "html" | "file" | "link";
   visibility: "private" | "gallery";
+  deletedAt?: number | null;
   currentVersion: { id: string; number: number } | null;
   galleryVersion: { id: string; number: number } | null;
   version: ArtifactVersion & {
@@ -60,7 +61,7 @@ export function ArtifactDetail({
   const [title, setTitle] = useState(artifact.title);
   const [description, setDescription] = useState(artifact.description ?? "");
   const [error, setError] = useState<string | null>(null);
-  const [deleted, setDeleted] = useState(false);
+  const [deleted, setDeleted] = useState(Boolean(artifact.deletedAt));
   const mutate = async (work: () => Promise<void>) => {
     setError(null);
     try { await work(); onRefresh?.(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Artifact action failed."); }
@@ -85,7 +86,7 @@ export function ArtifactDetail({
 
       <section className="mt-6 rounded-lg border p-4" aria-labelledby="artifact-content-heading">
         <h2 id="artifact-content-heading" className="text-lg">Artifact</h2>
-        {artifact.version.externalUrl ? <a href={artifact.version.externalUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline"><ExternalLink className="size-4" /> Open external link</a> : <div className="mt-3"><p className="text-sm text-muted-foreground">Files are downloaded separately; they are never rendered inline here.</p><ul className="mt-3 divide-y rounded-md border">{artifact.version.files.map((file) => <li key={file.path} className="flex items-center justify-between gap-3 px-3 py-2"><span className="flex min-w-0 items-center gap-2 text-sm"><File className="size-4 shrink-0" />{file.path}</span><a href={`/artifacts/${encodeURIComponent(artifact.id)}/download`} className="inline-flex shrink-0 items-center gap-1 text-sm text-primary underline-offset-4 hover:underline" aria-label={`Download ${file.path}`}><Download className="size-3" /> Download</a></li>)}</ul></div>}
+        {artifact.version.externalUrl ? <a href={artifact.version.externalUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline"><ExternalLink className="size-4" /> Open external link</a> : <div className="mt-3"><p className="text-sm text-muted-foreground">Files are downloaded separately; they are never rendered inline here.</p><ul className="mt-3 divide-y rounded-md border">{artifact.version.files.map((file) => <li key={file.path} className="flex items-center justify-between gap-3 px-3 py-2"><span className="flex min-w-0 items-center gap-2 text-sm"><File className="size-4 shrink-0" />{file.path}</span><span className="inline-flex shrink-0 items-center gap-1 text-sm text-muted-foreground" aria-label={`Download ${file.path} unavailable until secure delivery is ready`}><Download className="size-3" /> Download unavailable</span></li>)}</ul></div>}
         {!owner && <p className="mt-4 text-sm text-muted-foreground">Shared in the gallery. You can view this saved version, but only its owner can edit or replace it.</p>}
       </section>
 

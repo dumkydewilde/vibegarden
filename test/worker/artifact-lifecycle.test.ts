@@ -7,7 +7,9 @@ import {
   createTextArtifactVersion,
   getGalleryArtifact,
   getOwnedArtifact,
+  getOwnedRecoverableArtifact,
   listGalleryArtifacts,
+  listOwnedProjectArtifacts,
   recoverArtifact,
   restoreArtifactVersion,
   setArtifactVisibility,
@@ -119,5 +121,24 @@ describe("artifact lifecycle visibility state table", () => {
     await deleteArtifact(env, "owner", "artifact");
     vi.setSystemTime(Date.now() + ARTIFACT_LIMITS.recoveryMs + 1);
     await expect(recoverArtifact(env, "owner", "artifact")).rejects.toMatchObject({ code: "not_found" } satisfies Partial<ArtifactError>);
+  });
+
+  it("keeps a recoverable owner artifact available to detail and project linkage while excluding it from the gallery", async () => {
+    await shareArtifactVersion(env, "owner", "artifact", "version-1");
+    await deleteArtifact(env, "owner", "artifact");
+
+    await expect(getOwnedRecoverableArtifact(env, "owner", "artifact")).resolves.toMatchObject({
+      id: "artifact",
+      deletedAt: expect.any(Number),
+      version: { id: "version-2" },
+    });
+    await expect(listOwnedProjectArtifacts(env, "owner", "project")).resolves.toMatchObject([
+      { id: "artifact", deletedAt: expect.any(Number), currentVersion: { id: "version-2" } },
+    ]);
+    await expect(listGalleryArtifacts(env)).resolves.toEqual([]);
+
+    vi.setSystemTime(Date.now() + ARTIFACT_LIMITS.recoveryMs + 1);
+    await expect(getOwnedRecoverableArtifact(env, "owner", "artifact")).resolves.toBeNull();
+    await expect(listOwnedProjectArtifacts(env, "owner", "project")).resolves.toEqual([]);
   });
 });

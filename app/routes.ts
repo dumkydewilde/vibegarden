@@ -25,6 +25,7 @@ export default [
     route("learning", "routes/learning.tsx"),
     route("learning/:slug", "routes/learning.$slug.tsx"),
     route("artifacts", "routes/artifacts.tsx"),
+    route("artifacts/:id/download", "routes/artifacts.$id.download.ts"),
     route("artifacts/:id", "routes/artifacts.$id.tsx"),
     route("gallery", "routes/gallery.tsx"),
     route("inspiration", "routes/inspiration.tsx"),

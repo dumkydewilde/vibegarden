@@ -3,7 +3,7 @@ import type { Route } from "./+types/artifacts.$id";
 import { ArtifactDetail } from "~/components/artifacts/artifact-detail";
 import { requireUser } from "~/lib/auth.server";
 import { cloudflareContext } from "~/lib/context";
-import { getGalleryArtifact, getOwnedArtifact, listOwnedArtifactVersions } from "~/lib/artifacts/service.server";
+import { getGalleryArtifact, getOwnedRecoverableArtifact, listOwnedArtifactVersions } from "~/lib/artifacts/service.server";
 import { presentArtifactDetail, presentArtifactVersion } from "~/lib/artifacts/presenters.server";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -14,7 +14,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
   if (!params.id) throw new Response("Not found", { status: 404 });
-  const owned = await getOwnedArtifact(env, user.id, params.id);
+  const owned = await getOwnedRecoverableArtifact(env, user.id, params.id);
   if (owned) {
     const versions = await listOwnedArtifactVersions(env, user.id, params.id);
     return { access: "owner" as const, artifact: presentArtifactDetail(owned), versions: (versions ?? []).map(presentArtifactVersion) };

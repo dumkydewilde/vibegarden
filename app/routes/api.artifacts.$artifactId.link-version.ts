@@ -20,7 +20,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const input = await readArtifactJson(request);
     if (
       !input || typeof input !== "object" || Array.isArray(input) ||
-      Object.keys(input).some((key) => key !== "url" && key !== "idempotencyKey")
+      Object.keys(input).some((key) => key !== "url" && key !== "allowedDataOrigins" && key !== "idempotencyKey")
     ) throw new ArtifactError("invalid_input");
     return artifactJson(await createLinkArtifactVersion(env, user.id, { ...input, artifactId: params.artifactId }), { status: 201 });
   });

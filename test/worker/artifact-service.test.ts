@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ArtifactError } from "../../app/lib/artifacts/contracts";
 import {
   createLinkArtifact,
+  createLinkArtifactVersion,
   createTextArtifact,
   createTextArtifactVersion,
   createUploadSession,
@@ -149,6 +150,27 @@ describe("artifact upload service", () => {
     await expect(createLinkArtifact(env, "user-a", { ...input, url: "https://example.com/other" })).rejects.toMatchObject({
       code: "idempotency_conflict",
     } satisfies Partial<ArtifactError>);
+  });
+
+  it("retains explicitly confirmed origins on a replacement link version", async () => {
+    const created = await createLinkArtifact(env, "user-a", {
+      project: { projectId: "project-a" },
+      title: "Reference",
+      url: "https://example.com/reference",
+      idempotencyKey: "reference-link-create",
+    });
+
+    const replacement = await createLinkArtifactVersion(env, "user-a", {
+      artifactId: created.artifactId,
+      url: "https://example.com/replacement",
+      allowedDataOrigins: ["https://data.example.com"],
+      idempotencyKey: "reference-link-replacement",
+    });
+
+    await expect(env.DB.prepare("SELECT external_url, allowed_data_origins FROM artifact_versions WHERE id = ?").bind(replacement.versionId).first()).resolves.toEqual({
+      external_url: "https://example.com/replacement",
+      allowed_data_origins: JSON.stringify(["https://data.example.com"]),
+    });
   });
 
   it("rejects a declared byte size that differs from R2 before recording the manifest and retains its lease", async () => {

@@ -117,7 +117,7 @@ export function ArtifactUploadDialog({
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(artifactId
-            ? { url: url.trim(), idempotencyKey: idempotencyKey() }
+            ? { url: url.trim(), allowedDataOrigins: chosenOrigins, idempotencyKey: idempotencyKey() }
             : { project: selectedProject, title: title.trim(), ...(description.trim() ? { description: description.trim() } : {}), url: url.trim(), allowedDataOrigins: chosenOrigins, idempotencyKey: idempotencyKey() }),
           signal: controller.signal,
         });

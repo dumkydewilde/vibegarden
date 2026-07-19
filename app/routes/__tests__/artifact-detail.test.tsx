@@ -68,6 +68,18 @@ describe("Artifact detail", () => {
     expect(screen.queryByRole("button", { name: /delete artifact/i })).not.toBeInTheDocument();
     expect(screen.queryByTitle(/preview/i)).not.toBeInTheDocument();
     expect(document.querySelector("iframe")).toBeNull();
-    expect(screen.getByRole("link", { name: /download report\.csv/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/download report\.csv unavailable until secure delivery is ready/i)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /download report\.csv/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps an owner-recoverable deletion visible after a detail reload", async () => {
+    renderDetail({
+      ...owner,
+      artifact: { ...owner.artifact, deletedAt: Date.UTC(2026, 6, 18) },
+    });
+
+    expect(await screen.findByRole("heading", { name: "Artifact deleted" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /recover artifact/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /new version/i })).not.toBeInTheDocument();
   });
 });

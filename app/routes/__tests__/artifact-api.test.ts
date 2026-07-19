@@ -13,6 +13,7 @@ const recoverArtifact = vi.fn();
 const restoreArtifactVersion = vi.fn();
 const shareArtifactVersion = vi.fn();
 const unshareArtifact = vi.fn();
+const getOwnedArtifact = vi.fn();
 
 vi.mock("~/lib/auth.server", () => ({ requireUser }));
 vi.mock("~/lib/artifacts/service.server", () => ({
@@ -28,6 +29,7 @@ vi.mock("~/lib/artifacts/service.server", () => ({
   restoreArtifactVersion,
   shareArtifactVersion,
   unshareArtifact,
+  getOwnedArtifact,
 }));
 
 vi.mock("~/lib/context", () => ({
@@ -58,6 +60,7 @@ const noServiceCalls = () => {
     restoreArtifactVersion,
     shareArtifactVersion,
     unshareArtifact,
+    getOwnedArtifact,
   ]) {
     expect(service).not.toHaveBeenCalled();
   }
@@ -196,6 +199,40 @@ describe("artifact browser routes", () => {
 
     expect(response.status).toBe(400);
     expect(shareArtifactVersion).not.toHaveBeenCalled();
+  });
+
+  it("carries explicitly confirmed origins into a replacement link version", async () => {
+    createLinkArtifactVersion.mockResolvedValueOnce({ artifactId: "artifact-1", versionId: "version-2" });
+    const { action } = await import("../api.artifacts.$artifactId.link-version");
+
+    const response = await action(actionArgs(new Request("https://vibegarden.club/api/artifacts/artifact-1/link-version", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url: "https://example.com/new",
+        allowedDataOrigins: ["https://data.example.com"],
+        idempotencyKey: "link-version-origins",
+      }),
+    }), { artifactId: "artifact-1" }));
+
+    expect(response.status).toBe(201);
+    expect(createLinkArtifactVersion).toHaveBeenCalledWith(expect.anything(), "session-user", {
+      artifactId: "artifact-1",
+      url: "https://example.com/new",
+      allowedDataOrigins: ["https://data.example.com"],
+      idempotencyKey: "link-version-origins",
+    });
+  });
+
+  it("defines the authenticated download endpoint but fails closed until renderer capability issuance exists", async () => {
+    getOwnedArtifact.mockResolvedValueOnce({ id: "artifact-1" });
+    const { loader } = await import("../artifacts.$id.download");
+
+    const response = await loader(actionArgs(new Request("https://vibegarden.club/artifacts/artifact-1/download"), { id: "artifact-1" }));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(response.headers.get("Location")).toBeNull();
   });
 
   it.each([

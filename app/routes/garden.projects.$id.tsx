@@ -41,7 +41,7 @@ import {
 } from "~/lib/projects.server";
 import { statusLabel } from "~/lib/project-status";
 import { listProjectThreads } from "~/lib/threads.server";
-import { listOwnedArtifacts } from "~/lib/artifacts/service.server";
+import { listOwnedProjectArtifacts } from "~/lib/artifacts/service.server";
 import { cn } from "~/lib/utils";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -57,9 +57,9 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   if (!project) throw new Response("Project not found", { status: 404 });
   const [conversations, artifacts] = await Promise.all([
     listProjectThreads(env, scope, project.id, project.threadId),
-    listOwnedArtifacts(env, user.id),
+    listOwnedProjectArtifacts(env, user.id, project.id),
   ]);
-  return { project, conversations, artifacts: artifacts.filter((artifact) => artifact.projectId === project.id) };
+  return { project, conversations, artifacts };
 }
 
 export async function action({ request, context, params }: Route.ActionArgs) {
@@ -282,7 +282,7 @@ export default function ProjectDetail({
 
       <section className="mt-8" aria-labelledby="project-artifacts-heading">
         <div className="flex items-center justify-between gap-3"><h2 id="project-artifacts-heading" className="flex items-center gap-2 text-lg"><PackageOpen className="size-4 text-primary" /> Artifacts</h2><Button asChild variant="outline" size="sm"><Link to={clubPath(clubSlug ?? "", `artifacts?project=${encodeURIComponent(project.id)}&upload=1`)}>Upload artifact</Link></Button></div>
-        {artifacts.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">No live artifacts yet. Upload one to keep it with this project.</p> : <ul className="mt-3 divide-y rounded-lg border">{artifacts.map((artifact) => <li key={artifact.id}><Link to={clubPath(clubSlug ?? "", `artifacts/${encodeURIComponent(artifact.id)}`)} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-accent/40"><span className="min-w-0 truncate text-sm">{artifact.title}</span><span className="shrink-0 text-xs text-muted-foreground">{artifact.currentVersion ? `Version ${artifact.currentVersion.number}` : "Draft"}</span></Link></li>)}</ul>}
+        {artifacts.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">No live artifacts yet. Upload one to keep it with this project.</p> : <ul className="mt-3 divide-y rounded-lg border">{artifacts.map((artifact) => <li key={artifact.id}><Link to={clubPath(clubSlug ?? "", `artifacts/${encodeURIComponent(artifact.id)}`)} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-accent/40"><span className="min-w-0 truncate text-sm">{artifact.title}{artifact.deletedAt && <span className="ml-2 text-xs text-muted-foreground">Recoverable for 30 days</span>}</span><span className="shrink-0 text-xs text-muted-foreground">{artifact.deletedAt ? "Open to recover" : artifact.currentVersion ? `Version ${artifact.currentVersion.number}` : "Draft"}</span></Link></li>)}</ul>}
       </section>
 
       <div className="mt-10 border-t pt-6">
