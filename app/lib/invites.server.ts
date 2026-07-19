@@ -363,18 +363,32 @@ async function availableInviteLink(env: Env, token: string) {
 }
 
 export type InvitePreview =
-  | { clubName: string; available: true }
+  | { clubName: string; available: true; memberClubSlug?: string }
   | { clubName: null; available: false };
 
 /** This lookup intentionally has no side effects; joining is an explicit POST. */
 export async function getInvitePreview(
   env: Env,
   token: string,
+  user?: User | null,
 ): Promise<InvitePreview> {
   const link = await availableInviteLink(env, token);
-  return link
-    ? { clubName: link.clubName, available: true }
-    : { clubName: null, available: false };
+  if (!link) return { clubName: null, available: false };
+  if (!user) return { clubName: link.clubName, available: true };
+
+  const membership = await env.DB
+    .prepare(
+      "SELECT 1 AS member FROM club_memberships WHERE club_id = ? AND user_id = ?",
+    )
+    .bind(link.clubId, user.id)
+    .first();
+  return membership
+    ? {
+        clubName: link.clubName,
+        available: true,
+        memberClubSlug: link.clubSlug,
+      }
+    : { clubName: link.clubName, available: true };
 }
 
 export type JoinWithInviteLinkResult =
