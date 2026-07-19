@@ -3,12 +3,15 @@ import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
 import Login from "../login";
 
-function renderLogin(action: ({ request }: { request: Request }) => unknown) {
+function renderLogin(
+  action: ({ request }: { request: Request }) => unknown,
+  next = "/",
+) {
   const Stub = createRoutesStub([
     {
       path: "/login",
       Component: Login,
-      loader: () => ({ google: false }),
+      loader: () => ({ google: false, next }),
       action,
     },
   ]);
@@ -16,6 +19,14 @@ function renderLogin(action: ({ request }: { request: Request }) => unknown) {
 }
 
 describe("Login OTP entry", () => {
+  it("uses invite-link guidance when sign-in will return to a club invitation", async () => {
+    renderLogin(() => null, `/join/${"a".repeat(43)}`);
+
+    expect(
+      await screen.findByText("Sign in to continue with this club invitation."),
+    ).toBeInTheDocument();
+  });
+
   it("starts empty and submits a six-digit code", async () => {
     let submittedCode: string | undefined;
     renderLogin(async ({ request }) => {
