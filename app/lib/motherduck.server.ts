@@ -3,7 +3,7 @@ import pg from "pg";
 /**
  * Read-only access to Dumky's RSS feed summaries, a MotherDuck share. The
  * worker talks to MotherDuck's Postgres-compatible endpoint (DuckDB SQL
- * over the PG wire protocol) with a token from MOTHERDUCK_TOKEN; use a
+ * over the PG wire protocol) with a configured MotherDuck token; use a
  * read-scaling token, which is read-only by design. The share itself is
  * read-only for consumers either way.
  */
@@ -21,6 +21,12 @@ export type FreshReadsQuery = {
   /** One of FRESH_READ_TYPES; anything else means all of them. */
   contentType?: string;
   limit?: number;
+};
+
+export type MotherDuckConfig = {
+  token?: string;
+  host?: string;
+  database?: string;
 };
 
 export type FreshRead = {
@@ -70,18 +76,18 @@ export function buildFreshReadsSql(query: FreshReadsQuery): string {
 }
 
 export async function queryFreshReads(
-  env: Env,
+  config: MotherDuckConfig,
   query: FreshReadsQuery,
 ): Promise<FreshRead[]> {
-  if (!env.MOTHERDUCK_TOKEN) {
-    throw new Error("MOTHERDUCK_TOKEN is not configured.");
+  if (!config.token) {
+    throw new Error("MotherDuck token is not configured.");
   }
   const client = new pg.Client({
-    host: env.MOTHERDUCK_PG_HOST ?? "pg.us-east-1-aws.motherduck.com",
+    host: config.host ?? "pg.us-east-1-aws.motherduck.com",
     port: 5432,
     user: "postgres",
-    password: env.MOTHERDUCK_TOKEN,
-    database: env.MOTHERDUCK_DATABASE ?? "my_db",
+    password: config.token,
+    database: config.database ?? "my_db",
     ssl: { rejectUnauthorized: true },
     connectionTimeoutMillis: 10_000,
     query_timeout: 15_000,

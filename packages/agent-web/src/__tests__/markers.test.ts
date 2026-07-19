@@ -4,7 +4,7 @@ import {
   splitToolNotes,
   stripToolNotes,
   toolNote,
-} from "~/lib/tool-notes";
+} from "@vibegarden/agent-web";
 
 const diagram = {
   title: "How questions become answers",

@@ -7,27 +7,24 @@ import type { ClubContext } from "~/lib/clubs.server";
 import type { User } from "~/db/schema";
 import { apiAuthorizationError } from "~/lib/api-errors";
 import { getDb } from "~/lib/db.server";
+import { startTurn } from "@vibegarden/agent-core";
 import {
   buildSystemPrompt,
-  readSseRound,
   trimHistory,
   type WireContextItem,
   type WireDataset,
   type WireMessage,
 } from "~/lib/gardener.server";
+import { offeredGardenerTools } from "~/lib/gardener-tools.server";
+import { gardenerToolsConfig } from "~/lib/gardener-tools-config.server";
 import {
-  attachMarkerFor,
-  executeTool,
-  queryMarkerFor,
-  toolDefinitions,
-  toolNoteFor,
-} from "~/lib/gardener-tools.server";
-import {
+  markerForEvent,
   MAX_DATASETS,
   parseAttachEnvelope,
   parseEnvelope,
-} from "~/lib/query-tool";
-import { attachResultNote, queryResultNote } from "~/lib/tool-notes";
+  attachResultNote,
+  queryResultNote,
+} from "@vibegarden/agent-web";
 import { resolveClubModel } from "~/lib/models";
 import {
   clubCredentialNeedsProvisioning,
@@ -60,20 +57,6 @@ type ChatRequest = {
   continuation?: boolean;
 };
 
-/** Messages as sent upstream; assistant turns may carry tool calls. */
-type UpstreamMessage =
-  | { role: "system" | "user"; content: string }
-  | {
-      role: "assistant";
-      content: string | null;
-      tool_calls?: {
-        id: string;
-        type: "function";
-        function: { name: string; arguments: string };
-      }[];
-    }
-  | { role: "tool"; tool_call_id: string; content: string };
-
 /** Tool-execution rounds per answer; after the last, tools are withheld. */
 const MAX_TOOL_ROUNDS = 3;
 
@@ -100,18 +83,13 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   }
   const continuation = body.continuation === true;
   const lastMessage = body.messages[body.messages.length - 1];
-  // Re-cap the envelope server-side; the client is not trusted with sizes.
-  // An attach error envelope also parses as a query error envelope, so the
-  // attach parse (discriminated by its `kind` field) must run first.
-  const attachEnvelope = continuation
-    ? parseAttachEnvelope(lastMessage.content)
-    : null;
-  const envelope =
-    continuation && !attachEnvelope ? parseEnvelope(lastMessage.content) : null;
   if (continuation) {
-    if (lastMessage.role !== "data" || (!envelope && !attachEnvelope)) {
+    if (
+      lastMessage.role !== "data" ||
+      (!parseEnvelope(lastMessage.content) && !parseAttachEnvelope(lastMessage.content))
+    ) {
       return Response.json(
-        { error: "A continuation needs a valid result envelope." },
+        { error: "A continuation needs a valid query or attach result envelope." },
         { status: 400 },
       );
     }
@@ -162,6 +140,11 @@ export async function action({ request, context, params }: Route.ActionArgs) {
         typeof d?.summary === "string",
     )
     .slice(0, MAX_DATASETS);
+  // Re-cap the envelope server-side; the client is not trusted with sizes.
+  const envelope = continuation ? parseEnvelope(lastMessage.content) : null;
+  const attachEnvelope = continuation
+    ? parseAttachEnvelope(lastMessage.content)
+    : null;
 
   const db = getDb(env);
   const thread = await ensureThread(db, scope);
@@ -190,12 +173,15 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   // After a successful query the model should only narrate, so its
   // continuation turn gets no tools at all (otherwise it wanders into
   // reading unrelated articles or re-fetching). An error continuation keeps
-  // tools so it can repair the SQL with query_data. Attach continuations
-  // also keep tools: after a successful attach the model should be able to
-  // run a first query against the new dataset.
-  const narrateOnly = continuation && envelope?.status === "ok";
+  // tools so it can repair the SQL with query_data.
+  const narrateOnly =
+    continuation && (envelope?.status === "ok" || attachEnvelope?.status === "ok");
   const toolsAllowed = model.tools && !narrateOnly;
   const offerQueryData = datasets.length > 0 && !narrateOnly;
+  const toolConfig = gardenerToolsConfig(env);
+  const offeredTools = toolsAllowed
+    ? offeredGardenerTools(toolConfig, { queryData: offerQueryData })
+    : [];
 
   // The model sees the re-capped envelope, not the client's raw payload.
   const recappedEnvelope = envelope ?? attachEnvelope;
@@ -206,46 +192,37 @@ export async function action({ request, context, params }: Route.ActionArgs) {
       ]
     : body.messages;
 
-  const upstreamMessages: UpstreamMessage[] = [
+  // The turn starts before the Response exists, so upstream config errors
+  // still surface as a JSON 502 instead of a broken stream.
+  const turn = await startTurn(
     {
-      role: "system",
-      content: buildSystemPrompt(
+      apiKey,
+      model: model.id,
+      systemPrompt: buildSystemPrompt(
         contextItems,
         typeof body.page === "string" ? body.page : undefined,
         {
-          tools: model.tools,
-          freshReads: !!env.MOTHERDUCK_TOKEN,
+          tools: offeredTools,
+          ...(narrateOnly
+            ? {
+                toolsUnavailableMessage:
+                  "No tools are available on this continuation. Narrate the query results only.",
+              }
+            : {}),
           datasets,
         },
       ),
+      tools: offeredTools,
+      maxToolRounds: MAX_TOOL_ROUNDS,
+      headers: { "X-Title": "Vibe Garden" },
+      ...(webSearch
+        ? { extraBody: { plugins: [{ id: "web", max_results: 3 }] } }
+        : {}),
     },
-    ...trimHistory(historyMessages),
-  ];
-
-  const callUpstream = (withTools: boolean) =>
-    fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "X-Title": "Vibe Garden",
-      },
-      body: JSON.stringify({
-        model: model.id,
-        stream: true,
-        messages: upstreamMessages,
-        ...(withTools
-          ? { tools: toolDefinitions(env, { queryData: offerQueryData }) }
-          : {}),
-        ...(webSearch ? { plugins: [{ id: "web", max_results: 3 }] } : {}),
-      }),
-    });
-
-  // The first request happens before the Response exists, so upstream
-  // config errors still surface as a JSON 502 instead of a broken stream.
-  const first = await callUpstream(toolsAllowed);
-  if (!first.ok || !first.body) {
-    console.error("OpenRouter request failed", first.status, "upstream_rejected");
+    trimHistory(historyMessages),
+  );
+  if (!turn.ok) {
+    console.error("OpenRouter error", turn.status, turn.detail);
     return Response.json(
       { error: "The language model is not reachable right now. Try again, or pick another model." },
       { status: 502 },
@@ -259,72 +236,56 @@ export async function action({ request, context, params }: Route.ActionArgs) {
         full += delta;
         controller.enqueue(delta);
       };
+      // Markers sit on their own line: a blank line before, and one after
+      // for notes and diagrams (a query marker ends the turn instead).
+      const emitMarker = (marker: string, trailingBreak: boolean) =>
+        emit(
+          `${full && !full.endsWith("\n\n") ? "\n\n" : ""}${marker}${trailingBreak ? "\n\n" : ""}`,
+        );
 
-      try {
-        let response = first;
-        outer: for (let round = 0; ; round++) {
-          const result = await readSseRound(response.body!, emit);
-          if (result.toolCalls.length === 0) break;
-
-          upstreamMessages.push({
-            role: "assistant",
-            content: result.text || null,
-            tool_calls: result.toolCalls.map((call) => ({
-              id: call.id,
-              type: "function",
-              function: { name: call.name, arguments: call.arguments },
-            })),
-          });
-          for (const call of result.toolCalls) {
-            // A valid query_data or attach_data ends this turn: the SQL or
-            // URL travels to the browser as a marker, and the browser sends
-            // the result back in a continuation request. Invalid calls fall
-            // through to executeTool so the model hears what was wrong.
-            const browserMarker = queryMarkerFor(call) ?? attachMarkerFor(call);
-            if (browserMarker) {
-              emit(
-                `${full && !full.endsWith("\n\n") ? "\n\n" : ""}${browserMarker}`,
-              );
-              break outer;
-            }
-            const note = toolNoteFor(call);
-            if (note) {
-              emit(
-                `${full && !full.endsWith("\n\n") ? "\n\n" : ""}${note}\n\n`,
-              );
-            }
-            upstreamMessages.push({
-              role: "tool",
-              tool_call_id: call.id,
-              content: await executeTool(call, env),
-            });
-          }
-
-          // On the last allowed round, withhold tools to force a text answer.
-          response = await callUpstream(toolsAllowed && round + 1 < MAX_TOOL_ROUNDS);
-          if (!response.ok || !response.body) {
-            console.error("OpenRouter stream request failed", response.status, "upstream_rejected");
-            emit("\n\nI lost the connection to the model midway. Ask again?");
+      for await (const event of turn.events) {
+        switch (event.type) {
+          case "text":
+            emit(event.delta);
+            break;
+          case "note":
+          case "diagram": {
+            const marker = markerForEvent(event);
+            if (marker) emitMarker(marker, true);
             break;
           }
+          case "delegated-call": {
+            const marker = markerForEvent(event);
+            if (marker) emitMarker(marker, false);
+            break;
+          }
+          case "error":
+            console.error(
+              "gardener turn failed",
+              event.stage,
+              event.status ?? "",
+              event.detail ?? "",
+            );
+            if (event.stage === "upstream") {
+              emit("\n\nI lost the connection to the model midway. Ask again?");
+            } else if (!full) {
+              emit("Something went wrong on my end. Try again?");
+            }
+            break;
+          case "done":
+            break;
         }
-      } catch (e) {
-        console.error("gardener stream failed", e);
-        if (!full) emit("Something went wrong on my end. Try again?");
       }
 
       try {
         if (envelope || attachEnvelope) {
           // Same visual answer: result marker plus narration are appended
-          // onto the assistant row that ended with the query/attach marker.
-          const resultNote = envelope
-            ? queryResultNote(envelope)
-            : attachResultNote(attachEnvelope!);
+          // onto the assistant row that ended with the query marker.
           await appendToLastAssistantMessage(
             db,
             scope,
             thread,
-            `\n\n${resultNote}${full ? `\n\n${full}` : ""}`,
+            `\n\n${envelope ? queryResultNote(envelope) : attachResultNote(attachEnvelope!)}${full ? `\n\n${full}` : ""}`,
           );
         } else if (full) {
           await saveMessage(db, scope, thread, "assistant", full);

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { readSseRound } from "@vibegarden/agent-core";
+import { offeredGardenerTools } from "~/lib/gardener-tools.server";
 import {
   buildAudienceSection,
   buildSystemPrompt,
   HISTORY_LIMIT,
-  readSseRound,
   trimHistory,
 } from "~/lib/gardener.server";
 
@@ -35,7 +36,9 @@ describe("buildSystemPrompt", () => {
   });
 
   it("describes the tools when the model supports them", () => {
-    const withTools = buildSystemPrompt([], undefined, { tools: true });
+    const withTools = buildSystemPrompt([], undefined, {
+      tools: offeredGardenerTools({}),
+    });
     expect(withTools).toContain("read_article(slug)");
     expect(withTools).toContain("read_module(slug)");
     expect(withTools).toContain("fetch_page(url)");
@@ -44,9 +47,42 @@ describe("buildSystemPrompt", () => {
     expect(withTools).toContain("directly in the chat");
     expect(withTools).toContain("google-sheet");
 
-    const withoutTools = buildSystemPrompt([], undefined, { tools: false });
+    const withoutTools = buildSystemPrompt([], undefined, { tools: [] });
     expect(withoutTools).not.toContain("read_article(slug)");
     expect(withoutTools).toContain("does not support tools");
+  });
+
+  it("derives optional tool guidance from the exact offered specs", () => {
+    const withFreshReads = buildSystemPrompt([], undefined, {
+      tools: offeredGardenerTools({ freshReads: { token: "token" } }),
+    });
+    expect(withFreshReads).toContain("fresh_reads(topic?, content_type?)");
+    expect(withFreshReads).not.toContain("query_data(sql, chart?)");
+
+    const datasets = [{ name: "scores", summary: "scores(id INTEGER)" }];
+    const withQueryData = buildSystemPrompt([], undefined, {
+      tools: offeredGardenerTools({}, { queryData: true }),
+      datasets,
+    });
+    expect(withQueryData).toContain("query_data(sql, chart?)");
+    expect(withQueryData).not.toContain("fresh_reads(topic?, content_type?)");
+  });
+
+  it("does not advertise tools on a narration-only dataset turn", () => {
+    const prompt = buildSystemPrompt([], undefined, {
+      tools: [],
+      toolsUnavailableMessage:
+        "No tools are available on this continuation. Narrate the query results only.",
+      datasets: [{ name: "scores", summary: "scores(id INTEGER)" }],
+    });
+
+    expect(prompt).toContain("scores(id INTEGER)");
+    expect(prompt).toContain("Narrate the query results only");
+    expect(prompt).toContain("no tool is available to read their rows");
+    expect(prompt).not.toContain("selected model does not support tools");
+    expect(prompt).not.toContain("query_data tool is the only way");
+    expect(prompt).not.toContain("read_article(slug)");
+    expect(prompt).not.toContain("query_data(sql, chart?)");
   });
 
   it("weaves in the audience section without frontmatter or placeholder", () => {

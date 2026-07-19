@@ -8,7 +8,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import { ChatMessageBubble } from "../chat-message";
-import { diagramNote, toolNote } from "~/lib/tool-notes";
+import { diagramNote, toolNote } from "@vibegarden/agent-web";
 
 vi.mock("~/components/mermaid-block", () => ({
   MermaidDiagram: ({
