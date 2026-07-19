@@ -33,15 +33,16 @@ export function LeftNav({ current, clubs }: Pick<ClubSwitcherProps, "current" | 
         collapsed ? "w-14" : "w-52",
       )}
     >
-      <Link
-        to={clubPath(clubSlug ?? "")}
-        className="flex h-14 items-center gap-2 border-b px-4 font-serif text-lg"
-      >
-        <Sprout className="size-5 shrink-0 text-primary" />
-        {!collapsed && <span>Vibe Garden</span>}
-      </Link>
-
-      <ClubSwitcher current={current} clubs={clubs} compact={collapsed} />
+      <div className="border-b">
+        <Link
+          to={clubPath(clubSlug ?? "")}
+          className="flex h-14 items-center gap-2 px-4 font-serif text-lg"
+        >
+          <Sprout className="size-5 shrink-0 text-primary" />
+          {!collapsed && <span>Vibe Garden</span>}
+        </Link>
+        <ClubSwitcher current={current} clubs={clubs} compact={collapsed} />
+      </div>
 
       <TooltipProvider>
         <ul className="flex flex-1 flex-col gap-1 p-2">
