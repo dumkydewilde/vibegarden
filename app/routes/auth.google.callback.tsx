@@ -18,7 +18,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
   const email = normalizeEmail(result.email);
   const db = getDb(env);
-  if (!(await isEmailAllowedToLogin(env, email))) {
+  if (!(await isEmailAllowedToLogin(env, email, result.next))) {
     throw redirect("/login?error=not-invited");
   }
 

@@ -1,6 +1,9 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "./db.server";
-import { acceptPendingEmailInvitations } from "./invites.server";
+import {
+  acceptPendingEmailInvitations,
+  getInvitePreview,
+} from "./invites.server";
 import { sendOtpEmail } from "./mailer.server";
 import { otpCodes, users, type User } from "~/db/schema";
 
@@ -33,7 +36,15 @@ export function isAdminEmail(env: Env, email: string) {
   return normalizeEmail(env.ADMIN_EMAIL ?? "") === normalizeEmail(email);
 }
 
-export async function isEmailAllowedToLogin(env: Env, email: string) {
+function inviteTokenFromJoinPath(nextPath: string | undefined) {
+  return /^\/join\/([A-Za-z0-9_-]{43})(?:[?#]|$)/.exec(nextPath ?? "")?.[1];
+}
+
+export async function isEmailAllowedToLogin(
+  env: Env,
+  email: string,
+  nextPath?: string,
+) {
   if (isAdminEmail(env, email)) return true;
   const admission = await env.DB
     .prepare(
@@ -48,7 +59,11 @@ export async function isEmailAllowedToLogin(env: Env, email: string) {
     )
     .bind(email, email)
     .first();
-  return Boolean(admission);
+  if (admission) return true;
+
+  const inviteToken = inviteTokenFromJoinPath(nextPath);
+  if (!inviteToken) return false;
+  return (await getInvitePreview(env, inviteToken)).available;
 }
 
 export type RequestCodeResult =
@@ -58,10 +73,11 @@ export type RequestCodeResult =
 export async function requestLoginCode(
   env: Env,
   rawEmail: string,
+  nextPath?: string,
 ): Promise<RequestCodeResult> {
   const email = normalizeEmail(rawEmail);
   if (!isValidEmail(email)) return { ok: false, error: "invalid-email" };
-  if (!(await isEmailAllowedToLogin(env, email))) {
+  if (!(await isEmailAllowedToLogin(env, email, nextPath))) {
     return { ok: false, error: "not-invited" };
   }
 

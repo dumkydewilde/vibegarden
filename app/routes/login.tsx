@@ -55,9 +55,13 @@ export async function action({
   const form = await request.formData();
   const intent = form.get("intent");
   const email = String(form.get("email") ?? "");
+  const next = safeInternalPath(
+    request,
+    new URL(request.url).searchParams.get("next"),
+  );
 
   if (intent === "request") {
-    const result = await requestLoginCode(env, email);
+    const result = await requestLoginCode(env, email, next);
     if (!result.ok) {
       const error =
         result.error === "invalid-email"
@@ -81,10 +85,6 @@ export async function action({
       return { step: "code", email, error };
     }
     const cookie = await createSessionCookie(env, request, result.user.id);
-    const next = safeInternalPath(
-      request,
-      new URL(request.url).searchParams.get("next"),
-    );
     return redirect(next, {
       headers: { "Set-Cookie": cookie },
     });
@@ -107,6 +107,7 @@ export default function Login({
   const [code, setCode] = useState("");
   const busy = navigation.state === "submitting";
   const oauthError = searchParams.get("error");
+  const returningToInviteLink = loaderData.next.startsWith("/join/");
 
   const step = actionData?.step ?? "email";
   const error = actionData && "error" in actionData ? actionData.error : null;
@@ -129,7 +130,9 @@ export default function Login({
           </CardTitle>
           <CardDescription>
             {step === "email"
-              ? "The garden is invite-only. Sign in with the email your invite was sent to."
+              ? returningToInviteLink
+                ? "Sign in to continue with this club invitation."
+                : "The garden is invite-only. Sign in with the email your invite was sent to."
               : `We sent a 6-digit code to ${email}. It works for 10 minutes.`}
           </CardDescription>
         </CardHeader>

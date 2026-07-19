@@ -157,6 +157,41 @@ describe("club email invitations", () => {
 });
 
 describe("club invite links", () => {
+  it("admits a new email to sign in through a usable invite link", async () => {
+    const clubContext = await context("login-admission");
+    const { urlToken } = await createInviteLink(testEnv, clubContext, {
+      expiresIn: "24h",
+    });
+
+    await expect(
+      requestLoginCode(
+        testEnv,
+        "link-invitee@example.com",
+        `/join/${urlToken}`,
+      ),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  it("keeps unavailable invite links closed to new email addresses", async () => {
+    const clubContext = await context("closed-login-admission");
+    const { urlToken, link } = await createInviteLink(testEnv, clubContext, {
+      expiresIn: "1h",
+    });
+    await env.DB.prepare(
+      "UPDATE club_invite_links SET revoked_at = ? WHERE id = ?",
+    )
+      .bind(Date.now(), link.id)
+      .run();
+
+    await expect(
+      requestLoginCode(
+        testEnv,
+        "closed-link-invitee@example.com",
+        `/join/${urlToken}`,
+      ),
+    ).resolves.toEqual({ ok: false, error: "not-invited" });
+  });
+
   it.each([
     ["1h", 60 * 60 * 1000],
     ["24h", 24 * 60 * 60 * 1000],
