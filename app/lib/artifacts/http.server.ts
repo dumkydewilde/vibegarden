@@ -52,6 +52,12 @@ export function artifactEmpty(status = 204): Response {
   return new Response(null, { status, headers: NO_STORE_HEADERS });
 }
 
+/** Reject an unsupported verb before authentication, parsing, or delegation. */
+export function artifactRequireMethod(request: Request, ...methods: string[]): Response | null {
+  if (methods.includes(request.method)) return null;
+  return artifactJson(new ArtifactError("invalid_input").toPublic(), { status: 400 });
+}
+
 /**
  * Converts only artifact-domain failures into stable JSON responses. Other
  * errors deliberately expose no implementation detail to the caller.

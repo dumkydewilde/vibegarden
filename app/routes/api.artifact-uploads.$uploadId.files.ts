@@ -1,8 +1,8 @@
 import type { Route } from "./+types/api.artifact-uploads.$uploadId.files";
 import { ArtifactError } from "~/lib/artifacts/contracts";
-import { artifactJson, artifactJsonAction } from "~/lib/artifacts/http.server";
+import { artifactJson, artifactJsonAction, artifactRequireMethod } from "~/lib/artifacts/http.server";
 import { putUploadFile } from "~/lib/artifacts/service.server";
-import { requireUser } from "~/lib/auth.server";
+import { requireArtifactUser } from "~/lib/artifacts/auth.server";
 import { cloudflareContext } from "~/lib/context";
 
 const HEADER_NAMES = ["x-artifact-path", "x-artifact-mime", "x-artifact-bytes", "x-artifact-sha256"] as const;
@@ -26,8 +26,11 @@ function uploadHeaders(request: Request) {
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
+  const methodError = artifactRequireMethod(request, "PUT");
+  if (methodError) return methodError;
   const { env } = context.get(cloudflareContext);
-  const user = await requireUser(env, request);
+  const user = await requireArtifactUser(env, request);
+  if (user instanceof Response) return user;
   return artifactJsonAction(async () => {
     if (!params.uploadId || !request.body) inputError();
     const input = uploadHeaders(request);

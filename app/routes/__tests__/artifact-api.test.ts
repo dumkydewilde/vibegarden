@@ -3,15 +3,31 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const requireUser = vi.fn();
 const createUploadSession = vi.fn();
 const putUploadFile = vi.fn();
+const finalizeUpload = vi.fn();
+const abortUpload = vi.fn();
+const createLinkArtifact = vi.fn();
+const createLinkArtifactVersion = vi.fn();
 const updateArtifactMetadata = vi.fn();
+const deleteArtifact = vi.fn();
+const recoverArtifact = vi.fn();
+const restoreArtifactVersion = vi.fn();
 const shareArtifactVersion = vi.fn();
+const unshareArtifact = vi.fn();
 
 vi.mock("~/lib/auth.server", () => ({ requireUser }));
 vi.mock("~/lib/artifacts/service.server", () => ({
   createUploadSession,
   putUploadFile,
+  finalizeUpload,
+  abortUpload,
+  createLinkArtifact,
+  createLinkArtifactVersion,
   updateArtifactMetadata,
+  deleteArtifact,
+  recoverArtifact,
+  restoreArtifactVersion,
   shareArtifactVersion,
+  unshareArtifact,
 }));
 
 vi.mock("~/lib/context", () => ({
@@ -28,6 +44,25 @@ const actionArgs = (request: Request, params: Record<string, string> = {}) => ({
   context,
 }) as never;
 
+const noServiceCalls = () => {
+  for (const service of [
+    createUploadSession,
+    putUploadFile,
+    finalizeUpload,
+    abortUpload,
+    createLinkArtifact,
+    createLinkArtifactVersion,
+    updateArtifactMetadata,
+    deleteArtifact,
+    recoverArtifact,
+    restoreArtifactVersion,
+    shareArtifactVersion,
+    unshareArtifact,
+  ]) {
+    expect(service).not.toHaveBeenCalled();
+  }
+};
+
 describe("artifact browser routes", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -39,11 +74,13 @@ describe("artifact browser routes", () => {
     requireUser.mockRejectedValueOnce(new Response(null, { status: 401 }));
     const { action } = await import("../api.artifact-uploads");
 
-    await expect(action(actionArgs(new Request("https://vibegarden.club/api/artifact-uploads", {
+    const response = await action(actionArgs(new Request("https://vibegarden.club/api/artifact-uploads", {
       method: "POST",
       body: "{",
-    })))).rejects.toMatchObject({ status: 401 });
+    })));
 
+    expect(response.status).toBe(401);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(createUploadSession).not.toHaveBeenCalled();
   });
 
@@ -139,5 +176,50 @@ describe("artifact browser routes", () => {
 
     expect(response.status).toBe(400);
     expect(shareArtifactVersion).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["upload creation", "../api.artifact-uploads", "action", "/api/artifact-uploads", {}, "GET"],
+    ["upload file", "../api.artifact-uploads.$uploadId.files", "action", "/api/artifact-uploads/upload-1/files", { uploadId: "upload-1" }, "POST"],
+    ["upload finalization", "../api.artifact-uploads.$uploadId.finalize", "action", "/api/artifact-uploads/upload-1/finalize", { uploadId: "upload-1" }, "PUT"],
+    ["upload abort", "../api.artifact-uploads.$uploadId.abort", "action", "/api/artifact-uploads/upload-1/abort", { uploadId: "upload-1" }, "DELETE"],
+    ["link creation", "../api.artifacts.links", "action", "/api/artifacts/links", {}, "GET"],
+    ["link version creation", "../api.artifacts.$artifactId.link-version", "action", "/api/artifacts/artifact-1/link-version", { artifactId: "artifact-1" }, "PATCH"],
+    ["artifact mutations", "../api.artifacts.$artifactId", "action", "/api/artifacts/artifact-1", { artifactId: "artifact-1" }, "GET"],
+    ["version restoration", "../api.artifacts.$artifactId.restore-version", "action", "/api/artifacts/artifact-1/restore-version", { artifactId: "artifact-1" }, "DELETE"],
+    ["gallery mutations", "../api.artifacts.$artifactId.gallery", "action", "/api/artifacts/artifact-1/gallery", { artifactId: "artifact-1" }, "POST"],
+  ])("rejects an alternate verb for %s before auth or service work", async (_name, modulePath, exportName, path, params, method) => {
+    const route = await import(modulePath as string);
+    const response = await route[exportName as "action"](actionArgs(new Request(`https://vibegarden.club${path}`, { method }), params as Record<string, string>));
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(requireUser).not.toHaveBeenCalled();
+    noServiceCalls();
+  });
+
+  it.each([
+    ["upload creation", "../api.artifact-uploads", "action", "/api/artifact-uploads", {}, "POST"],
+    ["upload file", "../api.artifact-uploads.$uploadId.files", "action", "/api/artifact-uploads/upload-1/files", { uploadId: "upload-1" }, "PUT"],
+    ["upload finalization", "../api.artifact-uploads.$uploadId.finalize", "action", "/api/artifact-uploads/upload-1/finalize", { uploadId: "upload-1" }, "POST"],
+    ["upload abort", "../api.artifact-uploads.$uploadId.abort", "action", "/api/artifact-uploads/upload-1/abort", { uploadId: "upload-1" }, "POST"],
+    ["link creation", "../api.artifacts.links", "action", "/api/artifacts/links", {}, "POST"],
+    ["link version creation", "../api.artifacts.$artifactId.link-version", "action", "/api/artifacts/artifact-1/link-version", { artifactId: "artifact-1" }, "POST"],
+    ["artifact mutations", "../api.artifacts.$artifactId", "action", "/api/artifacts/artifact-1", { artifactId: "artifact-1" }, "POST"],
+    ["version restoration", "../api.artifacts.$artifactId.restore-version", "action", "/api/artifacts/artifact-1/restore-version", { artifactId: "artifact-1" }, "POST"],
+    ["gallery mutations", "../api.artifacts.$artifactId.gallery", "action", "/api/artifacts/artifact-1/gallery", { artifactId: "artifact-1" }, "PUT"],
+    ["capability lookup", "../api.artifacts.$artifactId.capability", "loader", "/api/artifacts/artifact-1/capability", { artifactId: "artifact-1" }, "GET"],
+  ])("adds no-store while preserving an unauthenticated redirect for %s", async (_name, modulePath, exportName, path, params, method) => {
+    requireUser.mockRejectedValueOnce(new Response(null, {
+      status: 302,
+      headers: { Location: "/login?next=%2Fartifacts" },
+    }));
+    const route = await import(modulePath as string);
+    const response = await route[exportName as "action"](actionArgs(new Request(`https://vibegarden.club${path}`, { method, body: method === "GET" ? undefined : "{" }), params as Record<string, string>));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe("/login?next=%2Fartifacts");
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    noServiceCalls();
   });
 });
