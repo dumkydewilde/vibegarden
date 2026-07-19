@@ -138,6 +138,86 @@ describe("owned artifact repository", () => {
     expect(artifact).toEqual({ current_version_id: "version-a-next", gallery_version_id: "version-a-gallery" });
   });
 
+  it("rejects a new upload whose manifest key escapes its recorded artifact version", async () => {
+    const injectedKey = "artifacts/artifact-injected/versions/version-injected/index.html";
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO artifact_uploads (id, user_id, artifact_id, version_id, project_id, type, title, allowed_data_origins, source, status, idempotency_key, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'html', ?, '[]', 'web', 'finalizing', ?, ?, ?, ?)").bind("upload-key-new", "user-a", "artifact-key-new", "version-key-new", "project-a", "Key injection", "upload-key-new-idempotency", now + 1, now, now),
+      env.DB.prepare("INSERT INTO artifact_upload_files (upload_id, path, r2_key, mime_type, byte_size, sha256, created_at) VALUES (?, ?, ?, 'text/html', 5, ?, ?)").bind("upload-key-new", "index.html", injectedKey, "2".repeat(64), now),
+      env.DB.prepare("INSERT INTO artifact_object_leases (r2_key, upload_id, user_id, byte_size, sha256, expires_at, created_at) VALUES (?, ?, ?, 5, ?, ?, ?)").bind(injectedKey, "upload-key-new", "user-a", "2".repeat(64), now + 1, now),
+    ]);
+
+    await expect(finalizeNewArtifact(env, "user-a", { uploadId: "upload-key-new", now })).rejects.toMatchObject({ code: "state_conflict" });
+
+    await expect(env.DB.prepare("SELECT id FROM artifacts WHERE id = ?").bind("artifact-key-new").first()).resolves.toBeNull();
+    await expect(env.DB.prepare("SELECT id FROM artifact_versions WHERE id = ?").bind("version-key-new").first()).resolves.toBeNull();
+    await expect(env.DB.prepare("SELECT r2_key FROM artifact_files WHERE version_id = ?").bind("version-key-new").first()).resolves.toBeNull();
+    await expect(env.DB.prepare("SELECT status FROM artifact_uploads WHERE id = ?").bind("upload-key-new").first()).resolves.toEqual({ status: "finalizing" });
+    await expect(env.DB.prepare("SELECT r2_key FROM artifact_object_leases WHERE r2_key = ?").bind(injectedKey).first()).resolves.toEqual({ r2_key: injectedKey });
+  });
+
+  it("rejects an existing upload whose manifest key targets another version", async () => {
+    const injectedKey = "artifacts/artifact-a/versions/version-a-current/index.html";
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO artifact_uploads (id, user_id, artifact_id, version_id, project_id, type, title, allowed_data_origins, source, status, idempotency_key, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'html', ?, '[]', 'web', 'finalizing', ?, ?, ?, ?)").bind("upload-key-existing", "user-a", "artifact-a", "version-key-existing", "project-a", "Artifact A", "upload-key-existing-idempotency", now + 1, now, now),
+      env.DB.prepare("INSERT INTO artifact_upload_files (upload_id, path, r2_key, mime_type, byte_size, sha256, created_at) VALUES (?, ?, ?, 'text/html', 5, ?, ?)").bind("upload-key-existing", "index.html", injectedKey, "3".repeat(64), now),
+      env.DB.prepare("INSERT INTO artifact_object_leases (r2_key, upload_id, user_id, byte_size, sha256, expires_at, created_at) VALUES (?, ?, ?, 5, ?, ?, ?)").bind(injectedKey, "upload-key-existing", "user-a", "3".repeat(64), now + 1, now),
+    ]);
+
+    await expect(finalizeExistingArtifactVersion(env, "user-a", { uploadId: "upload-key-existing", now })).rejects.toMatchObject({ code: "state_conflict" });
+
+    await expect(env.DB.prepare("SELECT id FROM artifact_versions WHERE id = ?").bind("version-key-existing").first()).resolves.toBeNull();
+    await expect(env.DB.prepare("SELECT r2_key FROM artifact_files WHERE version_id = ?").bind("version-key-existing").first()).resolves.toBeNull();
+    await expect(env.DB.prepare("SELECT current_version_id FROM artifacts WHERE id = ?").bind("artifact-a").first()).resolves.toEqual({ current_version_id: "version-a-current" });
+    await expect(env.DB.prepare("SELECT status FROM artifact_uploads WHERE id = ?").bind("upload-key-existing").first()).resolves.toEqual({ status: "finalizing" });
+    await expect(env.DB.prepare("SELECT r2_key FROM artifact_object_leases WHERE r2_key = ?").bind(injectedKey).first()).resolves.toEqual({ r2_key: injectedKey });
+  });
+
+  it("rejects a manifest key derived from an unnormalized stored path", async () => {
+    const unnormalizedPath = "pages//index.html";
+    const unnormalizedKey = `artifacts/artifact-unnormalized/versions/version-unnormalized/${unnormalizedPath}`;
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO artifact_uploads (id, user_id, artifact_id, version_id, project_id, type, title, allowed_data_origins, source, status, idempotency_key, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'html', ?, '[]', 'web', 'finalizing', ?, ?, ?, ?)").bind("upload-unnormalized", "user-a", "artifact-unnormalized", "version-unnormalized", "project-a", "Unnormalized", "upload-unnormalized-idempotency", now + 1, now, now),
+      env.DB.prepare("INSERT INTO artifact_upload_files (upload_id, path, r2_key, mime_type, byte_size, sha256, created_at) VALUES (?, ?, ?, 'text/html', 5, ?, ?)").bind("upload-unnormalized", unnormalizedPath, unnormalizedKey, "6".repeat(64), now),
+      env.DB.prepare("INSERT INTO artifact_object_leases (r2_key, upload_id, user_id, byte_size, sha256, expires_at, created_at) VALUES (?, ?, ?, 5, ?, ?, ?)").bind(unnormalizedKey, "upload-unnormalized", "user-a", "6".repeat(64), now + 1, now),
+    ]);
+
+    await expect(finalizeNewArtifact(env, "user-a", { uploadId: "upload-unnormalized", now })).rejects.toMatchObject({ code: "state_conflict" });
+
+    await expect(env.DB.prepare("SELECT id FROM artifacts WHERE id = ?").bind("artifact-unnormalized").first()).resolves.toBeNull();
+    await expect(env.DB.prepare("SELECT status FROM artifact_uploads WHERE id = ?").bind("upload-unnormalized").first()).resolves.toEqual({ status: "finalizing" });
+    await expect(env.DB.prepare("SELECT r2_key FROM artifact_object_leases WHERE r2_key = ?").bind(unnormalizedKey).first()).resolves.toEqual({ r2_key: unnormalizedKey });
+  });
+
+  it("rejects a new upload with no manifest files without consuming its lease", async () => {
+    const leaseKey = "artifacts/artifact-empty-new/versions/version-empty-new/index.html";
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO artifact_uploads (id, user_id, artifact_id, version_id, project_id, type, title, allowed_data_origins, source, status, idempotency_key, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'html', ?, '[]', 'web', 'finalizing', ?, ?, ?, ?)").bind("upload-empty-new", "user-a", "artifact-empty-new", "version-empty-new", "project-a", "Empty artifact", "upload-empty-new-idempotency", now + 1, now, now),
+      env.DB.prepare("INSERT INTO artifact_object_leases (r2_key, upload_id, user_id, byte_size, sha256, expires_at, created_at) VALUES (?, ?, ?, 5, ?, ?, ?)").bind(leaseKey, "upload-empty-new", "user-a", "4".repeat(64), now + 1, now),
+    ]);
+
+    await expect(finalizeNewArtifact(env, "user-a", { uploadId: "upload-empty-new", now })).rejects.toMatchObject({ code: "state_conflict" });
+
+    await expect(env.DB.prepare("SELECT id FROM artifacts WHERE id = ?").bind("artifact-empty-new").first()).resolves.toBeNull();
+    await expect(env.DB.prepare("SELECT id FROM artifact_versions WHERE id = ?").bind("version-empty-new").first()).resolves.toBeNull();
+    await expect(env.DB.prepare("SELECT status FROM artifact_uploads WHERE id = ?").bind("upload-empty-new").first()).resolves.toEqual({ status: "finalizing" });
+    await expect(env.DB.prepare("SELECT r2_key FROM artifact_object_leases WHERE r2_key = ?").bind(leaseKey).first()).resolves.toEqual({ r2_key: leaseKey });
+  });
+
+  it("rejects an existing upload with no manifest files without moving its current version", async () => {
+    const leaseKey = "artifacts/artifact-a/versions/version-empty-existing/index.html";
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO artifact_uploads (id, user_id, artifact_id, version_id, project_id, type, title, allowed_data_origins, source, status, idempotency_key, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'html', ?, '[]', 'web', 'finalizing', ?, ?, ?, ?)").bind("upload-empty-existing", "user-a", "artifact-a", "version-empty-existing", "project-a", "Artifact A", "upload-empty-existing-idempotency", now + 1, now, now),
+      env.DB.prepare("INSERT INTO artifact_object_leases (r2_key, upload_id, user_id, byte_size, sha256, expires_at, created_at) VALUES (?, ?, ?, 5, ?, ?, ?)").bind(leaseKey, "upload-empty-existing", "user-a", "5".repeat(64), now + 1, now),
+    ]);
+
+    await expect(finalizeExistingArtifactVersion(env, "user-a", { uploadId: "upload-empty-existing", now })).rejects.toMatchObject({ code: "state_conflict" });
+
+    await expect(env.DB.prepare("SELECT id FROM artifact_versions WHERE id = ?").bind("version-empty-existing").first()).resolves.toBeNull();
+    await expect(env.DB.prepare("SELECT current_version_id FROM artifacts WHERE id = ?").bind("artifact-a").first()).resolves.toEqual({ current_version_id: "version-a-current" });
+    await expect(env.DB.prepare("SELECT status FROM artifact_uploads WHERE id = ?").bind("upload-empty-existing").first()).resolves.toEqual({ status: "finalizing" });
+    await expect(env.DB.prepare("SELECT r2_key FROM artifact_object_leases WHERE r2_key = ?").bind(leaseKey).first()).resolves.toEqual({ r2_key: leaseKey });
+  });
+
   it("rejects an expired finalizing upload without committing artifact state", async () => {
     await env.DB.batch([
       env.DB.prepare("INSERT INTO artifact_uploads (id, user_id, artifact_id, version_id, project_id, type, title, allowed_data_origins, source, status, idempotency_key, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'html', ?, '[]', 'web', 'finalizing', ?, ?, ?, ?)").bind("upload-expired", "user-a", "artifact-expired", "version-expired", "project-a", "Expired artifact", "upload-key-expired", now - 1, now, now),

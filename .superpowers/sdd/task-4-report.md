@@ -211,3 +211,66 @@ Added three failing-first repository regressions and ran:
   The dependent version insert is likewise owner-scoped, and all batch result
   counts are checked so an absent owned project becomes the stable retryable
   `state_conflict` error rather than a trigger-dependent database error.
+
+## Third review findings
+
+The third review found two Important finalization-integrity gaps:
+
+1. Finalization must prove each server-recorded upload file key belongs to the upload's artifact/version prefix.
+2. Non-link finalization must reject an upload with no manifest files.
+
+## Third review remediation
+
+### RED
+
+Added five failing-first repository regressions and ran:
+
+`npm run test:worker -- test/worker/artifact-repository.test.ts`
+
+- 1 file ran: 11 passed, 4 failed. A new artifact upload and an existing
+  version upload both accepted a manifest key for a different immutable
+  artifact/version. New and existing uploads with no manifest rows also
+  finalized successfully.
+- A fifth regression for an unnormalized persisted path failed separately:
+  `pages//index.html` and its matching raw key were accepted.
+
+### GREEN
+
+`npm run test:worker -- test/worker/artifact-object-store.test.ts test/worker/artifact-repository.test.ts`
+
+- Passed: 2 files, 20 tests.
+- Covers new and existing cross-version/key injection rejection, normalized
+  manifest-path enforcement, and new/existing empty-manifest rejection. Every
+  rejection leaves artifact/version/file state untouched, preserves the
+  finalizing upload, and retains its lease for cleanup or retry.
+
+`npm run typecheck`
+
+- Passed.
+
+`git diff --check`
+
+- Passed.
+
+### Files
+
+- `app/lib/artifacts/repository.server.ts`
+- `test/worker/artifact-repository.test.ts`
+- `.superpowers/sdd/task-4-report.md`
+
+### Commit
+
+- `fix: enforce finalization manifest integrity` (this remediation commit)
+
+### Self-review
+
+- Before either non-link finalizer starts its D1 batch, it reads only the
+  owned, unexpired, finalizing upload manifest and recomposes every expected
+  immutable R2 key with `artifactObjectKey`. This validates the stored path is
+  normalized and rejects a missing or mismatched manifest as `state_conflict`.
+- The D1 inserts repeat the nonempty-manifest and exact-key requirement in the
+  batch predicate, alongside the owned unexpired lease check. This prevents a
+  manifest mutation between validation and file insertion from creating
+  artifact state.
+- New finalization no longer uses a left join that can synthesize a zero-file
+  version, and both finalizers require at least one inserted artifact file.
