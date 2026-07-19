@@ -214,6 +214,13 @@ The gate review found two further Important runtime-type gaps:
 
 The final reviewer found that `assertUtf8Stream()` validates only the existence of `getReader`; a malformed result can make cleanup throw a native error and mask the intended stable ArtifactError.
 
+## Final gate findings
+
+The final gate review found two further Important error-path gaps:
+
+1. `assertUtf8Stream()` must also contain exceptions thrown while calling `getReader()` itself.
+2. A supplied falsy `content` value must be rejected as malformed rather than treated as absent unless it is exactly `undefined`.
+
 ## Approval review fixes — 2026-07-19
 
 ### Scope
@@ -440,3 +447,58 @@ exit 0
 - Reader-surface validation occurs before the first `read()` call, including the explicit `releaseLock` check required for deterministic cleanup.
 - Cleanup errors are intentionally swallowed only after a usable cleanup method has been established, preserving the primary stable result.
 - The unrelated untracked documentation plan remains excluded from the commit.
+
+## Final gate review fixes — 2026-07-19
+
+### Scope
+
+Resolved both remaining Important gate-review findings:
+
+1. `assertUtf8Stream()` now contains exceptions thrown while invoking a callable `getReader()` and translates them to the stable `invalid_input` `ArtifactError` used for malformed stream inputs.
+2. `validateArtifactPackage()` now treats content as absent only when it is exactly `undefined`. Every supplied value must be a real `Uint8Array`; `null`, `false`, `0`, and `""` reject as `invalid_manifest`, while an empty `Uint8Array` with `byteSize: 0` remains valid.
+
+### TDD evidence
+
+RED (tests added before production changes):
+
+```text
+npm test -- app/lib/artifacts/__tests__/validation.test.ts app/lib/artifacts/__tests__/manifest.test.ts
+exit 1
+2 test files run; 1 passed and 1 failed.
+94 tests run; 89 passed and 5 failed.
+
+Expected failures:
+- four supplied non-binary content values (`null`, `false`, `0`, and `""`) were silently treated as absent instead of rejecting as `invalid_manifest`;
+- a callable `getReader()` that threw `Error: reader construction failed` escaped as that native error instead of the stable `invalid_input` ArtifactError.
+```
+
+GREEN (after the minimal boundary changes):
+
+```text
+npm test -- app/lib/artifacts/__tests__/validation.test.ts app/lib/artifacts/__tests__/manifest.test.ts
+exit 0
+2 test files passed; 94 tests passed.
+
+npm run typecheck
+react-router typegen && tsc
+exit 0
+
+git diff --check
+exit 0
+```
+
+### Files changed
+
+- `app/lib/artifacts/validation.ts`
+- `app/lib/artifacts/__tests__/validation.test.ts`
+- `.superpowers/sdd/task-3-report.md`
+
+### Commit
+
+`HEAD` — `fix: close artifact validation gate`
+
+### Self-review
+
+- The `getReader()` catch is intentionally narrow: a malformed stream factory gets `invalid_input`, while later decode and read failures preserve their existing `invalid_type` behavior.
+- Explicit `undefined` is the only bypass for content inspection. The cross-realm-safe `Uint8Array` predicate runs before byte-length access, and a zero-length byte array remains a valid supplied payload.
+- Focused artifact tests, typechecking, and whitespace validation passed. The pre-existing untracked `docs/plans/2026-07-18-artifact-upload-and-rendering.md` remains excluded.

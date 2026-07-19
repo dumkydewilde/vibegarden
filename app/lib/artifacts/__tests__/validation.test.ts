@@ -164,6 +164,27 @@ describe("artifact packages", () => {
       "limit_exceeded",
     );
   });
+
+  it.each([null, false, 0, ""])("rejects supplied non-binary content: %p", (content) => {
+    expectCode(
+      () => validateArtifactPackage({
+        type: "file",
+        source: "browser",
+        files: [{ path: "empty.txt", mimeType: "text/plain", byteSize: 0, content: content as unknown as Uint8Array }],
+      }),
+      "invalid_manifest",
+    );
+  });
+
+  it("accepts a supplied empty Uint8Array", () => {
+    expect(() =>
+      validateArtifactPackage({
+        type: "file",
+        source: "browser",
+        files: [{ path: "empty.txt", mimeType: "text/plain", byteSize: 0, content: new Uint8Array() }],
+      }),
+    ).not.toThrow();
+  });
 });
 
 describe("content inspection", () => {
@@ -236,6 +257,16 @@ describe("content inspection", () => {
   it("rejects a null UTF-8 stream reader with a stable artifact error", async () => {
     const stream = {
       getReader: () => null,
+    } as unknown as ReadableStream<Uint8Array>;
+
+    await expect(assertUtf8Stream(stream)).rejects.toMatchObject({ code: "invalid_input" });
+  });
+
+  it("translates a getReader exception to a stable artifact error", async () => {
+    const stream = {
+      getReader: () => {
+        throw new Error("reader construction failed");
+      },
     } as unknown as ReadableStream<Uint8Array>;
 
     await expect(assertUtf8Stream(stream)).rejects.toMatchObject({ code: "invalid_input" });

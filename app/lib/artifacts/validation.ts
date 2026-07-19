@@ -188,8 +188,10 @@ export function validateArtifactPackage(input: ArtifactPackageInput): ValidatedA
     seen.add(path);
     const validated = { ...file, path };
     validateMime(path, file.mimeType, input.type === "html" ? HTML_PACKAGE_MIME_BY_EXTENSION : SAFE_DOWNLOAD_MIME_BY_EXTENSION);
-    if (file.content && file.content.byteLength !== file.byteSize) return throwArtifact("invalid_manifest");
-    if (file.content) inspectArtifactContent(validated);
+    if (file.content !== undefined) {
+      if (!isUint8Array(file.content) || file.content.byteLength !== file.byteSize) return throwArtifact("invalid_manifest");
+      inspectArtifactContent(validated);
+    }
     return validated;
   });
 
@@ -260,7 +262,12 @@ export async function assertUtf8Stream(stream: ReadableStream<Uint8Array>): Prom
   if (!stream || typeof stream !== "object" || typeof stream.getReader !== "function") {
     throwArtifact("invalid_input");
   }
-  const reader = stream.getReader();
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
+  try {
+    reader = stream.getReader();
+  } catch {
+    throwArtifact("invalid_input");
+  }
   if (
     !reader ||
     typeof reader !== "object" ||
