@@ -228,7 +228,10 @@ async function cleanSoftDeletedArtifacts(env: Env, now: number, limit: number, r
   const emptyArtifacts = await env.DB.prepare(
     `SELECT a.id
      FROM artifacts a
-     WHERE a.cleanup_started_at IS NOT NULL
+     WHERE (
+       (a.deleted_at IS NOT NULL AND a.deleted_at <= ? AND a.cleanup_started_at IS NULL)
+       OR a.cleanup_started_at IS NOT NULL
+     )
        AND NOT EXISTS (
          SELECT 1 FROM artifact_versions v
          INNER JOIN artifact_files f ON f.version_id = v.id
@@ -236,8 +239,9 @@ async function cleanSoftDeletedArtifacts(env: Env, now: number, limit: number, r
        )
      ORDER BY a.deleted_at, a.id
      LIMIT ?`,
-  ).bind(remaining).all<{ id: string }>();
+  ).bind(cutoff, remaining).all<{ id: string }>();
   for (const artifact of emptyArtifacts.results) {
+    if (!await reserveSoftDeletedArtifact(env, artifact.id, cutoff, now)) continue;
     const deleted = await env.DB.batch([
       env.DB.prepare("DELETE FROM artifact_uploads WHERE artifact_id = ? AND status = 'complete'").bind(artifact.id),
       env.DB.prepare(

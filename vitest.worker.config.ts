@@ -9,6 +9,9 @@ export default defineConfig({
         configPath: "./wrangler.jsonc",
       },
       miniflare: {
+        d1Databases: {
+          UPGRADE_DB: "artifact-upgrade-regression",
+        },
         bindings: {
           APP_ORIGIN: "http://localhost:5173",
           RENDERER_ORIGIN: "http://localhost:8787",

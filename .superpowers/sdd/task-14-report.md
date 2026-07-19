@@ -31,3 +31,15 @@ Follow-up verification:
 - `npm run test:worker -- test/worker/artifact-cleanup.test.ts test/worker/artifact-schema.test.ts test/worker/artifact-service.test.ts test/worker/artifact-lifecycle.test.ts` — 28 passed.
 - `npm test -- app/lib/artifacts/__tests__/observability.test.ts app/routes/__tests__/artifact-detail.test.tsx` — 4 passed.
 - `npm run typecheck` and `git diff --check` — passed.
+
+Re-review fixes:
+
+- `0008` now uses unqualified upload CHECK expressions and preserves/rebuilds `artifact_upload_files` around the upload-table replacement, preventing both stale temporary-table checks and cascading loss of populated upload-file rows.
+- Added a second isolated D1 test database that applies `0000`–`0007`, seeds artifact/upload/file data, then applies `0008` and verifies the data and upload foreign keys survive.
+- Cleanup now reserves and purges eligible retained artifacts with no `artifact_files`, including link artifacts. This removes their completed upload history and metadata without attempting R2 deletion, allowing the project to be deleted after retention.
+
+Re-review verification:
+
+- `npm run test:worker -- test/worker/artifact-migration-upgrade.test.ts test/worker/artifact-cleanup.test.ts` — 8 passed.
+- `npm run test:worker` — 60 passed.
+- `npm run typecheck` and `git diff --check` — passed.

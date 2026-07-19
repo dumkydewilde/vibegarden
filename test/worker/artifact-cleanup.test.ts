@@ -62,6 +62,26 @@ describe("artifact cleanup", () => {
     await expect(env.DB.prepare("SELECT id FROM projects WHERE id = 'cleanup-project'").first()).resolves.toBeNull();
   });
 
+  it("purges an expired soft-deleted link artifact with no R2 files", async () => {
+    const artifactId = "expired-link-artifact";
+    const versionId = "expired-link-version";
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO artifacts (id, user_id, project_id, type, title, visibility, deleted_at, created_at, updated_at) VALUES (?, 'cleanup-user', 'cleanup-project', 'link', 'Expired link', 'private', ?, ?, ?)").bind(artifactId, now - recoveryMs - 1, now, now),
+      env.DB.prepare("INSERT INTO artifact_versions (id, artifact_id, version_number, source, external_url, allowed_data_origins, file_count, total_bytes, created_by, created_at) VALUES (?, ?, 1, 'web', 'https://example.test', '[]', 0, 0, 'cleanup-user', ?)").bind(versionId, artifactId, now),
+      env.DB.prepare(`INSERT INTO artifact_uploads (
+        id, user_id, artifact_id, version_id, project_id, type, title, allowed_data_origins,
+        source, status, idempotency_key, expires_at, created_at, updated_at
+      ) VALUES ('expired-link-upload', 'cleanup-user', ?, ?, 'cleanup-project', 'link', 'Expired link', '[]', 'web', 'complete', 'expired-link-key', ?, ?, ?)`).bind(artifactId, versionId, now + 1, now, now),
+    ]);
+
+    await cleanupArtifacts(env, now);
+
+    await expect(env.DB.prepare("SELECT id FROM artifacts WHERE id = ?").bind(artifactId).first()).resolves.toBeNull();
+    await expect(env.DB.prepare("SELECT id FROM artifact_versions WHERE id = ?").bind(versionId).first()).resolves.toBeNull();
+    await expect(env.DB.prepare("SELECT id FROM artifact_uploads WHERE id = 'expired-link-upload'").first()).resolves.toBeNull();
+    await expect(env.DB.prepare("DELETE FROM projects WHERE id = ? AND user_id = ?").bind("cleanup-project", "cleanup-user").run()).resolves.toMatchObject({ meta: { changes: 1 } });
+  });
+
   it("does not delete a soft-deleted artifact restored while cleanup reserves it", async () => {
     const artifact = await seedArtifact("race-restored-artifact", now - recoveryMs - 1);
     let recovered = false;
