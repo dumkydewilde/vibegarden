@@ -10,6 +10,7 @@ import {
   finalizeUpload,
   putUploadFile,
 } from "../../app/lib/artifacts/service.server";
+import { artifactObjectKey, putLeasedObject } from "../../app/lib/artifacts/object-store.server";
 
 const now = 1_784_880_000_000;
 const text = new TextEncoder();
@@ -148,5 +149,92 @@ describe("artifact upload service", () => {
     await expect(createLinkArtifact(env, "user-a", { ...input, url: "https://example.com/other" })).rejects.toMatchObject({
       code: "idempotency_conflict",
     } satisfies Partial<ArtifactError>);
+  });
+
+  it("rejects a declared byte size that differs from R2 before recording the manifest and retains its lease", async () => {
+    const body = text.encode("<h1>Size mismatch</h1>");
+    const session = await createUploadSession(env, "user-a", {
+      project: { projectId: "project-a" },
+      type: "html",
+      title: "Size mismatch",
+      idempotencyKey: "size-mismatch-upload",
+    });
+
+    await expect(putUploadFile(env, "user-a", session.uploadId, {
+      path: "index.html",
+      mimeType: "text/html",
+      byteSize: body.byteLength + 1,
+      sha256: await sha256(body),
+    }, body.buffer)).rejects.toMatchObject({ code: "invalid_manifest" } satisfies Partial<ArtifactError>);
+
+    await expect(env.DB.prepare("SELECT COUNT(*) AS count FROM artifact_upload_files WHERE upload_id = ?").bind(session.uploadId).first<{ count: number }>()).resolves.toEqual({ count: 0 });
+    await expect(env.DB.prepare("SELECT byte_size FROM artifact_object_leases WHERE upload_id = ?").bind(session.uploadId).first<{ byte_size: number }>()).resolves.toEqual({ byte_size: body.byteLength + 1 });
+  });
+
+  it("recovers a same-checksum object left after the R2 write, while changed retry bytes still conflict", async () => {
+    const body = text.encode("<h1>Recover</h1>");
+    const checksum = await sha256(body);
+    const session = await createUploadSession(env, "user-a", {
+      project: { projectId: "project-a" },
+      type: "html",
+      title: "Recovery",
+      idempotencyKey: "recover-r2-before-d1",
+    });
+    const r2Key = artifactObjectKey(session.artifactId, session.versionId, "index.html");
+    await env.DB.prepare(
+      "INSERT INTO artifact_object_leases (r2_key, upload_id, user_id, byte_size, sha256, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).bind(r2Key, session.uploadId, "user-a", body.byteLength, checksum, Date.now() + 60_000, Date.now()).run();
+    await putLeasedObject(env, { r2Key, body: body.buffer, mimeType: "text/html", sha256: checksum });
+
+    await expect(putUploadFile(env, "user-a", session.uploadId, {
+      path: "index.html", mimeType: "text/html", byteSize: body.byteLength, sha256: checksum,
+    }, body.buffer)).resolves.toEqual({ path: "index.html", mimeType: "text/html", byteSize: body.byteLength, sha256: checksum });
+
+    const changed = text.encode("<h1>Changed</h1>");
+    await expect(putUploadFile(env, "user-a", session.uploadId, {
+      path: "index.html", mimeType: "text/html", byteSize: changed.byteLength, sha256: await sha256(changed),
+    }, changed.buffer)).rejects.toMatchObject({ code: "idempotency_conflict" } satisfies Partial<ArtifactError>);
+  });
+
+  it("finalizes a multi-file inline seed HTML draft", async () => {
+    const index = text.encode("<script src=\"app.js\"></script>");
+    const script = text.encode("console.log('hello');");
+    const session = await createUploadSession(env, "user-a", {
+      project: { projectDraft: { title: "Multi-file draft" } },
+      type: "html",
+      title: "Seeded app",
+      idempotencyKey: "multi-file-draft",
+    });
+    await putUploadFile(env, "user-a", session.uploadId, {
+      path: "index.html", mimeType: "text/html", byteSize: index.byteLength, sha256: await sha256(index),
+    }, index.buffer);
+    await putUploadFile(env, "user-a", session.uploadId, {
+      path: "app.js", mimeType: "text/javascript", byteSize: script.byteLength, sha256: await sha256(script),
+    }, script.buffer);
+
+    await expect(finalizeUpload(env, "user-a", session.uploadId)).resolves.toEqual({ artifactId: session.artifactId, versionId: session.versionId });
+    await expect(env.DB.prepare("SELECT COUNT(*) AS count FROM artifact_files WHERE version_id = ?").bind(session.versionId).first<{ count: number }>()).resolves.toEqual({ count: 2 });
+  });
+
+  it("retains an unmanifested cleanup lease when finalizing an inline seed draft", async () => {
+    const body = text.encode("<h1>Finalized</h1>");
+    const session = await createUploadSession(env, "user-a", {
+      project: { projectDraft: { title: "Draft with retained cleanup" } },
+      type: "html",
+      title: "Finalized draft",
+      idempotencyKey: "retained-cleanup-lease",
+    });
+    await putUploadFile(env, "user-a", session.uploadId, {
+      path: "index.html", mimeType: "text/html", byteSize: body.byteLength, sha256: await sha256(body),
+    }, body.buffer);
+    const orphanKey = artifactObjectKey(session.artifactId, session.versionId, "orphan.txt");
+    await env.DB.prepare(
+      "INSERT INTO artifact_object_leases (r2_key, upload_id, user_id, byte_size, sha256, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).bind(orphanKey, session.uploadId, "user-a", 1, "a".repeat(64), Date.now() + 60_000, Date.now()).run();
+
+    await finalizeUpload(env, "user-a", session.uploadId);
+
+    await expect(env.DB.prepare("SELECT r2_key FROM artifact_object_leases WHERE r2_key = ?").bind(orphanKey).first<{ r2_key: string }>()).resolves.toEqual({ r2_key: orphanKey });
+    await expect(env.DB.prepare("SELECT COUNT(*) AS count FROM artifact_object_leases WHERE upload_id = ?").bind(session.uploadId).first<{ count: number }>()).resolves.toEqual({ count: 1 });
   });
 });

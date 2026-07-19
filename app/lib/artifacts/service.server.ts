@@ -355,7 +355,7 @@ function isBrowserExtended(file: UploadFileInput): boolean {
   return browserExtendedMime.has(file.mimeType) || file.mimeType.startsWith("audio/") || file.mimeType.startsWith("video/");
 }
 
-async function reserveFileLease(env: Env, userId: string, upload: StoredUpload, file: UploadFileInput, r2Key: string): Promise<"reserved" | "complete"> {
+async function reserveFileLease(env: Env, userId: string, upload: StoredUpload, file: UploadFileInput, r2Key: string): Promise<"reserved" | "complete" | "recover"> {
   const source = upload.source === "mcp" ? "mcp" : "browser";
   const maxFiles = source === "mcp" ? ARTIFACT_LIMITS.mcpFiles : ARTIFACT_LIMITS.browserFiles;
   const maxBytes = source === "mcp" ? ARTIFACT_LIMITS.mcpBytes : ARTIFACT_LIMITS.browserBytes;
@@ -373,11 +373,12 @@ async function reserveFileLease(env: Env, userId: string, upload: StoredUpload, 
     `INSERT INTO artifact_object_leases (r2_key, upload_id, user_id, byte_size, sha256, expires_at, created_at)
      SELECT ?, ?, ?, ?, ?, ?, ?
      WHERE NOT EXISTS (SELECT 1 FROM artifact_upload_files WHERE upload_id = ? AND path = ?)
+       AND NOT EXISTS (SELECT 1 FROM artifact_object_leases WHERE r2_key = ?)
        AND (SELECT COUNT(*) FROM artifact_upload_files WHERE upload_id = ?) +
            (SELECT COUNT(*) FROM artifact_object_leases l WHERE l.upload_id = ? AND NOT EXISTS (SELECT 1 FROM artifact_upload_files f WHERE f.r2_key = l.r2_key)) < ?
        AND (SELECT COALESCE(SUM(byte_size), 0) FROM artifact_upload_files WHERE upload_id = ?) +
            (SELECT COALESCE(SUM(l.byte_size), 0) FROM artifact_object_leases l WHERE l.upload_id = ? AND NOT EXISTS (SELECT 1 FROM artifact_upload_files f WHERE f.r2_key = l.r2_key)) + ? <= ?`,
-  ).bind(r2Key, upload.id, userId, file.byteSize, file.sha256, upload.expires_at, timestamp, upload.id, file.path, upload.id, upload.id, maxFiles, upload.id, upload.id, file.byteSize, maxBytes).run();
+  ).bind(r2Key, upload.id, userId, file.byteSize, file.sha256, upload.expires_at, timestamp, upload.id, file.path, r2Key, upload.id, upload.id, maxFiles, upload.id, upload.id, file.byteSize, maxBytes).run();
   if (result.meta.changes === 1) return "reserved";
 
   const after = await env.DB.prepare(
@@ -388,11 +389,16 @@ async function reserveFileLease(env: Env, userId: string, upload: StoredUpload, 
     "SELECT byte_size, sha256 FROM artifact_object_leases WHERE r2_key = ? AND upload_id = ? AND user_id = ? LIMIT 1",
   ).bind(r2Key, upload.id, userId).first<{ byte_size: number; sha256: string }>();
   if (lease && (lease.byte_size !== file.byteSize || lease.sha256 !== file.sha256)) artifactError("idempotency_conflict");
-  if (lease) artifactError("state_conflict");
+  if (lease) return "recover";
   artifactError("limit_exceeded");
 }
 
-async function inspectStoredObject(env: Env, r2Key: string, file: UploadFileInput): Promise<void> {
+function checksumHex(value: ArrayBuffer | undefined): string | undefined {
+  if (!value) return undefined;
+  return [...new Uint8Array(value)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function inspectStoredObject(env: Env, r2Key: string, file: UploadFileInput): Promise<{ byteSize: number; sha256: string }> {
   let object: R2ObjectBody | null;
   try {
     object = await env.ARTIFACTS.get(r2Key);
@@ -400,6 +406,8 @@ async function inspectStoredObject(env: Env, r2Key: string, file: UploadFileInpu
     artifactError("storage_unavailable");
   }
   if (!object) artifactError("storage_unavailable");
+  const actualSha256 = checksumHex(object.checksums.sha256);
+  if (object.size !== file.byteSize || actualSha256 !== file.sha256) artifactError("invalid_manifest");
   try {
     inspectArtifactContent({ path: file.path, mimeType: file.mimeType, content: new Uint8Array(await object.arrayBuffer()) });
   } catch (error) {
@@ -410,6 +418,7 @@ async function inspectStoredObject(env: Env, r2Key: string, file: UploadFileInpu
     }
     throw error;
   }
+  return { byteSize: object.size, sha256: actualSha256 };
 }
 
 /** Writes one leased file, verifies its checksum in R2, inspects it, then records the D1 manifest row. */
@@ -428,22 +437,25 @@ export async function putUploadFile(
   const reservation = await reserveFileLease(env, userId, upload, file, r2Key);
   if (reservation === "complete") return file;
 
-  await putLeasedObject(env, { r2Key, body, mimeType: file.mimeType, sha256: file.sha256 });
-  await inspectStoredObject(env, r2Key, file);
+  const stored = reservation === "reserved"
+    ? await putLeasedObject(env, { r2Key, body, mimeType: file.mimeType, sha256: file.sha256 })
+    : await inspectStoredObject(env, r2Key, file);
+  if (stored.byteSize !== file.byteSize || stored.sha256 !== file.sha256) artifactError("invalid_manifest");
+  const inspected = await inspectStoredObject(env, r2Key, file);
   try {
     const result = await env.DB.prepare(
       `INSERT INTO artifact_upload_files (upload_id, path, r2_key, mime_type, byte_size, sha256, created_at)
        SELECT ?, ?, ?, ?, ?, ?, ?
        WHERE EXISTS (SELECT 1 FROM artifact_object_leases WHERE r2_key = ? AND upload_id = ? AND user_id = ? AND byte_size = ? AND sha256 = ? AND expires_at > ?)
          AND NOT EXISTS (SELECT 1 FROM artifact_upload_files WHERE upload_id = ? AND path = ?)`,
-    ).bind(upload.id, file.path, r2Key, file.mimeType, file.byteSize, file.sha256, now(), r2Key, upload.id, userId, file.byteSize, file.sha256, now(), upload.id, file.path).run();
+    ).bind(upload.id, file.path, r2Key, file.mimeType, inspected.byteSize, inspected.sha256, now(), r2Key, upload.id, userId, inspected.byteSize, inspected.sha256, now(), upload.id, file.path).run();
     if (result.meta.changes !== 1) artifactError("state_conflict");
   } catch (error) {
     if (error instanceof ArtifactError) throw error;
     // The object deliberately remains leased until cleanup can reclaim it.
     throw new ArtifactError("internal");
   }
-  return file;
+  return { ...file, byteSize: inspected.byteSize, sha256: inspected.sha256 };
 }
 
 async function markFailed(env: Env, userId: string, uploadId: string): Promise<void> {
@@ -475,7 +487,7 @@ async function assertRecordedFilesLeased(
   }
 }
 
-async function finalizeDraftArtifact(env: Env, userId: string, upload: StoredUpload, timestamp: number): Promise<void> {
+async function finalizeDraftArtifact(env: Env, userId: string, upload: StoredUpload, timestamp: number, expectedFileCount: number): Promise<void> {
   const projectId = crypto.randomUUID();
   try {
     const writes = await env.DB.batch([
@@ -505,9 +517,16 @@ async function finalizeDraftArtifact(env: Env, userId: string, upload: StoredUpl
       ).bind(timestamp, upload.id, userId),
       env.DB.prepare("UPDATE artifacts SET current_version_id = ?, updated_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL").bind(upload.version_id, timestamp, upload.artifact_id, userId),
       env.DB.prepare("UPDATE artifact_uploads SET status = 'complete', project_id = ?, updated_at = ? WHERE id = ? AND user_id = ? AND status = 'finalizing'").bind(projectId, timestamp, upload.id, userId),
-      env.DB.prepare("DELETE FROM artifact_object_leases WHERE upload_id = ? AND user_id = ?").bind(upload.id, userId),
+      env.DB.prepare(
+        `DELETE FROM artifact_object_leases
+         WHERE upload_id = ? AND user_id = ?
+           AND EXISTS (
+             SELECT 1 FROM artifact_upload_files f
+             WHERE f.upload_id = artifact_object_leases.upload_id AND f.r2_key = artifact_object_leases.r2_key
+           )`,
+      ).bind(upload.id, userId),
     ]);
-    if (writes.slice(0, 6).some((result) => result.meta.changes !== 1)) artifactError("state_conflict");
+    if (writes[0].meta.changes !== 1 || writes[1].meta.changes !== 1 || writes[2].meta.changes !== 1 || writes[3].meta.changes !== expectedFileCount || writes[4].meta.changes !== 1 || writes[5].meta.changes !== 1) artifactError("state_conflict");
   } catch (error) {
     if (error instanceof ArtifactError) throw error;
     throw new ArtifactError("internal");
@@ -543,7 +562,7 @@ export async function finalizeUpload(env: Env, userId: string, uploadId: string)
   }
   try {
     if (upload.project_draft_title !== null) {
-      await finalizeDraftArtifact(env, userId, upload, now());
+      await finalizeDraftArtifact(env, userId, upload, now(), files.results.length);
     } else if (upload.project_id !== null && upload.artifact_id) {
       const existing = await findOwnedArtifact(env, userId, upload.artifact_id);
       if (existing) await finalizeExistingArtifactVersion(env, userId, { uploadId, now: now() });
