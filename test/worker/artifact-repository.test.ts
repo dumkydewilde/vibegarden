@@ -120,6 +120,52 @@ describe("owned artifact repository", () => {
     await expect(findOwnedLease(env, "user-a", "artifacts/artifact-new/versions/version-new/index.html")).resolves.toBeNull();
   });
 
+  it("rejects a manifest path changed to noncanonical form after preflight before the finalization batch", async () => {
+    const uploadId = "upload-post-preflight";
+    const artifactId = "artifact-post-preflight";
+    const versionId = "version-post-preflight";
+    const originalKey = `artifacts/${artifactId}/versions/${versionId}/index.html`;
+    const mutatedPath = "../x";
+    const mutatedKey = `artifacts/${artifactId}/versions/${versionId}/${mutatedPath}`;
+
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO artifact_uploads (id, user_id, artifact_id, version_id, project_id, type, title, allowed_data_origins, source, status, idempotency_key, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'html', ?, '[]', 'web', 'finalizing', ?, ?, ?, ?)").bind(uploadId, "user-a", artifactId, versionId, "project-a", "Post preflight", "upload-post-preflight-idempotency", now + 1, now, now),
+      env.DB.prepare("INSERT INTO artifact_upload_files (upload_id, path, r2_key, mime_type, byte_size, sha256, created_at) VALUES (?, 'index.html', ?, 'text/html', 5, ?, ?)").bind(uploadId, originalKey, "7".repeat(64), now),
+      env.DB.prepare("INSERT INTO artifact_object_leases (r2_key, upload_id, user_id, byte_size, sha256, expires_at, created_at) VALUES (?, ?, ?, 5, ?, ?, ?)").bind(originalKey, uploadId, "user-a", "7".repeat(64), now + 1, now),
+    ]);
+
+    let mutateBeforeBatch = true;
+    const database = new Proxy(env.DB, {
+      get(target, property) {
+        if (property === "batch") {
+          return async (statements: D1PreparedStatement[]) => {
+            if (mutateBeforeBatch) {
+              mutateBeforeBatch = false;
+              await target.batch([
+                target.prepare("UPDATE artifact_upload_files SET path = ?, r2_key = ? WHERE upload_id = ?").bind(mutatedPath, mutatedKey, uploadId),
+                target.prepare("UPDATE artifact_object_leases SET r2_key = ? WHERE r2_key = ?").bind(mutatedKey, originalKey),
+              ]);
+            }
+            return target.batch(statements);
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+
+    await expect(
+      finalizeNewArtifact({ DB: database } as Env, "user-a", { uploadId, now }),
+    ).rejects.toMatchObject({ code: "state_conflict" });
+
+    await expect(env.DB.prepare("SELECT id FROM artifacts WHERE id = ?").bind(artifactId).first()).resolves.toBeNull();
+    await expect(env.DB.prepare("SELECT id FROM artifact_versions WHERE id = ?").bind(versionId).first()).resolves.toBeNull();
+    await expect(env.DB.prepare("SELECT r2_key FROM artifact_files WHERE version_id = ?").bind(versionId).first()).resolves.toBeNull();
+    await expect(env.DB.prepare("SELECT status FROM artifact_uploads WHERE id = ?").bind(uploadId).first()).resolves.toEqual({ status: "finalizing" });
+    await expect(env.DB.prepare("SELECT path, r2_key FROM artifact_upload_files WHERE upload_id = ?").bind(uploadId).first()).resolves.toEqual({ path: mutatedPath, r2_key: mutatedKey });
+    await expect(env.DB.prepare("SELECT r2_key FROM artifact_object_leases WHERE upload_id = ?").bind(uploadId).first()).resolves.toEqual({ r2_key: mutatedKey });
+  });
+
   it("derives the next owned version number and moves only the current pointer", async () => {
     await env.DB.batch([
       env.DB.prepare("INSERT INTO artifact_uploads (id, user_id, artifact_id, version_id, project_id, type, title, allowed_data_origins, source, status, idempotency_key, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'html', ?, '[]', 'web', 'finalizing', ?, ?, ?, ?)").bind("upload-version-a", "user-a", "artifact-a", "version-a-next", "project-a", "Artifact A", "upload-key-version-a", now + 1, now, now),

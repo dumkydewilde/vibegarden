@@ -182,23 +182,6 @@ function databaseSource(source: ArtifactPackageSource): "web" | "mcp" {
   return source === "browser" ? "web" : "mcp";
 }
 
-const ownedFinalizingManifestGuard = `
-  AND EXISTS (
-    SELECT 1 FROM artifact_upload_files f
-    WHERE f.upload_id = u.id
-  )
-  AND NOT EXISTS (
-    SELECT 1 FROM artifact_upload_files f
-    WHERE f.upload_id = u.id AND (
-      f.r2_key <> ('artifacts/' || u.artifact_id || '/versions/' || u.version_id || '/' || f.path)
-      OR NOT EXISTS (
-        SELECT 1 FROM artifact_object_leases l
-        WHERE l.r2_key = f.r2_key AND l.upload_id = u.id AND l.user_id = u.user_id
-          AND l.byte_size = f.byte_size AND l.sha256 = f.sha256 AND l.expires_at > ?
-      )
-    )
-  )`;
-
 type StoredUploadManifestFile = {
   artifactId: string;
   versionId: string;
@@ -206,12 +189,38 @@ type StoredUploadManifestFile = {
   r2Key: string;
 };
 
+function ownedFinalizingManifestGuard(files: StoredUploadManifestFile[]): string {
+  const expectedManifestRows = files.map(() => "(f.path = ? AND f.r2_key = ?)").join(" OR ");
+  return `
+    AND EXISTS (
+      SELECT 1 FROM artifact_upload_files f
+      WHERE f.upload_id = u.id
+    )
+    AND (SELECT COUNT(*) FROM artifact_upload_files f WHERE f.upload_id = u.id) = ?
+    AND NOT EXISTS (
+      SELECT 1 FROM artifact_upload_files f
+      WHERE f.upload_id = u.id AND (
+        f.r2_key <> ('artifacts/' || u.artifact_id || '/versions/' || u.version_id || '/' || f.path)
+        OR NOT (${expectedManifestRows})
+        OR NOT EXISTS (
+          SELECT 1 FROM artifact_object_leases l
+          WHERE l.r2_key = f.r2_key AND l.upload_id = u.id AND l.user_id = u.user_id
+            AND l.byte_size = f.byte_size AND l.sha256 = f.sha256 AND l.expires_at > ?
+        )
+      )
+    )`;
+}
+
+function ownedFinalizingManifestBindings(files: StoredUploadManifestFile[]): (number | string)[] {
+  return [files.length, ...files.flatMap((file) => [file.path, file.r2Key])];
+}
+
 async function assertOwnedFinalizingManifest(
   env: Env,
   userId: string,
   uploadId: string,
   now: number,
-): Promise<void> {
+): Promise<StoredUploadManifestFile[]> {
   const files = await env.DB.prepare(
     `SELECT u.artifact_id AS artifactId, u.version_id AS versionId, f.path, f.r2_key AS r2Key
      FROM artifact_uploads u
@@ -230,6 +239,7 @@ async function assertOwnedFinalizingManifest(
       throw new ArtifactError("state_conflict");
     }
   }
+  return files.results;
 }
 
 export async function finalizeNewArtifact(
@@ -238,15 +248,17 @@ export async function finalizeNewArtifact(
   input: NewArtifactFinalization,
 ): Promise<void> {
   try {
-    await assertOwnedFinalizingManifest(env, userId, input.uploadId, input.now);
+    const manifestFiles = await assertOwnedFinalizingManifest(env, userId, input.uploadId, input.now);
+    const manifestGuard = ownedFinalizingManifestGuard(manifestFiles);
+    const manifestBindings = ownedFinalizingManifestBindings(manifestFiles);
     const results = await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO artifacts (id, user_id, project_id, type, title, description, visibility, current_version_id, created_at, updated_at)
          SELECT u.artifact_id, u.user_id, u.project_id, u.type, u.title, u.description, 'private', NULL, ?, ?
          FROM artifact_uploads u
          WHERE u.id = ? AND u.user_id = ? AND u.status = 'finalizing' AND u.expires_at > ?
-           ${ownedFinalizingManifestGuard}`,
-      ).bind(input.now, input.now, input.uploadId, userId, input.now, input.now),
+           ${manifestGuard}`,
+      ).bind(input.now, input.now, input.uploadId, userId, input.now, ...manifestBindings, input.now),
       env.DB.prepare(
         `INSERT INTO artifact_versions (id, artifact_id, version_number, source, entry_path, external_url, allowed_data_origins, file_count, total_bytes, created_by, created_at)
          SELECT u.version_id, u.artifact_id, 1, u.source,
@@ -255,17 +267,17 @@ export async function finalizeNewArtifact(
          FROM artifact_uploads u
          INNER JOIN artifact_upload_files f ON f.upload_id = u.id
          WHERE u.id = ? AND u.user_id = ? AND u.status = 'finalizing' AND u.expires_at > ?
-           ${ownedFinalizingManifestGuard}
+           ${manifestGuard}
          GROUP BY u.id`,
-      ).bind(input.now, input.uploadId, userId, input.now, input.now),
+      ).bind(input.now, input.uploadId, userId, input.now, ...manifestBindings, input.now),
       env.DB.prepare(
         `INSERT INTO artifact_files (version_id, path, r2_key, mime_type, byte_size, sha256, created_at)
          SELECT u.version_id, f.path, f.r2_key, f.mime_type, f.byte_size, f.sha256, ?
          FROM artifact_uploads u
          INNER JOIN artifact_upload_files f ON f.upload_id = u.id
          WHERE u.id = ? AND u.user_id = ? AND u.status = 'finalizing' AND u.expires_at > ?
-           ${ownedFinalizingManifestGuard}`,
-      ).bind(input.now, input.uploadId, userId, input.now, input.now),
+           ${manifestGuard}`,
+      ).bind(input.now, input.uploadId, userId, input.now, ...manifestBindings, input.now),
       env.DB.prepare(
         `UPDATE artifacts SET current_version_id = (
            SELECT version_id FROM artifact_uploads
@@ -334,7 +346,9 @@ export async function finalizeExistingArtifactVersion(
   input: ExistingVersionFinalization,
 ): Promise<void> {
   try {
-    await assertOwnedFinalizingManifest(env, userId, input.uploadId, input.now);
+    const manifestFiles = await assertOwnedFinalizingManifest(env, userId, input.uploadId, input.now);
+    const manifestGuard = ownedFinalizingManifestGuard(manifestFiles);
+    const manifestBindings = ownedFinalizingManifestBindings(manifestFiles);
     const results = await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO artifact_versions (id, artifact_id, version_number, source, entry_path, external_url, allowed_data_origins, file_count, total_bytes, created_by, created_at)
@@ -349,16 +363,16 @@ export async function finalizeExistingArtifactVersion(
          FROM artifact_uploads u
          INNER JOIN artifacts a ON a.id = u.artifact_id AND a.user_id = u.user_id AND a.project_id = u.project_id AND a.type = u.type
          WHERE u.id = ? AND u.user_id = ? AND u.status = 'finalizing' AND u.expires_at > ? AND a.deleted_at IS NULL
-           ${ownedFinalizingManifestGuard}`,
-      ).bind(input.now, input.uploadId, userId, input.now, input.now),
+           ${manifestGuard}`,
+      ).bind(input.now, input.uploadId, userId, input.now, ...manifestBindings, input.now),
       env.DB.prepare(
         `INSERT INTO artifact_files (version_id, path, r2_key, mime_type, byte_size, sha256, created_at)
          SELECT u.version_id, f.path, f.r2_key, f.mime_type, f.byte_size, f.sha256, ?
          FROM artifact_uploads u
          INNER JOIN artifact_upload_files f ON f.upload_id = u.id
          WHERE u.id = ? AND u.user_id = ? AND u.status = 'finalizing' AND u.expires_at > ?
-           ${ownedFinalizingManifestGuard}`,
-      ).bind(input.now, input.uploadId, userId, input.now, input.now),
+           ${manifestGuard}`,
+      ).bind(input.now, input.uploadId, userId, input.now, ...manifestBindings, input.now),
       env.DB.prepare(
         `UPDATE artifacts SET current_version_id = (
            SELECT version_id FROM artifact_uploads

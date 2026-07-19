@@ -219,6 +219,10 @@ The third review found two Important finalization-integrity gaps:
 1. Finalization must prove each server-recorded upload file key belongs to the upload's artifact/version prefix.
 2. Non-link finalization must reject an upload with no manifest files.
 
+## Final review finding
+
+The final review found that the in-batch manifest guard must itself reject noncanonical path forms, so a manifest cannot change between preflight validation and finalization into a non-normalized key.
+
 ## Third review remediation
 
 ### RED
@@ -274,3 +278,50 @@ Added five failing-first repository regressions and ran:
   artifact state.
 - New finalization no longer uses a left join that can synthesize a zero-file
   version, and both finalizers require at least one inserted artifact file.
+
+## Final review remediation
+
+### RED
+
+Added a failing-first Worker regression that validates a manifest normally,
+then changes its path and matching lease key to `../x` immediately before the
+finalization batch executes.
+
+`npm run test:worker -- test/worker/artifact-repository.test.ts`
+
+- Failed: the old raw-concatenation batch guard accepted the changed manifest,
+  completed finalization, and the assertion received a resolved promise rather
+  than the expected `state_conflict`.
+
+### GREEN
+
+`npm run test:worker -- test/worker/artifact-object-store.test.ts test/worker/artifact-repository.test.ts`
+
+- Passed: 2 files, 21 tests.
+- The post-preflight mutation now raises `state_conflict`; no artifact, version,
+  or artifact file is created, the upload remains `finalizing`, and the mutated
+  manifest row and lease remain intact.
+
+`npm run typecheck`
+
+- Passed.
+
+`git diff --check`
+
+- Passed.
+
+### Files
+
+- `app/lib/artifacts/repository.server.ts`
+- `test/worker/artifact-repository.test.ts`
+- `.superpowers/sdd/task-4-report.md`
+
+### Self-review
+
+- Preflight still derives each canonical path and immutable R2 key with
+  `artifactObjectKey`, but the final D1 batch now binds those exact canonical
+  path/key pairs into every artifact/version/file insert predicate.
+- The batch also requires the manifest count to remain unchanged. Therefore a
+  post-preflight mutation to `../x`, an empty segment, non-NFC text, or any
+  other changed/noncanonical path cannot satisfy the batch predicate, even if
+  its raw concatenated key and lease are changed to match.
