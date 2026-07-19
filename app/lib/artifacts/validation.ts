@@ -83,6 +83,10 @@ const TEXT_MIME_TYPES = new Set([
   "application/yaml",
   "image/svg+xml",
 ]);
+const KNOWN_ARTIFACT_MIME_TYPES = new Set([
+  ...Object.values(HTML_PACKAGE_MIME_BY_EXTENSION),
+  ...Object.values(SAFE_DOWNLOAD_MIME_BY_EXTENSION),
+]);
 
 export function utf8ByteLength(value: string): number {
   return encoder.encode(value).byteLength;
@@ -309,13 +313,18 @@ export function canonicalManifest(files: readonly ArtifactManifestFile[]): strin
       if (!SHA256.test(file.sha256)) throwArtifact("invalid_checksum");
       return { ...file, path, sha256: file.sha256.toLowerCase() };
     })
-    .sort((left, right) => left.path.localeCompare(right.path));
+    .sort((left, right) => compareCanonicalStrings(left.path, right.path));
   if (normalized.some((file, index) => index > 0 && file.path === normalized[index - 1].path)) {
     return throwArtifact("invalid_manifest");
   }
   return normalized
     .map((file) => `${file.path}\n${file.mimeType}\n${file.byteSize}\n${file.sha256}\n`)
     .join("");
+}
+
+function compareCanonicalStrings(left: string, right: string): number {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
 }
 
 async function sha256Hex(value: string): Promise<string> {
@@ -341,15 +350,32 @@ function assertKnownFields(value: Record<string, unknown>, fields: ReadonlySet<s
 function canonicalMutationFile(value: unknown): Record<string, string | number> {
   if (!isRecord(value)) return throwArtifact("invalid_input");
   assertKnownFields(value, MUTATION_FILE_FIELDS);
+  if ([...MUTATION_FILE_FIELDS].some((key) => !Object.prototype.hasOwnProperty.call(value, key))) {
+    return throwArtifact("invalid_input");
+  }
+
+  const path = typeof value.path === "string" ? normalizeArtifactPath(value.path) : throwArtifact("invalid_input");
+  const mimeType = value.mimeType;
+  if (
+    typeof mimeType !== "string" ||
+    !KNOWN_ARTIFACT_MIME_TYPES.has(mimeType) ||
+    mimeFor(path, { ...HTML_PACKAGE_MIME_BY_EXTENSION, ...SAFE_DOWNLOAD_MIME_BY_EXTENSION }) !== mimeType
+  ) {
+    return throwArtifact("invalid_input");
+  }
+  const sha256 = value.sha256;
+  if (typeof sha256 !== "string" || !SHA256.test(sha256)) return throwArtifact("invalid_input");
+  const byteSize = value.byteSize;
+  if (!Number.isSafeInteger(byteSize) || byteSize < 0) return throwArtifact("invalid_input");
+
   const canonical: Record<string, string | number> = {};
-  for (const key of [...MUTATION_FILE_FIELDS].sort()) {
-    const field = value[key];
-    if (field === undefined) continue;
-    if ((key === "byteSize" && (!Number.isSafeInteger(field) || (field as number) < 0)) ||
-      (key !== "byteSize" && typeof field !== "string")) {
-      return throwArtifact("invalid_input");
-    }
-    canonical[key] = field as string | number;
+  for (const [key, field] of [
+    ["byteSize", byteSize],
+    ["mimeType", mimeType],
+    ["path", path],
+    ["sha256", sha256.toLowerCase()],
+  ].sort(([left], [right]) => compareCanonicalStrings(left, right))) {
+    canonical[key] = field;
   }
   return canonical;
 }
@@ -368,7 +394,10 @@ function canonicalMutationValue(input: Record<string, unknown>): Record<string, 
     } else if (key === "files") {
       if (!Array.isArray(value)) return throwArtifact("invalid_input");
       canonical[key] = value.map(canonicalMutationFile);
-    } else if (typeof value === "string") {
+    } else if (
+      typeof value === "string" &&
+      Array.from(value).length <= (key === "title" ? ARTIFACT_LIMITS.titleChars : ARTIFACT_LIMITS.descriptionChars)
+    ) {
       canonical[key] = value;
     } else {
       return throwArtifact("invalid_input");

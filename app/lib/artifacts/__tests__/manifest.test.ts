@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ArtifactError } from "../contracts";
-import { manifestHash, mutationFingerprint } from "../validation";
+import { canonicalManifest, manifestHash, mutationFingerprint } from "../validation";
 
 describe("artifact manifests", () => {
   const files = [
@@ -31,6 +31,15 @@ describe("artifact manifests", () => {
       ]),
     ).rejects.toMatchObject({ code: "invalid_manifest" } satisfies Partial<ArtifactError>);
   });
+
+  it("sorts paths with a locale-independent code-unit comparator", () => {
+    const manifest = canonicalManifest([
+      { path: "ä.txt", mimeType: "text/plain", byteSize: 1, sha256: "a".repeat(64) },
+      { path: "Z.txt", mimeType: "text/plain", byteSize: 1, sha256: "b".repeat(64) },
+    ]);
+
+    expect(manifest).toMatch(/^Z\.txt\n/);
+  });
 });
 
 describe("mutation fingerprints", () => {
@@ -38,15 +47,30 @@ describe("mutation fingerprints", () => {
     const first = await mutationFingerprint({
       title: "Report",
       allowedDataOrigins: ["https://B.example", "https://a.example:443"],
-      files: [{ path: "index.html", sha256: "a".repeat(64), byteSize: 12 }],
+      files: [{ path: "index.html", mimeType: "text/html", sha256: "a".repeat(64), byteSize: 12 }],
     });
     const second = await mutationFingerprint({
-      files: [{ byteSize: 12, sha256: "a".repeat(64), path: "index.html" }],
+      files: [{ byteSize: 12, sha256: "a".repeat(64), mimeType: "text/html", path: "index.html" }],
       allowedDataOrigins: ["https://a.example", "https://b.example"],
       title: "Report",
     });
 
     expect(first).toBe(second);
+  });
+
+  it.each([
+    { path: "<script>alert(1)</script>", mimeType: "text/html", sha256: "a".repeat(64), byteSize: 12 },
+    { path: "index.html", mimeType: "<script>alert(1)</script>", sha256: "a".repeat(64), byteSize: 12 },
+    { path: "index.html", mimeType: "text/html", sha256: "<script>alert(1)</script>", byteSize: 12 },
+  ])("rejects raw HTML in fingerprint file metadata: %o", async (file) => {
+    await expect(mutationFingerprint({ files: [file] })).rejects.toMatchObject({ code: "invalid_input" });
+  });
+
+  it.each([
+    ["title", "a".repeat(121)],
+    ["description", "a".repeat(1001)],
+  ] as const)("rejects a %s over its metadata limit", async (field, value) => {
+    await expect(mutationFingerprint({ [field]: value })).rejects.toMatchObject({ code: "invalid_input" });
   });
 
   it.each([
