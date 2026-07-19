@@ -13,8 +13,17 @@ import {
   findOwnedIdempotency,
   findOwnedProject,
   findOwnedUpload,
+  findOwnedVersion,
+  findGalleryArtifact,
   markOwnedUploadAborted,
 } from "./repository.server";
+import type {
+  ArtifactDetailPresentation,
+  ArtifactFile,
+  ArtifactPresentation,
+  ArtifactVersionDetail,
+  ArtifactVersionSummary,
+} from "./presenters.server";
 import {
   HTML_PACKAGE_MIME_BY_EXTENSION,
   SAFE_DOWNLOAD_MIME_BY_EXTENSION,
@@ -72,6 +81,12 @@ export type UploadedFileResult = {
 };
 
 export type ArtifactMutationResult = { artifactId: string; versionId: string };
+
+export type ArtifactRead = ArtifactPresentation & { version: ArtifactVersionDetail };
+export type GalleryArtifactRead = Omit<ArtifactPresentation, "currentVersion" | "galleryVersion"> & {
+  participantDisplayName: string;
+  version: ArtifactVersionDetail;
+};
 
 type StoredUpload = {
   id: string;
@@ -196,6 +211,19 @@ function sourceFor(source: ArtifactPackageSource): "web" | "mcp" {
 
 function now(): number {
   return Date.now();
+}
+
+function parseOrigins(value: string): string[] {
+  try {
+    const origins = JSON.parse(value);
+    return Array.isArray(origins) && origins.every((origin) => typeof origin === "string") ? origins : [];
+  } catch {
+    return [];
+  }
+}
+
+function trimAndCap(value: string, limit: number): string {
+  return Array.from(value.trim()).slice(0, limit).join("");
 }
 
 function fingerprintInput(input: {
@@ -779,4 +807,302 @@ export async function createTextArtifact(env: Env, userId: string, input: unknow
 
 export async function createTextArtifactVersion(env: Env, userId: string, input: unknown): Promise<ArtifactMutationResult> {
   return textMutation(env, userId, input, true);
+}
+
+type VersionRow = {
+  id: string;
+  artifact_id: string;
+  version_number: number;
+  source: "web" | "mcp";
+  entry_path: string | null;
+  external_url: string | null;
+  allowed_data_origins: string;
+  file_count: number;
+  total_bytes: number;
+  created_at: number;
+};
+
+type ArtifactRow = {
+  id: string;
+  project_id: string;
+  project_title: string;
+  title: string;
+  description: string | null;
+  type: ArtifactType;
+  visibility: "private" | "gallery" | "public";
+  current_version_id: string | null;
+  gallery_version_id: string | null;
+  updated_at: number;
+};
+
+function versionSummary(version: VersionRow | null): ArtifactVersionSummary | null {
+  return version && {
+    id: version.id,
+    number: version.version_number,
+    source: version.source,
+    createdAt: version.created_at,
+  };
+}
+
+function versionDetail(version: VersionRow, files: ArtifactFile[]): ArtifactVersionDetail {
+  return {
+    id: version.id,
+    number: version.version_number,
+    source: version.source,
+    entryPath: version.entry_path,
+    externalUrl: version.external_url,
+    allowedDataOrigins: parseOrigins(version.allowed_data_origins),
+    fileCount: version.file_count,
+    totalBytes: version.total_bytes,
+    createdAt: version.created_at,
+    files,
+  };
+}
+
+function presentation(artifact: ArtifactRow, currentVersion: VersionRow | null, galleryVersion: VersionRow | null): ArtifactPresentation {
+  // Public remains a reserved database value and is never returned by this service.
+  if (artifact.visibility === "public") artifactError("not_found");
+  return {
+    id: artifact.id,
+    projectId: artifact.project_id,
+    projectTitle: artifact.project_title,
+    title: artifact.title,
+    description: artifact.description,
+    type: artifact.type,
+    visibility: artifact.visibility,
+    currentVersion: versionSummary(currentVersion),
+    galleryVersion: versionSummary(galleryVersion),
+    updatedAt: artifact.updated_at,
+  };
+}
+
+async function filesForVersion(env: Env, versionId: string): Promise<ArtifactFile[]> {
+  const rows = await env.DB.prepare(
+    "SELECT path, mime_type, byte_size, sha256 FROM artifact_files WHERE version_id = ? ORDER BY path",
+  ).bind(versionId).all<{ path: string; mime_type: string; byte_size: number; sha256: string }>();
+  return rows.results.map((file) => ({
+    path: file.path,
+    mimeType: file.mime_type,
+    byteSize: file.byte_size,
+    sha256: file.sha256,
+  }));
+}
+
+async function ownedArtifactRow(env: Env, userId: string, artifactId: string): Promise<ArtifactRow | null> {
+  return env.DB.prepare(
+    `SELECT a.id, a.project_id, p.title AS project_title, a.title, a.description, a.type,
+       a.visibility, a.current_version_id, a.gallery_version_id, a.updated_at
+     FROM artifacts a INNER JOIN projects p ON p.id = a.project_id AND p.user_id = a.user_id
+     WHERE a.id = ? AND a.user_id = ? AND a.deleted_at IS NULL LIMIT 1`,
+  ).bind(artifactId, userId).first<ArtifactRow>();
+}
+
+async function versionById(env: Env, artifactId: string, versionId: string | null): Promise<VersionRow | null> {
+  if (!versionId) return null;
+  return env.DB.prepare(
+    "SELECT id, artifact_id, version_number, source, entry_path, external_url, allowed_data_origins, file_count, total_bytes, created_at FROM artifact_versions WHERE id = ? AND artifact_id = ? LIMIT 1",
+  ).bind(versionId, artifactId).first<VersionRow>();
+}
+
+/** Returns an owned artifact with its current version. Missing and unowned are indistinguishable. */
+export async function getOwnedArtifact(env: Env, userId: string, artifactId: string): Promise<ArtifactRead | null> {
+  // Keep the repository's canonical ownership predicate as the first boundary check.
+  if (!await findOwnedArtifact(env, userId, artifactId)) return null;
+  const artifact = await ownedArtifactRow(env, userId, artifactId);
+  if (!artifact || !artifact.current_version_id) return null;
+  const [currentVersion, galleryVersion] = await Promise.all([
+    versionById(env, artifact.id, artifact.current_version_id),
+    versionById(env, artifact.id, artifact.gallery_version_id),
+  ]);
+  if (!currentVersion) return null;
+  return {
+    ...presentation(artifact, currentVersion, galleryVersion),
+    version: versionDetail(currentVersion, await filesForVersion(env, currentVersion.id)),
+  };
+}
+
+/** Returns only the explicitly shared gallery version; current is never resolved for participants. */
+export async function getGalleryArtifact(env: Env, artifactId: string): Promise<GalleryArtifactRead | null> {
+  const gallery = await findGalleryArtifact(env, artifactId);
+  if (!gallery) return null;
+  const row = await env.DB.prepare(
+    `SELECT a.id, a.project_id, p.title AS project_title, a.title, a.description, a.type,
+       a.visibility, a.current_version_id, a.gallery_version_id, a.updated_at, u.name AS participant_name
+     FROM artifacts a
+     INNER JOIN projects p ON p.id = a.project_id AND p.user_id = a.user_id
+     INNER JOIN users u ON u.id = a.user_id
+     WHERE a.id = ? AND a.visibility = 'gallery' AND a.deleted_at IS NULL LIMIT 1`,
+  ).bind(artifactId).first<ArtifactRow & { participant_name: string | null }>();
+  if (!row) return null;
+  const version: VersionRow = {
+    id: gallery.version.id,
+    artifact_id: gallery.version.artifact_id,
+    version_number: gallery.version.version_number,
+    source: gallery.version.source,
+    entry_path: gallery.version.entry_path,
+    external_url: gallery.version.external_url,
+    allowed_data_origins: gallery.version.allowed_data_origins,
+    file_count: gallery.version.file_count,
+    total_bytes: gallery.version.total_bytes,
+    created_at: gallery.version.created_at,
+  };
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    projectTitle: row.project_title,
+    title: row.title,
+    description: row.description,
+    type: row.type,
+    visibility: "gallery",
+    updatedAt: row.updated_at,
+    version: versionDetail(version, await filesForVersion(env, version.id)),
+    participantDisplayName: row.participant_name?.trim() || "Participant",
+  };
+}
+
+/** Owner-only summaries retain private IDs and project ownership context. */
+export async function listOwnedArtifacts(env: Env, userId: string): Promise<ArtifactPresentation[]> {
+  const rows = await env.DB.prepare(
+    `SELECT a.id, a.project_id, p.title AS project_title, a.title, a.description, a.type,
+       a.visibility, a.current_version_id, a.gallery_version_id, a.updated_at
+     FROM artifacts a INNER JOIN projects p ON p.id = a.project_id AND p.user_id = a.user_id
+     WHERE a.user_id = ? AND a.deleted_at IS NULL AND a.visibility IN ('private', 'gallery')
+     ORDER BY a.updated_at DESC, a.id`,
+  ).bind(userId).all<ArtifactRow>();
+  return Promise.all(rows.results.map(async (artifact) => presentation(
+    artifact,
+    await versionById(env, artifact.id, artifact.current_version_id),
+    await versionById(env, artifact.id, artifact.gallery_version_id),
+  )));
+}
+
+/** Gallery summaries use the saved gallery pointer and expose no account identity. */
+export async function listGalleryArtifacts(env: Env): Promise<Array<Omit<ArtifactPresentation, "currentVersion" | "galleryVersion"> & { participantDisplayName: string; version: ArtifactVersionSummary }>> {
+  const rows = await env.DB.prepare(
+    `SELECT a.id, a.project_id, p.title AS project_title, a.title, a.description, a.type,
+       a.visibility, a.current_version_id, a.gallery_version_id, a.updated_at, u.name AS participant_name,
+       v.id AS version_id, v.artifact_id, v.version_number, v.source, v.entry_path, v.external_url,
+       v.allowed_data_origins, v.file_count, v.total_bytes, v.created_at AS version_created_at
+     FROM artifacts a
+     INNER JOIN projects p ON p.id = a.project_id AND p.user_id = a.user_id
+     INNER JOIN users u ON u.id = a.user_id
+     INNER JOIN artifact_versions v ON v.id = a.gallery_version_id AND v.artifact_id = a.id
+     WHERE a.visibility = 'gallery' AND a.deleted_at IS NULL
+     ORDER BY a.updated_at DESC, a.id`,
+  ).all<ArtifactRow & { participant_name: string | null; version_id: string; version_created_at: number } & Omit<VersionRow, "id" | "created_at">>();
+  return rows.results.map((row) => {
+    const version: VersionRow = {
+      id: row.version_id,
+      artifact_id: row.artifact_id,
+      version_number: row.version_number,
+      source: row.source,
+      entry_path: row.entry_path,
+      external_url: row.external_url,
+      allowed_data_origins: row.allowed_data_origins,
+      file_count: row.file_count,
+      total_bytes: row.total_bytes,
+      created_at: row.version_created_at,
+    };
+    return {
+      id: row.id,
+      projectId: row.project_id,
+      projectTitle: row.project_title,
+      title: row.title,
+      description: row.description,
+      type: row.type,
+      visibility: "gallery",
+      updatedAt: row.updated_at,
+      participantDisplayName: row.participant_name?.trim() || "Participant",
+      version: versionSummary(version)!,
+    };
+  });
+}
+
+/** Retained versions are available only to the owner and have no storage keys. */
+export async function listOwnedArtifactVersions(env: Env, userId: string, artifactId: string): Promise<ArtifactVersionDetail[] | null> {
+  if (!await findOwnedArtifact(env, userId, artifactId)) return null;
+  const versions = await env.DB.prepare(
+    "SELECT id, artifact_id, version_number, source, entry_path, external_url, allowed_data_origins, file_count, total_bytes, created_at FROM artifact_versions WHERE artifact_id = ? ORDER BY version_number DESC",
+  ).bind(artifactId).all<VersionRow>();
+  return Promise.all(versions.results.map(async (version) => versionDetail(version, await filesForVersion(env, version.id))));
+}
+
+export async function updateArtifactMetadata(env: Env, userId: string, artifactId: string, input: unknown): Promise<void> {
+  assertFields(input, ["title", "description"]);
+  const rawTitle = input.title === undefined ? undefined : stringField(input.title, 10_000)!;
+  const rawDescription = input.description === undefined || input.description === null
+    ? input.description
+    : stringField(input.description, 100_000)!;
+  if (rawTitle === undefined && rawDescription === undefined) artifactError("invalid_input");
+  const title = rawTitle === undefined ? undefined : trimAndCap(rawTitle, ARTIFACT_LIMITS.titleChars);
+  if (title !== undefined && !title) artifactError("invalid_input");
+  const description = rawDescription === undefined
+    ? undefined
+    : rawDescription === null
+      ? null
+      : trimAndCap(rawDescription, ARTIFACT_LIMITS.descriptionChars) || null;
+  const result = await env.DB.prepare(
+    `UPDATE artifacts SET title = COALESCE(?, title), description = CASE WHEN ? THEN ? ELSE description END, updated_at = ?
+     WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+  ).bind(title ?? null, description !== undefined ? 1 : 0, description ?? null, now(), artifactId, userId).run();
+  if (result.meta.changes !== 1) artifactError("not_found");
+}
+
+export async function restoreArtifactVersion(env: Env, userId: string, artifactId: string, versionId: string): Promise<void> {
+  if (!await findOwnedVersion(env, userId, artifactId, versionId)) artifactError("not_found");
+  const result = await env.DB.prepare(
+    "UPDATE artifacts SET current_version_id = ?, updated_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
+  ).bind(versionId, now(), artifactId, userId).run();
+  if (result.meta.changes !== 1) artifactError("not_found");
+}
+
+/** Atomically enables gallery visibility and records the exact retained version. */
+export async function shareArtifactVersion(env: Env, userId: string, artifactId: string, versionId: string): Promise<void> {
+  if (!await findOwnedVersion(env, userId, artifactId, versionId)) artifactError("not_found");
+  const result = await env.DB.prepare(
+    `UPDATE artifacts SET visibility = 'gallery', gallery_version_id = ?, updated_at = ?
+     WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+       AND EXISTS (SELECT 1 FROM artifact_versions WHERE id = ? AND artifact_id = artifacts.id)`,
+  ).bind(versionId, now(), artifactId, userId, versionId).run();
+  if (result.meta.changes !== 1) artifactError("not_found");
+}
+
+export async function unshareArtifact(env: Env, userId: string, artifactId: string): Promise<void> {
+  const result = await env.DB.prepare(
+    "UPDATE artifacts SET visibility = 'private', gallery_version_id = NULL, updated_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
+  ).bind(now(), artifactId, userId).run();
+  if (result.meta.changes !== 1) artifactError("not_found");
+}
+
+/** The reserved public state is never an application-level transition. */
+export async function setArtifactVisibility(
+  env: Env,
+  userId: string,
+  artifactId: string,
+  visibility: "private" | "gallery" | "public",
+  versionId?: string,
+): Promise<void> {
+  if (visibility === "public") artifactError("invalid_input");
+  if (visibility === "gallery") {
+    if (!versionId) artifactError("invalid_input");
+    return shareArtifactVersion(env, userId, artifactId, versionId);
+  }
+  return unshareArtifact(env, userId, artifactId);
+}
+
+export async function deleteArtifact(env: Env, userId: string, artifactId: string): Promise<void> {
+  const result = await env.DB.prepare(
+    "UPDATE artifacts SET deleted_at = ?, updated_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
+  ).bind(now(), now(), artifactId, userId).run();
+  if (result.meta.changes !== 1) artifactError("not_found");
+}
+
+/** Recovery expires at the exact 30-day retention boundary. */
+export async function recoverArtifact(env: Env, userId: string, artifactId: string): Promise<void> {
+  const timestamp = now();
+  const result = await env.DB.prepare(
+    `UPDATE artifacts SET deleted_at = NULL, updated_at = ?
+     WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL AND deleted_at >= ?`,
+  ).bind(timestamp, artifactId, userId, timestamp - ARTIFACT_LIMITS.recoveryMs).run();
+  if (result.meta.changes !== 1) artifactError("not_found");
 }
