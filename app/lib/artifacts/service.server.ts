@@ -103,7 +103,7 @@ type StoredUpload = {
   description: string | null;
   allowed_data_origins: string;
   source: "web" | "mcp";
-  status: "pending" | "finalizing" | "complete" | "failed" | "aborted";
+  status: "pending" | "finalizing" | "complete" | "failed" | "aborted" | "cleaning";
   expires_at: number;
 };
 
@@ -1164,7 +1164,8 @@ export async function recoverArtifact(env: Env, userId: string, artifactId: stri
   const timestamp = now();
   const result = await env.DB.prepare(
     `UPDATE artifacts SET deleted_at = NULL, updated_at = ?
-     WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL AND deleted_at >= ?`,
+     WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL AND deleted_at >= ?
+       AND cleanup_started_at IS NULL`,
   ).bind(timestamp, artifactId, userId, timestamp - ARTIFACT_LIMITS.recoveryMs).run();
   if (result.meta.changes !== 1) artifactError("not_found");
 }

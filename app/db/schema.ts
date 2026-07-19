@@ -416,6 +416,8 @@ export const artifacts = sqliteTable(
       { onDelete: "set null" },
     ),
     deletedAt: integer("deleted_at"),
+    /** Set before retention cleanup deletes R2 objects; blocks recovery. */
+    cleanupStartedAt: integer("cleanup_started_at"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
@@ -525,7 +527,7 @@ export const artifactUploads = sqliteTable(
     allowedDataOrigins: text("allowed_data_origins").notNull().default("[]"),
     source: text("source", { enum: ["web", "mcp"] }).notNull(),
     status: text("status", {
-      enum: ["pending", "finalizing", "complete", "failed", "aborted"],
+      enum: ["pending", "finalizing", "complete", "failed", "aborted", "cleaning"],
     }).notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     expiresAt: integer("expires_at").notNull(),
@@ -543,7 +545,7 @@ export const artifactUploads = sqliteTable(
     ),
     check(
       "artifact_uploads_status_check",
-      sql`${table.status} in ('pending', 'finalizing', 'complete', 'failed', 'aborted')`,
+      sql`${table.status} in ('pending', 'finalizing', 'complete', 'failed', 'aborted', 'cleaning')`,
     ),
     uniqueIndex("artifact_uploads_user_idempotency_unique").on(
       table.userId,

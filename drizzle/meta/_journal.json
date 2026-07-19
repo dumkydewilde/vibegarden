@@ -57,6 +57,13 @@
       "when": 1784398757184,
       "tag": "0007_artifact_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1784466777575,
+      "tag": "0008_ambitious_tattoo",
+      "breakpoints": true
     }
   ]
 }

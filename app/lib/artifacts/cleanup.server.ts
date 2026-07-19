@@ -106,12 +106,12 @@ async function cleanExpiredUploads(env: Env, now: number, limit: number, result:
        SELECT f.r2_key, f.byte_size, f.upload_id
        FROM artifact_upload_files f
        INNER JOIN artifact_uploads u ON u.id = f.upload_id
-       WHERE u.expires_at <= ? AND u.status IN ('pending', 'finalizing', 'failed', 'aborted')
+       WHERE (u.expires_at <= ? AND u.status IN ('pending', 'finalizing', 'failed', 'aborted')) OR u.status = 'cleaning'
        UNION
        SELECT l.r2_key, l.byte_size, l.upload_id
        FROM artifact_object_leases l
        INNER JOIN artifact_uploads u ON u.id = l.upload_id
-       WHERE u.expires_at <= ? AND u.status IN ('pending', 'finalizing', 'failed', 'aborted')
+       WHERE ((u.expires_at <= ? AND u.status IN ('pending', 'finalizing', 'failed', 'aborted')) OR u.status = 'cleaning')
          AND NOT EXISTS (SELECT 1 FROM artifact_upload_files f WHERE f.r2_key = l.r2_key)
      )
      ORDER BY r2_key
@@ -119,10 +119,19 @@ async function cleanExpiredUploads(env: Env, now: number, limit: number, result:
   ).bind(now, now, limit).all<CleanupRow>();
 
   for (const row of rows.results) {
+    if (!row.uploadId || !await reserveExpiredUpload(env, row.uploadId, now)) continue;
     await removeObjectThenRows(env, row, "expired_upload", result, async () => {
       await env.DB.batch([
-        env.DB.prepare("DELETE FROM artifact_upload_files WHERE r2_key = ? AND upload_id = ?").bind(row.r2Key, row.uploadId),
-        env.DB.prepare("DELETE FROM artifact_object_leases WHERE r2_key = ? AND upload_id = ?").bind(row.r2Key, row.uploadId),
+        env.DB.prepare(
+          `DELETE FROM artifact_upload_files
+           WHERE r2_key = ? AND upload_id = ?
+             AND EXISTS (SELECT 1 FROM artifact_uploads u WHERE u.id = ? AND u.status = 'cleaning')`,
+        ).bind(row.r2Key, row.uploadId, row.uploadId),
+        env.DB.prepare(
+          `DELETE FROM artifact_object_leases
+           WHERE r2_key = ? AND upload_id = ?
+             AND EXISTS (SELECT 1 FROM artifact_uploads u WHERE u.id = ? AND u.status = 'cleaning')`,
+        ).bind(row.r2Key, row.uploadId, row.uploadId),
       ]);
     });
   }
@@ -131,7 +140,7 @@ async function cleanExpiredUploads(env: Env, now: number, limit: number, result:
   if (remaining === 0) return;
   const exhausted = await env.DB.prepare(
     `SELECT id FROM artifact_uploads u
-     WHERE expires_at <= ? AND status IN ('pending', 'finalizing', 'failed', 'aborted')
+     WHERE ((expires_at <= ? AND status IN ('pending', 'finalizing', 'failed', 'aborted')) OR status = 'cleaning')
        AND NOT EXISTS (SELECT 1 FROM artifact_upload_files f WHERE f.upload_id = u.id)
        AND NOT EXISTS (SELECT 1 FROM artifact_object_leases l WHERE l.upload_id = u.id)
      ORDER BY expires_at, id
@@ -140,14 +149,27 @@ async function cleanExpiredUploads(env: Env, now: number, limit: number, result:
   for (const upload of exhausted.results) {
     const deleted = await env.DB.prepare(
       `DELETE FROM artifact_uploads
-       WHERE id = ? AND expires_at <= ? AND status IN ('pending', 'finalizing', 'failed', 'aborted')
+       WHERE id = ? AND status = 'cleaning'
          AND NOT EXISTS (SELECT 1 FROM artifact_upload_files f WHERE f.upload_id = artifact_uploads.id)
          AND NOT EXISTS (SELECT 1 FROM artifact_object_leases l WHERE l.upload_id = artifact_uploads.id)`,
-    ).bind(upload.id, now).run();
+    ).bind(upload.id).run();
     if (deleted.meta.changes === 1) {
       recordD1Deletion(env, "expired_upload", result, { uploadId: upload.id, artifactId: null, versionId: null });
     }
   }
+}
+
+/** Atomically makes an expired upload unavailable before deleting its R2 data. */
+async function reserveExpiredUpload(env: Env, uploadId: string, now: number): Promise<boolean> {
+  const reserved = await env.DB.prepare(
+    `UPDATE artifact_uploads SET status = 'cleaning', updated_at = ?
+     WHERE id = ? AND expires_at <= ? AND status IN ('pending', 'finalizing', 'failed', 'aborted')`,
+  ).bind(now, uploadId, now).run();
+  if (reserved.meta.changes === 1) return true;
+  const existing = await env.DB.prepare(
+    "SELECT id FROM artifact_uploads WHERE id = ? AND status = 'cleaning' LIMIT 1",
+  ).bind(uploadId).first();
+  return existing !== null;
 }
 
 async function cleanStandaloneLeases(env: Env, now: number, limit: number, result: CleanupResult): Promise<void> {
@@ -180,12 +202,14 @@ async function cleanSoftDeletedArtifacts(env: Env, now: number, limit: number, r
      FROM artifact_files f
      INNER JOIN artifact_versions v ON v.id = f.version_id
      INNER JOIN artifacts a ON a.id = v.artifact_id
-     WHERE a.deleted_at IS NOT NULL AND a.deleted_at <= ?
+     WHERE (a.deleted_at IS NOT NULL AND a.deleted_at <= ? AND a.cleanup_started_at IS NULL)
+        OR a.cleanup_started_at IS NOT NULL
      ORDER BY a.deleted_at, f.r2_key
      LIMIT ?`,
   ).bind(cutoff, limit).all<CleanupRow>();
 
   for (const row of rows.results) {
+    if (!row.artifactId || !await reserveSoftDeletedArtifact(env, row.artifactId, cutoff, now)) continue;
     await removeObjectThenRows(env, row, "expired_artifact", result, async () => {
       await env.DB.prepare(
         `DELETE FROM artifact_files
@@ -193,9 +217,9 @@ async function cleanSoftDeletedArtifacts(env: Env, now: number, limit: number, r
            AND EXISTS (
              SELECT 1 FROM artifact_versions v
              INNER JOIN artifacts a ON a.id = v.artifact_id
-             WHERE v.id = artifact_files.version_id AND a.deleted_at IS NOT NULL AND a.deleted_at <= ?
+             WHERE v.id = artifact_files.version_id AND a.cleanup_started_at IS NOT NULL
            )`,
-      ).bind(row.r2Key, cutoff).run();
+      ).bind(row.r2Key).run();
     });
   }
 
@@ -204,7 +228,7 @@ async function cleanSoftDeletedArtifacts(env: Env, now: number, limit: number, r
   const emptyArtifacts = await env.DB.prepare(
     `SELECT a.id
      FROM artifacts a
-     WHERE a.deleted_at IS NOT NULL AND a.deleted_at <= ?
+     WHERE a.cleanup_started_at IS NOT NULL
        AND NOT EXISTS (
          SELECT 1 FROM artifact_versions v
          INNER JOIN artifact_files f ON f.version_id = v.id
@@ -212,21 +236,37 @@ async function cleanSoftDeletedArtifacts(env: Env, now: number, limit: number, r
        )
      ORDER BY a.deleted_at, a.id
      LIMIT ?`,
-  ).bind(cutoff, remaining).all<{ id: string }>();
+  ).bind(remaining).all<{ id: string }>();
   for (const artifact of emptyArtifacts.results) {
-    const deleted = await env.DB.prepare(
-      `DELETE FROM artifacts
-       WHERE id = ? AND deleted_at IS NOT NULL AND deleted_at <= ?
-         AND NOT EXISTS (
-           SELECT 1 FROM artifact_versions v
-           INNER JOIN artifact_files f ON f.version_id = v.id
-           WHERE v.artifact_id = artifacts.id
-         )`,
-    ).bind(artifact.id, cutoff).run();
-    if (deleted.meta.changes === 1) {
+    const deleted = await env.DB.batch([
+      env.DB.prepare("DELETE FROM artifact_uploads WHERE artifact_id = ? AND status = 'complete'").bind(artifact.id),
+      env.DB.prepare(
+        `DELETE FROM artifacts
+         WHERE id = ? AND cleanup_started_at IS NOT NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM artifact_versions v
+             INNER JOIN artifact_files f ON f.version_id = v.id
+             WHERE v.artifact_id = artifacts.id
+           )`,
+      ).bind(artifact.id),
+    ]);
+    if (deleted[1].meta.changes === 1) {
       recordD1Deletion(env, "expired_artifact", result, { uploadId: null, artifactId: artifact.id, versionId: null });
     }
   }
+}
+
+/** Atomically removes an artifact from the recovery path before deleting R2 data. */
+async function reserveSoftDeletedArtifact(env: Env, artifactId: string, cutoff: number, now: number): Promise<boolean> {
+  const reserved = await env.DB.prepare(
+    `UPDATE artifacts SET cleanup_started_at = ?, updated_at = ?
+     WHERE id = ? AND deleted_at IS NOT NULL AND deleted_at <= ? AND cleanup_started_at IS NULL`,
+  ).bind(now, now, artifactId, cutoff).run();
+  if (reserved.meta.changes === 1) return true;
+  const existing = await env.DB.prepare(
+    "SELECT id FROM artifacts WHERE id = ? AND cleanup_started_at IS NOT NULL LIMIT 1",
+  ).bind(artifactId).first();
+  return existing !== null;
 }
 
 /** Reclaims only expired, unreferenced artifact storage. Every category is capped at 100 records. */

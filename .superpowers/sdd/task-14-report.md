@@ -19,3 +19,15 @@ Verification:
 - `npm run test:worker -- test/worker/artifact-cleanup.test.ts` — 3 passed.
 - `npm run typecheck` — passed.
 - `git diff --check` — passed.
+
+Review follow-up:
+
+- Retention purge now removes completed upload history only when its expired soft-deleted artifact is physically purged, releasing the upload `project_id` foreign key. Project deletion uses a single guarded delete over both artifacts and uploads, returning `ProjectDeleteConflictError` rather than surfacing a D1 foreign-key error.
+- Cleanup reserves expired uploads with `status = 'cleaning'` and retained artifacts with `cleanup_started_at` before any R2 deletion. Recovery/finalization can win before that conditional transition; otherwise the reservation blocks it and later cleanup retries remain bounded and durable.
+- Added worker regressions for project deletion after retention purge and for restoration/finalization races preserving live D1 and R2 data.
+
+Follow-up verification:
+
+- `npm run test:worker -- test/worker/artifact-cleanup.test.ts test/worker/artifact-schema.test.ts test/worker/artifact-service.test.ts test/worker/artifact-lifecycle.test.ts` — 28 passed.
+- `npm test -- app/lib/artifacts/__tests__/observability.test.ts app/routes/__tests__/artifact-detail.test.tsx` — 4 passed.
+- `npm run typecheck` and `git diff --check` — passed.
