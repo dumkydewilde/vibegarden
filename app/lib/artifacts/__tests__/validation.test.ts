@@ -80,6 +80,20 @@ describe("public artifact errors", () => {
 });
 
 describe("artifact packages", () => {
+  it.each([null, "not an artifact file"]) (
+    "rejects a non-object file entry: %o",
+    (file) => {
+      expectCode(
+        () => validateArtifactPackage({
+          type: "html",
+          source: "browser",
+          files: [file] as unknown as { path: string; mimeType: string; byteSize: number }[],
+        }),
+        "invalid_manifest",
+      );
+    },
+  );
+
   it("rejects symlink and special ZIP entries before their bodies are read", () => {
     expect(validateZipArtifactEntry({ path: "index.html", zipUnixMode: 0o100644 })).toBe("index.html");
     expectCode(

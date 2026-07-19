@@ -9,6 +9,18 @@ describe("artifact manifests", () => {
     { path: "index.html", mimeType: "text/html", byteSize: 5, sha256: "A".repeat(64) },
   ];
 
+  it.each([null, "not a manifest file"]) (
+    "rejects a non-object manifest entry: %o",
+    (file) => {
+      expect(() => canonicalManifest([file] as unknown as typeof files)).toThrow(ArtifactError);
+      try {
+        canonicalManifest([file] as unknown as typeof files);
+      } catch (error) {
+        expect(error).toMatchObject({ code: "invalid_manifest" } satisfies Partial<ArtifactError>);
+      }
+    },
+  );
+
   it("hashes manifest entries in normalized path order with lowercase checksums", async () => {
     const first = await manifestHash(files);
     const second = await manifestHash([...files].reverse());

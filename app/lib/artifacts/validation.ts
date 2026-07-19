@@ -177,6 +177,7 @@ export function validateArtifactPackage(input: ArtifactPackageInput): ValidatedA
 
   const seen = new Set<string>();
   const files = input.files.map((file) => {
+    if (!isRecord(file)) return throwArtifact("invalid_manifest");
     if (!Number.isSafeInteger(file.byteSize) || file.byteSize < 0 || typeof file.mimeType !== "string") {
       return throwArtifact("invalid_manifest");
     }
@@ -308,6 +309,7 @@ export function isStaticDependencyOrigin(origin: string): boolean {
 export function canonicalManifest(files: readonly ArtifactManifestFile[]): string {
   const normalized = files
     .map((file) => {
+      if (!isRecord(file)) return throwArtifact("invalid_manifest");
       const path = normalizeArtifactPath(file.path);
       if (!Number.isSafeInteger(file.byteSize) || file.byteSize < 0) throwArtifact("invalid_manifest");
       if (!SHA256.test(file.sha256)) throwArtifact("invalid_checksum");
