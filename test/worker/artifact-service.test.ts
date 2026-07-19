@@ -196,6 +196,32 @@ describe("artifact upload service", () => {
     }, changed.buffer)).rejects.toMatchObject({ code: "idempotency_conflict" } satisfies Partial<ArtifactError>);
   });
 
+  it("rejects changed same-length retry bytes before recording a recovered R2 object", async () => {
+    const storedBody = text.encode("<h1>First</h1>");
+    const retryBody = text.encode("<h1>Other</h1>");
+    expect(retryBody.byteLength).toBe(storedBody.byteLength);
+    const storedChecksum = await sha256(storedBody);
+    const session = await createUploadSession(env, "user-a", {
+      project: { projectId: "project-a" },
+      type: "html",
+      title: "Recovery body validation",
+      idempotencyKey: "recover-r2-body-validation",
+    });
+    const r2Key = artifactObjectKey(session.artifactId, session.versionId, "index.html");
+    await env.DB.prepare(
+      "INSERT INTO artifact_object_leases (r2_key, upload_id, user_id, byte_size, sha256, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).bind(r2Key, session.uploadId, "user-a", storedBody.byteLength, storedChecksum, Date.now() + 60_000, Date.now()).run();
+    await putLeasedObject(env, { r2Key, body: storedBody.buffer, mimeType: "text/html", sha256: storedChecksum });
+
+    await expect(putUploadFile(env, "user-a", session.uploadId, {
+      path: "index.html", mimeType: "text/html", byteSize: storedBody.byteLength, sha256: storedChecksum,
+    }, retryBody.buffer)).rejects.toMatchObject({ code: "invalid_checksum" } satisfies Partial<ArtifactError>);
+
+    await expect(env.DB.prepare("SELECT COUNT(*) AS count FROM artifact_upload_files WHERE upload_id = ?").bind(session.uploadId).first<{ count: number }>()).resolves.toEqual({ count: 0 });
+    await expect(env.DB.prepare("SELECT byte_size, sha256 FROM artifact_object_leases WHERE r2_key = ?").bind(r2Key).first<{ byte_size: number; sha256: string }>()).resolves.toEqual({ byte_size: storedBody.byteLength, sha256: storedChecksum });
+    await expect(env.ARTIFACTS.get(r2Key).then((object) => object?.text())).resolves.toBe("<h1>First</h1>");
+  });
+
   it("finalizes a multi-file inline seed HTML draft", async () => {
     const index = text.encode("<script src=\"app.js\"></script>");
     const script = text.encode("console.log('hello');");

@@ -398,6 +398,22 @@ function checksumHex(value: ArrayBuffer | undefined): string | undefined {
   return [...new Uint8Array(value)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+async function validateRecoveryBody(body: ReadableStream | ArrayBuffer | string, file: UploadFileInput): Promise<void> {
+  let bytes: Uint8Array;
+  try {
+    bytes = typeof body === "string"
+      ? encoder.encode(body)
+      : body instanceof ArrayBuffer
+        ? new Uint8Array(body)
+        : new Uint8Array(await new Response(body).arrayBuffer());
+  } catch {
+    artifactError("invalid_manifest");
+  }
+  if (bytes.byteLength !== file.byteSize) artifactError("invalid_manifest");
+  const actualSha256 = checksumHex(await crypto.subtle.digest("SHA-256", bytes));
+  if (actualSha256 !== file.sha256) artifactError("invalid_checksum");
+}
+
 async function inspectStoredObject(env: Env, r2Key: string, file: UploadFileInput): Promise<{ byteSize: number; sha256: string }> {
   let object: R2ObjectBody | null;
   try {
@@ -437,9 +453,13 @@ export async function putUploadFile(
   const reservation = await reserveFileLease(env, userId, upload, file, r2Key);
   if (reservation === "complete") return file;
 
-  const stored = reservation === "reserved"
-    ? await putLeasedObject(env, { r2Key, body, mimeType: file.mimeType, sha256: file.sha256 })
-    : await inspectStoredObject(env, r2Key, file);
+  let stored: { byteSize: number; sha256: string };
+  if (reservation === "reserved") {
+    stored = await putLeasedObject(env, { r2Key, body, mimeType: file.mimeType, sha256: file.sha256 });
+  } else {
+    await validateRecoveryBody(body, file);
+    stored = await inspectStoredObject(env, r2Key, file);
+  }
   if (stored.byteSize !== file.byteSize || stored.sha256 !== file.sha256) artifactError("invalid_manifest");
   const inspected = await inspectStoredObject(env, r2Key, file);
   try {
