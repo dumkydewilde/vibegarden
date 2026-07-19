@@ -104,6 +104,16 @@ describe("isolated artifact renderer", () => {
     expect(data.headers.get("Cache-Control")).toBe("private, no-store");
   });
 
+  it("CORS-enables packaged fonts for an opaque sandboxed preview", async () => {
+    await put("assets/fixture.woff2", new Uint8Array([0, 1, 0, 0]), { httpMetadata: { contentType: "font/woff2" } });
+    const token = await capability();
+
+    const font = await request(rendererPath(token, "assets/fixture.woff2"));
+
+    expect(font.status).toBe(200);
+    expect(font.headers.get("Access-Control-Allow-Origin")).toBe("*");
+  });
+
   it("serves download capabilities only at their signed entry as an attachment", async () => {
     await put("report.csv", "name,value\nDuck,1\n", { httpMetadata: { contentType: "text/csv" } });
     await put('reports/report "draft".csv', "name,value\nDuck,1\n", { httpMetadata: { contentType: "text/csv" } });

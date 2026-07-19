@@ -132,8 +132,16 @@ Core landed 2026-07-14, see `docs/plans/2026-07-14-gardener-tools.md`.
 
 ## Phase 5: Artifacts, gallery, inspiration
 
-- [ ] Uploads to R2, artifact records in D1
-- [ ] Gallery visibility controls
+- [ ] Uploads to R2, artifact records in D1 — implementation and local/browser
+      security proof are complete; production provisioning and verification
+      remain required before this can be marked complete.
+- [ ] Gallery visibility controls — implementation and local/browser security
+      proof are complete; production verification remains required before this
+      can be marked complete.
+- [ ] Renderer release — local two-host browser security gate passes; blocked
+      pending a decision for the 34.3 MiB pinned DuckDB-Wasm file versus the
+      25 MiB Workers static-asset deployment limit. Task 15 MCP E2E, remote
+      provisioning, and deploy are deferred.
 - [x] Inspiration: first real curated set (2026-07-14): datasets incl.
       Goodreads export + TalkData, data stories (Pudding, football analysis),
       tools people built (Dot Collector, Clay-replacement post, FlickFlock,

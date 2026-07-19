@@ -172,3 +172,27 @@ After that, `npm run deploy` for code changes and `npm run db:migrate:prod`
 after schema changes. Local secrets go in `.dev.vars` (see
 `.dev.vars.example`). For an existing production database, do not use this
 script as a multi-club upgrade shortcut; follow the approval-gated runbook.
+
+## Artifact renderer release gate
+
+Artifacts are stored in the private `vibe-garden-artifacts` R2 bucket and are
+served only through the isolated `usercontent.vibegarden.club` renderer. Run
+the local security gate before changing an artifact boundary:
+
+```sh
+npm run copy:renderer-runtime
+npm test
+npm run test:worker
+npm run test:security
+npm run typecheck
+npm run build
+git diff --check
+```
+
+`test:security` is deliberately limited to `test/security/**/*.spec.ts`; it
+starts a local two-host Worker and exercises the real renderer handler. See
+[the artifact-renderer runbook](docs/runbooks/artifact-renderer.md) for the
+separate-worker deployment, secret rotation, and rollback procedure. The
+renderer's 34.3 MiB pinned DuckDB-Wasm asset currently exceeds the 25 MiB
+Workers static-asset deployment limit, so both Worker dry-runs and deployment
+are explicitly blocked until the approved delivery decision is made.

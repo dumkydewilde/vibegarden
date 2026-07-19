@@ -19,6 +19,8 @@ describe("renderer policy", () => {
     expect(buildCsp({ rendererOrigin, parentOrigin })).toContain("frame-ancestors https://vibegarden.club");
     expect(buildCsp({ rendererOrigin: "http://localhost:8787", parentOrigin: "http://localhost:5173" }))
       .toContain("frame-ancestors http://localhost:5173");
+    expect(buildCsp({ rendererOrigin: "http://usercontent.vibegarden.test:8788", parentOrigin: "http://vibegarden.test:8788" }))
+      .toContain("frame-ancestors http://vibegarden.test:8788");
   });
 
   it("never emits wildcard frame or connect policy", () => {

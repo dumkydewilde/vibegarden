@@ -3,6 +3,7 @@ import { normalizeArtifactOrigins } from "./validation";
 const SCRIPT_HOSTS = ["https://cdn.jsdelivr.net", "https://unpkg.com", "https://cdnjs.cloudflare.com", "https://esm.sh"] as const;
 const STYLE_HOSTS = [...SCRIPT_HOSTS, "https://fonts.googleapis.com"] as const;
 const FONT_HOSTS = [...SCRIPT_HOSTS, "https://fonts.gstatic.com"] as const;
+const LOCAL_HTTP_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "vibegarden.test", "usercontent.vibegarden.test"]);
 
 export type RendererAssetKind = "entry" | "asset" | "data" | "runtime";
 
@@ -21,7 +22,7 @@ function normalizeRendererPolicyOrigin(value: string): string {
   } catch {
     throw new Error("Renderer policy origin is invalid.");
   }
-  const localHttp = url.protocol === "http:" && (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]");
+  const localHttp = url.protocol === "http:" && LOCAL_HTTP_HOSTS.has(url.hostname);
   if ((url.protocol !== "https:" && !localHttp) || !url.hostname || url.hostname.includes("*") || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
     throw new Error("Renderer policy origin is invalid.");
   }

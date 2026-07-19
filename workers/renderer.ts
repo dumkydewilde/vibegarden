@@ -5,6 +5,7 @@ import { normalizeArtifactPath } from "../app/lib/artifacts/validation";
 const RUNTIME_PREFIX = "/runtime/duckdb/1.33.1-dev57.0/";
 const RUNTIME_FILES = new Set(["duckdb-browser-eh.worker.js", "duckdb-eh.wasm"]);
 const DATA_EXTENSIONS = new Set([".json", ".csv", ".tsv", ".parquet"]);
+const CORS_ASSET_EXTENSIONS = new Set([".woff", ".woff2", ".ttf", ".otf"]);
 const PRIVATE_CACHE_CONTROL = "private, no-store";
 const RUNTIME_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
@@ -31,9 +32,15 @@ function isDataPath(path: string): boolean {
   return lastDot > lastSlash && DATA_EXTENSIONS.has(path.slice(lastDot).toLowerCase());
 }
 
+function isCorsAssetPath(path: string): boolean {
+  const lastSlash = path.lastIndexOf("/");
+  const lastDot = path.lastIndexOf(".");
+  return lastDot > lastSlash && CORS_ASSET_EXTENSIONS.has(path.slice(lastDot).toLowerCase());
+}
+
 function assetKind(path: string, capability: RendererCapability): RendererAssetKind {
   if (path === capability.entryPath) return "entry";
-  return isDataPath(path) ? "data" : "asset";
+  return isDataPath(path) || isCorsAssetPath(path) ? "data" : "asset";
 }
 
 function previewEntryRequestIsAllowed(request: Request, path: string, capability: RendererCapability): boolean {
