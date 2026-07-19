@@ -10,13 +10,15 @@ const redirectError = {
   code: "invalid_redirect_uri",
   description: "This MCP client redirect URI is not supported.",
 };
+const protectedResourceMetadataPath = "/.well-known/oauth-protected-resource";
 
 export function isOAuthProviderPath(pathname: string, env: Env) {
   return pathname === new URL(env.MCP_RESOURCE_URL).pathname
     || pathname === "/authorize"
     || pathname === "/token"
     || pathname === "/register"
-    || pathname === "/.well-known/oauth-protected-resource"
+    || pathname === protectedResourceMetadataPath
+    || pathname.startsWith(`${protectedResourceMetadataPath}/`)
     || pathname === "/.well-known/oauth-authorization-server";
 }
 

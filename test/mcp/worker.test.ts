@@ -208,6 +208,22 @@ describe("Gardener MCP Worker", () => {
     expect(malformed.status).toBe(401);
   });
 
+  it("serves the path-specific protected-resource metadata advertised by /mcp", async () => {
+    const mcp = await SELF.fetch(`${ORIGIN}/mcp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }),
+    });
+    const header = mcp.headers.get("WWW-Authenticate");
+    const metadataUrl = header?.match(/resource_metadata="([^"]+)"/)?.[1];
+
+    expect(metadataUrl).toBe(`${ORIGIN}/.well-known/oauth-protected-resource/mcp`);
+
+    const metadata = await SELF.fetch(metadataUrl!);
+    expect(metadata.status).toBe(200);
+    await expect(metadata.json()).resolves.toMatchObject({ resource: `${ORIGIN}/mcp` });
+  });
+
   it("publishes exact protected-resource and authorization metadata", async () => {
     const resource = await SELF.fetch("https://vibegarden.test/.well-known/oauth-protected-resource");
     const resourceMetadata = await resource.json() as {

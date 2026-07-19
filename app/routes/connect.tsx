@@ -11,7 +11,7 @@ export default function Connect() {
       </p>
       <section className="mt-8 space-y-3">
         <h2 className="text-xl font-medium">MCP server URL</h2>
-        <code className="block rounded-md bg-muted p-3">https://vibegarden.dumky.net/mcp</code>
+        <code className="block rounded-md bg-muted p-3">https://vibegarden.club/mcp</code>
         <p>Supported surfaces: Claude and ChatGPT connectors that support remote MCP with OAuth.</p>
       </section>
       <section className="mt-8 space-y-3">

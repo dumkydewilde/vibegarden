@@ -26,7 +26,7 @@ npm run typecheck  # react-router typegen + tsc
 ## MCP connection
 
 Vibe Garden exposes a read-only remote MCP server at
-`https://vibegarden.dumky.net/mcp`. Setup details are public at `/connect` and
+`https://vibegarden.club/mcp`. Setup details are public at `/connect` and
 data-use information at `/privacy/mcp`. People can revoke a connected app from
 `/settings/connections` after signing in.
 
@@ -62,16 +62,24 @@ the Worker. Do not put production secrets in `.dev.vars` or source control.
 
 Set `MCP_REVIEW_EMAIL` and `MCP_REVIEW_PASSWORD` as Worker secrets to enable
 the isolated `/review/login` page. It creates a normal user session only. To
-load the deterministic reviewer sample after deployment, run:
+load the deterministic reviewer sample after deployment, run it against an
+explicit Worker environment:
 
 ```sh
-MCP_REVIEW_EMAIL=reviewer@example.test node scripts/seed-mcp-reviewer.mjs
+MCP_REVIEW_EMAIL='reviewer@example.test' node scripts/seed-mcp-reviewer.mjs --env staging
 ```
 
-The seeder is idempotent and uses `--remote`; it writes only its deterministic
-reviewer user, projects, conversations, and messages. Review the target
-environment before running it. Do not run it as part of local development or
-tests.
+Use the same email configured as `MCP_REVIEW_EMAIL` in the staging Worker
+secret. Wrangler does not reveal Worker secret values, so provide that email
+locally when running the command. For the release-blocking cross-user checks,
+run the command again with a second, unused fixture email. That second identity
+is data-only: sign in as the configured reviewer, then use the second
+reviewer's deterministic project and conversation IDs for the isolation tests.
+
+The seeder is idempotent, uses `--remote`, and refuses to run without exactly
+one `--env <name>` target. It writes only its deterministic reviewer user,
+projects, conversations, and messages. Review the target environment before
+running it. Do not run it as part of local development or tests.
 
 ## Content
 

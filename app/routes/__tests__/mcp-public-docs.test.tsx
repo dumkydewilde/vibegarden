@@ -6,7 +6,7 @@ import Privacy from "../privacy.mcp";
 describe("MCP public documentation", () => {
   it("publishes connection setup without a session", () => {
     const page = renderToStaticMarkup(<Connect />);
-    expect(page).toContain("https://vibegarden.dumky.net/mcp");
+    expect(page).toContain("https://vibegarden.club/mcp");
     expect(page).toContain("Claude");
     expect(page).toContain("ChatGPT");
     expect(page).toContain("projects:read");

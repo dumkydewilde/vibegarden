@@ -87,14 +87,41 @@ export function buildReviewerSeedSql(rawEmail) {
   return statements.join("\n");
 }
 
+export function buildReviewerD1ExecuteArgs(command, rawEnvironment, { json = false } = {}) {
+  const environment = rawEnvironment.trim();
+  if (!environment) throw new Error("A target environment is required. Pass --env <name>.");
+  return [
+    "wrangler",
+    "d1",
+    "execute",
+    "DB",
+    "--env",
+    environment,
+    "--remote",
+    ...(json ? ["--json"] : []),
+    "--command",
+    command,
+  ];
+}
+
+function targetEnvironment(args) {
+  if (args.length !== 2 || args[0] !== "--env") {
+    throw new Error("Pass exactly one target environment: --env <name>.");
+  }
+  return args[1];
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const email = process.env.MCP_REVIEW_EMAIL?.trim().toLowerCase();
   if (!email) throw new Error("MCP_REVIEW_EMAIL must be set before seeding reviewer data.");
-  const preflightOutput = execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--remote", "--json", "--command", buildReviewerPreflightSql(email)], {
+  const environment = targetEnvironment(process.argv.slice(2));
+  const preflightOutput = execFileSync("npx", buildReviewerD1ExecuteArgs(
+    buildReviewerPreflightSql(email), environment, { json: true },
+  ), {
     encoding: "utf8",
   });
   assertReviewerIdentity(email, preflightOutput);
-  execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--remote", "--command", buildReviewerSeedSql(email)], {
+  execFileSync("npx", buildReviewerD1ExecuteArgs(buildReviewerSeedSql(email), environment), {
     stdio: "inherit",
   });
 }

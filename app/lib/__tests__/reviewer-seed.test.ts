@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertReviewerIdentity,
+  buildReviewerD1ExecuteArgs,
   buildReviewerPreflightSql,
   buildReviewerSeedSql,
   reviewerId,
@@ -43,5 +44,23 @@ describe("MCP reviewer seeder", () => {
       expect(() => assertReviewerIdentity(email, output))
         .toThrow("Could not verify the existing reviewer identity");
     }
+  });
+
+  it("requires an explicit environment for each remote D1 command", () => {
+    expect(buildReviewerD1ExecuteArgs("SELECT 1", "staging", { json: true })).toEqual([
+      "wrangler",
+      "d1",
+      "execute",
+      "DB",
+      "--env",
+      "staging",
+      "--remote",
+      "--json",
+      "--command",
+      "SELECT 1",
+    ]);
+    expect(() => buildReviewerD1ExecuteArgs("SELECT 1", "")).toThrow(
+      "A target environment is required",
+    );
   });
 });
