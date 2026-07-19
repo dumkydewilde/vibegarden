@@ -16,10 +16,11 @@ SELECT `slug`, `club_id`, `created_at` FROM `club_slug_aliases`;
 CREATE TRIGGER `club_slug_claim_on_club_insert`
 AFTER INSERT ON `clubs`
 BEGIN
-  SELECT CASE WHEN EXISTS (
+  SELECT RAISE(ABORT, 'club slug is already claimed')
+  WHERE EXISTS (
     SELECT 1 FROM `club_slug_claims`
     WHERE `slug` = NEW.`slug` AND `club_id` != NEW.`id`
-  ) THEN RAISE(ABORT, 'club slug is already claimed') END;
+  );
   INSERT INTO `club_slug_claims` (`slug`, `club_id`, `created_at`)
   SELECT NEW.`slug`, NEW.`id`, NEW.`created_at`
   WHERE NOT EXISTS (
@@ -38,10 +39,11 @@ END;
 CREATE TRIGGER `club_slug_claim_on_alias_insert`
 AFTER INSERT ON `club_slug_aliases`
 BEGIN
-  SELECT CASE WHEN EXISTS (
+  SELECT RAISE(ABORT, 'club slug is already claimed')
+  WHERE EXISTS (
     SELECT 1 FROM `club_slug_claims`
     WHERE `slug` = NEW.`slug` AND `club_id` != NEW.`club_id`
-  ) THEN RAISE(ABORT, 'club slug is already claimed') END;
+  );
   INSERT INTO `club_slug_claims` (`slug`, `club_id`, `created_at`)
   SELECT NEW.`slug`, NEW.`club_id`, NEW.`created_at`
   WHERE NOT EXISTS (
