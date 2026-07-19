@@ -109,10 +109,20 @@ export async function getVersionObject(
   prefix: string,
   path: string,
 ): Promise<R2ObjectBody | null> {
-  return env.ARTIFACTS.get(keyForPrefix(prefix, path));
+  const key = keyForPrefix(prefix, path);
+  try {
+    return await env.ARTIFACTS.get(key);
+  } catch {
+    throw new ArtifactError("storage_unavailable");
+  }
 }
 
 export async function deleteKeys(env: Env, keys: string[]): Promise<void> {
   const safeKeys = keys.map(prefixForKey);
-  if (safeKeys.length > 0) await env.ARTIFACTS.delete(safeKeys);
+  if (safeKeys.length === 0) return;
+  try {
+    await env.ARTIFACTS.delete(safeKeys);
+  } catch {
+    throw new ArtifactError("storage_unavailable");
+  }
 }

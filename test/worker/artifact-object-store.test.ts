@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ArtifactError } from "../../app/lib/artifacts/contracts";
 import {
   artifactObjectKey,
+  deleteKeys,
   getVersionObject,
   putLeasedObject,
 } from "../../app/lib/artifacts/object-store.server";
@@ -67,5 +68,43 @@ describe("private artifact object store", () => {
     ).rejects.toMatchObject({ code: "state_conflict" });
 
     await expect((await env.ARTIFACTS.get(key))?.text()).resolves.toBe("hello");
+  });
+
+  it("does not expose private keys when R2 reads fail", async () => {
+    const privateKey = artifactObjectKey("artifact-read-failure", "version-1", "private/source.zip");
+    const failingEnv = {
+      ARTIFACTS: {
+        get: async () => {
+          throw new Error(`R2 could not read ${privateKey}`);
+        },
+      },
+    } as unknown as Env;
+
+    await expect(
+      getVersionObject(
+        failingEnv,
+        "artifacts/artifact-read-failure/versions/version-1",
+        "private/source.zip",
+      ),
+    ).rejects.toMatchObject({
+      code: "storage_unavailable",
+      message: "Artifact storage is temporarily unavailable.",
+    });
+  });
+
+  it("does not expose private keys when R2 deletes fail", async () => {
+    const privateKey = artifactObjectKey("artifact-delete-failure", "version-1", "private/source.zip");
+    const failingEnv = {
+      ARTIFACTS: {
+        delete: async () => {
+          throw new Error(`R2 could not delete ${privateKey}`);
+        },
+      },
+    } as unknown as Env;
+
+    await expect(deleteKeys(failingEnv, [privateKey])).rejects.toMatchObject({
+      code: "storage_unavailable",
+      message: "Artifact storage is temporarily unavailable.",
+    });
   });
 });
