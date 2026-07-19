@@ -3,15 +3,16 @@ import { createRoutesStub } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
 const getUser = vi.hoisted(() => vi.fn());
+const getInvitePreview = vi.hoisted(() => vi.fn());
 const joinWithInviteLink = vi.hoisted(() => vi.fn());
 
 vi.mock("~/lib/auth.server", () => ({ getUser }));
 vi.mock("~/lib/invites.server", () => ({
-  getInvitePreview: vi.fn(),
+  getInvitePreview,
   joinWithInviteLink,
 }));
 
-import Join, { action } from "../join";
+import Join, { action, loader } from "../join";
 
 function renderJoin(loaderData: unknown) {
   const Stub = createRoutesStub([
@@ -25,6 +26,32 @@ function renderJoin(loaderData: unknown) {
 }
 
 describe("invite link join page", () => {
+  it("redirects an existing member into the club when opening the link", async () => {
+    const member = { id: "member" };
+    getUser.mockResolvedValue(member);
+    getInvitePreview.mockResolvedValue({
+      available: true,
+      clubName: "Sunday Makers",
+      memberClubSlug: "sunday-makers",
+    });
+
+    const response = await loader({
+      request: new Request("https://garden.test/join/example-token"),
+      params: { token: "example-token" },
+      context: { get: () => ({ env: {} }) },
+    } as never);
+
+    expect(getInvitePreview).toHaveBeenCalledWith(
+      {},
+      "example-token",
+      member,
+    );
+    expect(response).toBeInstanceOf(Response);
+    expect((response as Response).headers.get("Location")).toBe(
+      "/clubs/sunday-makers",
+    );
+  });
+
   it("redirects into the club after a successful join", async () => {
     getUser.mockResolvedValue({ id: "member" });
     joinWithInviteLink.mockResolvedValue({

@@ -229,6 +229,27 @@ describe("club invite links", () => {
     ).toEqual({ count: 1 });
   });
 
+  it("identifies an existing member without consuming an invite slot", async () => {
+    const clubContext = await context("existing-member-preview");
+    const member = await insertUser("existing-member-preview-user");
+    await insertMembership(clubContext.club.id, member.id, "member");
+    const { urlToken, link } = await createInviteLink(testEnv, clubContext, {
+      maxJoins: 1,
+    });
+
+    expect(await getInvitePreview(testEnv, urlToken, member)).toEqual({
+      clubName: clubContext.club.name,
+      available: true,
+      memberClubSlug: clubContext.club.slug,
+    });
+    expect(
+      await env.DB
+        .prepare("SELECT current_joins AS currentJoins FROM club_invite_links WHERE id = ?")
+        .bind(link.id)
+        .first(),
+    ).toEqual({ currentJoins: 0 });
+  });
+
   it("uses one neutral unavailable result for malformed, expired, revoked, and exhausted links", async () => {
     const clubContext = await context("unavailable");
     const { urlToken, link } = await createInviteLink(testEnv, clubContext, {

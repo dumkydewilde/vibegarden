@@ -20,9 +20,13 @@ export function meta({}: Route.MetaArgs) {
 const unavailableMessage =
   "This invitation is no longer available. Ask a club administrator for a new one.";
 
-export async function loader({ params, context }: Route.LoaderArgs) {
+export async function loader({ request, params, context }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
-  return getInvitePreview(env, params.token ?? "");
+  const user = await getUser(env, request);
+  const preview = await getInvitePreview(env, params.token ?? "", user);
+  return preview.available && preview.memberClubSlug
+    ? redirect(clubPath(preview.memberClubSlug))
+    : preview;
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
