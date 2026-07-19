@@ -45,10 +45,12 @@ vi.mock("~/lib/threads.server", () => ({
 }));
 
 const env = { APP_ORIGIN: "https://vibegarden.test" } as Env;
-const privatePrincipal = { userId: "user-a", scopes: ["projects:read"] as const };
-const contentPrincipal = { userId: "user-a", scopes: ["content:read"] as const };
+const clubContext = { clubId: "club-a", clubSlug: "wotf", clubName: "WOTF Club" };
+const privatePrincipal = { userId: "user-a", ...clubContext, scopes: ["projects:read"] as const };
+const contentPrincipal = { userId: "user-a", ...clubContext, scopes: ["content:read"] as const };
 const combinedPrincipal = {
   userId: "user-a",
+  ...clubContext,
   scopes: ["projects:read", "content:read"] as const,
 };
 
@@ -73,7 +75,7 @@ describe("MCP compatibility tools", () => {
       expect.objectContaining({
         id: "project:project-1",
         title: "MCP garden map",
-        url: "https://vibegarden.test/garden/projects/project-1",
+        url: "https://vibegarden.test/clubs/wotf/garden/projects/project-1",
       }),
       expect.objectContaining({
         id: "article:what-is-mcp",
@@ -92,8 +94,8 @@ describe("MCP compatibility tools", () => {
 
     await searchKnowledge(env, privatePrincipal, "garden");
 
-    expect(mocks.searchOwnedProjects).toHaveBeenCalledWith(env, "user-a", "garden", 10);
-    expect(mocks.searchOwnedThreads).toHaveBeenCalledWith(env, "user-a", "garden", 10);
+    expect(mocks.searchOwnedProjects).toHaveBeenCalledWith(env, privatePrincipal, "garden", 10);
+    expect(mocks.searchOwnedThreads).toHaveBeenCalledWith(env, privatePrincipal, "garden", 10);
   });
 
   it("makes foreign private IDs indistinguishable from missing IDs", async () => {
@@ -131,23 +133,23 @@ describe("MCP compatibility tools", () => {
 
     expect(mocks.listProjectThreadsPage).toHaveBeenCalledWith(
       env,
-      "user-a",
+      privatePrincipal,
       "project-1",
       "thread-1",
       { limit: 50 },
     );
-    expect(mocks.getThreadPage).toHaveBeenCalledWith(env, "user-a", "thread-1", { limit: 50 });
+    expect(mocks.getThreadPage).toHaveBeenCalledWith(env, privatePrincipal, "thread-1", { limit: 50 });
     expect(project).toEqual({
       id: "project:project-1",
       title: "Garden map",
       text: expect.any(String),
-      url: "https://vibegarden.test/garden/projects/project-1",
+      url: "https://vibegarden.test/clubs/wotf/garden/projects/project-1",
     });
     expect(conversation).toEqual({
       id: "conversation:thread-1",
       title: "Planning",
       text: expect.any(String),
-      url: "https://vibegarden.test/garden/conversations/thread-1",
+      url: "https://vibegarden.test/clubs/wotf/garden/conversations/thread-1",
     });
     for (const payload of [project, conversation]) {
       expect(Object.keys(payload).sort()).toEqual(["id", "text", "title", "url"]);
@@ -175,7 +177,7 @@ describe("MCP compatibility tools", () => {
       id: "article:what-is-mcp",
       title: "What is MCP?",
       text: expect.any(String),
-      url: "https://vibegarden.test/learning/what-is-mcp",
+      url: "https://vibegarden.test/clubs/wotf/learning/what-is-mcp",
     });
     expect(Object.keys(payload).sort()).toEqual(["id", "text", "title", "url"]);
     expect(payload.text).not.toMatch(/^---/);
@@ -185,7 +187,7 @@ describe("MCP compatibility tools", () => {
       id: "module:module /?",
       title: "Module",
       text: "Module guide",
-      url: "https://vibegarden.test/garden/modules/module%20%2F%3F",
+      url: "https://vibegarden.test/clubs/wotf/garden/modules/module%20%2F%3F",
     });
     expect(Object.keys(module).sort()).toEqual(["id", "text", "title", "url"]);
     expect(JSON.stringify([payload, module])).not.toMatch(/raw|Component|order|private/);

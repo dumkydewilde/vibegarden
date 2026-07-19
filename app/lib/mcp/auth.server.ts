@@ -6,6 +6,7 @@ import {
   BODY_MAX_CHARS,
   RESPONSE_MAX_CHARS,
   type McpPrincipal,
+  type ResolvedMcpPrincipal,
   type McpScope,
 } from "~/lib/mcp/contracts";
 import {
@@ -72,6 +73,36 @@ export function requireScope(principal: McpPrincipal, scope: McpScope): void {
       "The required scope is missing.",
     );
   }
+}
+
+async function resolveMcpPrincipal(
+  env: Env,
+  principal: McpPrincipal,
+): Promise<ResolvedMcpPrincipal> {
+  const club = await env.DB
+    .prepare(
+      `SELECT clubs.slug AS clubSlug, clubs.name AS clubName
+         FROM clubs
+         JOIN users ON users.id = ?
+         LEFT JOIN club_memberships
+           ON club_memberships.club_id = clubs.id
+          AND club_memberships.user_id = users.id
+        WHERE clubs.id = ?
+          AND clubs.status = 'active'
+          AND (
+            club_memberships.user_id IS NOT NULL
+            OR users.platform_role = 'super_admin'
+          )`,
+    )
+    .bind(principal.userId, principal.clubId)
+    .first<{ clubSlug: string; clubName: string }>();
+  if (!club) {
+    throw new McpPublicError(
+      "not_found",
+      "The connected club is unavailable.",
+    );
+  }
+  return { ...principal, ...club };
 }
 
 export function oauthChallenge(
@@ -144,14 +175,14 @@ function assertResponseCaps(result: object): void {
  */
 export async function runMcpRequest<T extends object>(
   options: McpRequestOptions,
-  handler: (principal: McpPrincipal) => Promise<T>,
+  handler: (principal: ResolvedMcpPrincipal) => Promise<T>,
 ): Promise<T> {
   const startedAt = performance.now();
   let userHash = "unavailable";
   let outcome = "internal_error";
 
   try {
-    const principal = getMcpPrincipal();
+    const principal = await resolveMcpPrincipal(options.env, getMcpPrincipal());
     userHash = await hashMcpUser(options.env, principal.userId);
     const requiredScopes = Array.isArray(options.requiredScope)
       ? options.requiredScope
@@ -209,7 +240,7 @@ export async function runMcpRequest<T extends object>(
 /** Applies the shared boundary and converts failures to resource/prompt protocol errors. */
 export async function runMcpProtocolRequest<T extends object>(
   options: Omit<McpRequestOptions, "kind"> & { kind: "resource" | "prompt" },
-  handler: (principal: McpPrincipal) => Promise<T>,
+  handler: (principal: ResolvedMcpPrincipal) => Promise<T>,
 ): Promise<T> {
   try {
     return await runMcpRequest(options, handler);
@@ -230,11 +261,11 @@ export async function runMcpProtocolRequest<T extends object>(
  */
 export async function runMcpTool(
   options: McpToolOptions,
-  handler: () => Promise<McpToolValue>,
+  handler: (principal: ResolvedMcpPrincipal) => Promise<McpToolValue>,
 ): Promise<CallToolResult> {
   try {
-    return await runMcpRequest({ ...options, kind: "tool" }, async () => (
-      toToolResult(await handler())
+    return await runMcpRequest({ ...options, kind: "tool" }, async (principal) => (
+      toToolResult(await handler(principal))
     ));
   } catch (error) {
     const publicError = toMcpPublicError(error);

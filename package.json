@@ -7,10 +7,12 @@
   ],
   "scripts": {
     "build": "react-router build",
+    "build:staging": "CLOUDFLARE_ENV=staging react-router build",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc",
     "deploy": "npm run build && wrangler deploy",
+    "deploy:staging": "npm run build:staging && wrangler deploy --env staging",
     "preview": "npm run build && vite preview",
     "test": "vitest run",
     "test:d1": "vitest run --config vitest.d1.config.ts",

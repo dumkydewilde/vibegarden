@@ -12,7 +12,7 @@ const appOrigin = "https://vibegarden.test";
 
 describe("MCP learning content presenters", () => {
   it("presents article and module bodies without frontmatter or components", () => {
-    const article = presentArticle(appOrigin, {
+    const article = presentArticle(appOrigin, "wotf", {
       slug: "article-1",
       title: "Article",
       description: "Description",
@@ -21,7 +21,7 @@ describe("MCP learning content presenters", () => {
       raw: "---\r\ntitle: private\r\n---\r\nArticle body",
       Component: () => null,
     });
-    const module = presentModule(appOrigin, {
+    const module = presentModule(appOrigin, "wotf", {
       slug: "module-1",
       title: "Module",
       description: "Description",
@@ -32,12 +32,12 @@ describe("MCP learning content presenters", () => {
 
     expect(article).toMatchObject({
       kind: "article",
-      url: "https://vibegarden.test/learning/article-1",
+      url: "https://vibegarden.test/clubs/wotf/learning/article-1",
       body: "Article body",
     });
     expect(module).toMatchObject({
       kind: "module",
-      url: "https://vibegarden.test/garden/modules/module-1",
+      url: "https://vibegarden.test/clubs/wotf/garden/modules/module-1",
       body: "Module body",
     });
     expect(JSON.stringify([article, module])).not.toContain("private");
@@ -47,6 +47,7 @@ describe("MCP learning content presenters", () => {
   it("filters public learning metadata and matches body text", () => {
     const result = listLearningContent({
       appOrigin,
+      clubSlug: "wotf",
       kind: "article",
       query: "very good guesser",
       pageSize: 50,
@@ -67,14 +68,14 @@ describe("MCP learning content presenters", () => {
       items: [expect.objectContaining({
         kind: "article",
         slug: "what-is-an-llm",
-        url: "https://vibegarden.test/learning/what-is-an-llm",
+        url: "https://vibegarden.test/clubs/wotf/learning/what-is-an-llm",
       })],
     });
   });
 
   it("caps bodies and encodes content IDs in public URLs", () => {
     const slug = "a slug/with?reserved";
-    const article = presentArticle(appOrigin, {
+    const article = presentArticle(appOrigin, "club /?", {
       slug,
       title: "Article",
       description: "Description",
@@ -82,7 +83,7 @@ describe("MCP learning content presenters", () => {
       level: "starter",
       raw: `---\ntitle: hidden\n---\n${"a".repeat(BODY_MAX_CHARS + 1)}`,
     });
-    const module = presentModule(appOrigin, {
+    const module = presentModule(appOrigin, "club /?", {
       slug,
       title: "Module",
       description: "Description",
@@ -92,8 +93,8 @@ describe("MCP learning content presenters", () => {
 
     expect(article.body).toHaveLength(BODY_MAX_CHARS);
     expect(module.body).toHaveLength(BODY_MAX_CHARS);
-    expect(article.url).toBe("https://vibegarden.test/learning/a%20slug%2Fwith%3Freserved");
-    expect(module.url).toBe("https://vibegarden.test/garden/modules/a%20slug%2Fwith%3Freserved");
+    expect(article.url).toBe("https://vibegarden.test/clubs/club%20%2F%3F/learning/a%20slug%2Fwith%3Freserved");
+    expect(module.url).toBe("https://vibegarden.test/clubs/club%20%2F%3F/garden/modules/a%20slug%2Fwith%3Freserved");
   });
 
   it("uses exact content offset page boundaries and only exposes a supplied next cursor", () => {
@@ -107,6 +108,7 @@ describe("MCP learning content presenters", () => {
     }));
     const input = {
       appOrigin,
+      clubSlug: "wotf",
       kind: "article" as const,
       pageSize: 2,
       getArticles: () => articles,

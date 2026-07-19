@@ -222,7 +222,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     trimHistory(historyMessages),
   );
   if (!turn.ok) {
-    console.error("OpenRouter error", turn.status, turn.detail);
+    console.error("OpenRouter request failed", turn.status, "upstream_rejected");
     return Response.json(
       { error: "The language model is not reachable right now. Try again, or pick another model." },
       { status: 502 },
@@ -264,7 +264,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
               "gardener turn failed",
               event.stage,
               event.status ?? "",
-              event.detail ?? "",
+              event.stage === "upstream" ? "upstream_rejected" : "internal_error",
             );
             if (event.stage === "upstream") {
               emit("\n\nI lost the connection to the model midway. Ask again?");

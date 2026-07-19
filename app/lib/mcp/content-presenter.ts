@@ -16,6 +16,7 @@ type ContentPosition = { offset: number };
 
 type LearningContentInput = {
   appOrigin: string;
+  clubSlug: string;
   query?: string;
   kind?: ContentKind;
   category?: string;
@@ -40,6 +41,10 @@ function canonicalUrl(appOrigin: string, path: string): string {
   return new URL(path, appOrigin).toString();
 }
 
+function clubBase(clubSlug: string) {
+  return `/clubs/${encodeURIComponent(clubSlug)}`;
+}
+
 function body(raw: string): string {
   return stripFrontmatter(raw).slice(0, BODY_MAX_CHARS);
 }
@@ -56,7 +61,7 @@ function matchesQuery(item: ListItem, query: string): boolean {
   return haystack.includes(query);
 }
 
-function presentListItem(appOrigin: string, item: ListItem) {
+function presentListItem(appOrigin: string, clubSlug: string, item: ListItem) {
   if (item.kind === "article") {
     return {
       kind: "article" as const,
@@ -65,7 +70,10 @@ function presentListItem(appOrigin: string, item: ListItem) {
       description: item.meta.description,
       category: item.meta.category,
       level: item.meta.level,
-      url: canonicalUrl(appOrigin, `/learning/${encodeURIComponent(item.meta.slug)}`),
+      url: canonicalUrl(
+        appOrigin,
+        `${clubBase(clubSlug)}/learning/${encodeURIComponent(item.meta.slug)}`,
+      ),
     };
   }
   return {
@@ -76,7 +84,7 @@ function presentListItem(appOrigin: string, item: ListItem) {
     category: item.meta.category,
     url: canonicalUrl(
       appOrigin,
-      `/garden/modules/${encodeURIComponent(item.meta.slug)}`,
+      `${clubBase(clubSlug)}/garden/modules/${encodeURIComponent(item.meta.slug)}`,
     ),
   };
 }
@@ -117,7 +125,9 @@ export function listLearningContent(input: LearningContentInput) {
     );
 
   const page = items.slice(offset, offset + pageSize);
-  const result = { items: page.map((item) => presentListItem(input.appOrigin, item)) };
+  const result = {
+    items: page.map((item) => presentListItem(input.appOrigin, input.clubSlug, item)),
+  };
   return offset + page.length < items.length && input.nextCursor
     ? { ...result, next_cursor: input.nextCursor }
     : result;
@@ -126,6 +136,7 @@ export function listLearningContent(input: LearningContentInput) {
 /** Maps one article's metadata and MDX prose to the public MCP read shape. */
 export function presentArticle(
   appOrigin: string,
+  clubSlug: string,
   article: ArticleInput,
   raw = article.raw ?? defaultGetArticleRaw(article.slug) ?? "",
 ) {
@@ -136,7 +147,10 @@ export function presentArticle(
     description: article.description,
     category: article.category,
     level: article.level,
-    url: canonicalUrl(appOrigin, `/learning/${encodeURIComponent(article.slug)}`),
+    url: canonicalUrl(
+      appOrigin,
+      `${clubBase(clubSlug)}/learning/${encodeURIComponent(article.slug)}`,
+    ),
     body: body(raw),
   };
 }
@@ -144,6 +158,7 @@ export function presentArticle(
 /** Maps one module's metadata and MDX prose to the public MCP read shape. */
 export function presentModule(
   appOrigin: string,
+  clubSlug: string,
   module: ModuleInput,
   raw = module.raw ?? defaultGetModuleRaw(module.slug) ?? "",
 ) {
@@ -155,7 +170,7 @@ export function presentModule(
     category: module.category,
     url: canonicalUrl(
       appOrigin,
-      `/garden/modules/${encodeURIComponent(module.slug)}`,
+      `${clubBase(clubSlug)}/garden/modules/${encodeURIComponent(module.slug)}`,
     ),
     body: body(raw),
   };

@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "~/components/ui/card";
 import { getUser } from "~/lib/auth.server";
+import { listActiveClubs, listUserClubs } from "~/lib/clubs.server";
 import { cloudflareContext } from "~/lib/context";
 import { hashMcpUser } from "~/lib/mcp/auth.server";
 import { MCP_SCOPES, type McpScope } from "~/lib/mcp/contracts";
@@ -36,6 +37,16 @@ function requireMcpResource(env: Env, resource: string | string[] | undefined) {
   }
 }
 
+async function accessibleClubs(
+  env: Env,
+  user: { id: string; platformRole: string; lastClubId?: string | null },
+) {
+  const available = user.platformRole === "super_admin"
+    ? await listActiveClubs(env)
+    : (await listUserClubs(env, user.id)).map(({ club }) => club);
+  return available.filter((club) => club.status === "active");
+}
+
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   const oauthRequest = await env.OAUTH_PROVIDER.parseAuthRequest(request);
@@ -53,10 +64,16 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   if (requestedScopes.length === 0) {
     throw new Response("No supported scope requested", { status: 400 });
   }
+  const clubs = await accessibleClubs(env, user);
+  if (clubs.length === 0) throw new Response("Not found", { status: 404 });
   return {
     clientName: client.clientName ?? "An MCP client",
     redirectUri: oauthRequest.redirectUri,
     requestedScopes,
+    clubs,
+    selectedClubId: clubs.some((club) => club.id === user.lastClubId)
+      ? user.lastClubId
+      : clubs[0].id,
   };
 }
 
@@ -76,28 +93,36 @@ export async function action({ request, context }: Route.ActionArgs) {
   const client = await env.OAUTH_PROVIDER.lookupClient(oauthRequest.clientId);
   if (!client) throw new Response("Invalid OAuth client", { status: 400 });
 
-  const submittedScopes = new Set(
-    (await request.formData()).getAll("scope").map(String),
-  );
+  const formData = await request.formData();
+  const submittedScopes = new Set(formData.getAll("scope").map(String));
   const grantedScopes = oauthRequest.scope.filter(
     (scope): scope is McpScope =>
       isMcpScope(scope) && submittedScopes.has(scope),
   );
+  const clubId = String(formData.get("club_id") ?? "");
+  const club = (await accessibleClubs(env, user)).find(
+    (candidate) => candidate.id === clubId,
+  );
+  if (!club) throw new Response("Not found", { status: 404 });
   const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
     request: oauthRequest,
     userId: user.id,
     metadata: {
       clientName: client.clientName ?? "MCP client",
       grantedScopes,
+      clubId: club.id,
+      clubName: club.name,
+      clubSlug: club.slug,
     },
     scope: grantedScopes,
-    props: { userId: user.id, scopes: grantedScopes },
+    props: { userId: user.id, clubId: club.id, scopes: grantedScopes },
   });
   console.info(
     JSON.stringify({
       event: "mcp_oauth_consent",
       userHash: await hashMcpUser(env, user.id),
       scopes: grantedScopes,
+      clubHash: await hashMcpUser(env, club.id),
     }),
   );
   return redirect(redirectTo);
@@ -122,6 +147,18 @@ export default function OAuthAuthorize({ loaderData }: Route.ComponentProps) {
             You will return to <span className="font-medium text-foreground">{redirectHost}</span>.
           </p>
           <Form method="post" className="space-y-3">
+            <label className="block space-y-2 text-sm font-medium">
+              Club
+              <select
+                name="club_id"
+                defaultValue={loaderData.selectedClubId ?? undefined}
+                className="w-full rounded-md border bg-background px-3 py-2"
+              >
+                {loaderData.clubs.map((club) => (
+                  <option key={club.id} value={club.id}>{club.name}</option>
+                ))}
+              </select>
+            </label>
             <fieldset className="space-y-3">
               <legend className="text-sm font-medium">Permissions</legend>
               {loaderData.requestedScopes.map((scope) => (

@@ -28,7 +28,7 @@ npm run typecheck  # react-router typegen + tsc
 Vibe Garden exposes a read-only remote MCP server at
 `https://vibegarden.club/mcp`. Setup details are public at `/connect` and
 data-use information at `/privacy/mcp`. People can revoke a connected app from
-`/settings/connections` after signing in.
+`/settings` after signing in, then open a club's **Connected apps** page.
 
 For local OAuth development, put these overrides and the normal session secret
 in `.dev.vars`; the resource and issuer must match the Vite Worker origin
@@ -56,7 +56,9 @@ release-blocking; a local Worker test alone does not pass that gate.
 
 Deploy in this order: create D1 and apply migrations, create and bind OAuth KV
 and rate limiters, set `SESSION_SECRET` plus any reviewer secrets, then deploy
-the Worker. Do not put production secrets in `.dev.vars` or source control.
+the Worker. Use `npm run deploy:staging` for staging: the Cloudflare Vite build
+must select the staging environment before Wrangler deploys its generated
+bundle. Do not put production secrets in `.dev.vars` or source control.
 
 ### Reviewer data
 
@@ -78,8 +80,9 @@ reviewer's deterministic project and conversation IDs for the isolation tests.
 
 The seeder is idempotent, uses `--remote`, and refuses to run without exactly
 one `--env <name>` target. It writes only its deterministic reviewer user,
-projects, conversations, and messages. Review the target environment before
-running it. Do not run it as part of local development or tests.
+WOTF club membership, projects, conversations, and messages. Review the target
+environment before running it. Do not run it as part of local development or
+tests.
 
 ## Content
 

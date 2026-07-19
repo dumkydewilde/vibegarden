@@ -17,6 +17,10 @@ describe("MCP reviewer seeder", () => {
     expect(first).not.toMatch(/\bDELETE\b/i);
     expect(first).not.toMatch(/ON CONFLICT\(email\) DO UPDATE/i);
     expect(first).toContain("ON CONFLICT(id) DO UPDATE");
+    expect(first).toContain("INSERT INTO club_memberships");
+    expect(first).toContain("'club_wotf'");
+    expect(first).toContain("projects (id, user_id, club_id");
+    expect(first).toContain("chat_threads (id, user_id, club_id");
   });
 
   it("aborts the deterministic seed before writes when the email belongs to another user", () => {

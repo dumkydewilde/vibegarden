@@ -11,7 +11,7 @@ describe("MCP public documentation", () => {
     expect(page).toContain("ChatGPT");
     expect(page).toContain("projects:read");
     expect(page).toContain("content:read");
-    expect(page).toContain("/settings/connections");
+    expect(page).toContain("/settings");
   });
 
   it("publishes data-use and revocation disclosures", () => {

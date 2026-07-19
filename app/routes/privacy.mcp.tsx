@@ -39,7 +39,7 @@ export default function McpPrivacy() {
       <section className="mt-8 space-y-3">
         <h2 className="text-xl font-medium">Revoke access</h2>
         <p>
-          Revoke access from <a className="underline" href="/settings/connections">Connected apps</a>; this revokes
+          Revoke access from a club's <a className="underline" href="/settings">Connected apps</a> page; this revokes
           the grant and its tokens. For privacy questions, contact <a className="underline" href="mailto:dumky@motherduck.com">dumky@motherduck.com</a>.
         </p>
       </section>

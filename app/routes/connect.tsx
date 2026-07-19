@@ -29,7 +29,7 @@ export default function Connect() {
           <li>Ask the host assistant to use Vibe Garden when it would help.</li>
         </ol>
         <p>
-          You can <a className="underline" href="/settings/connections">manage or revoke connected apps</a> at any time.
+          You can <a className="underline" href="/settings">choose a club and manage or revoke connected apps</a> at any time.
         </p>
       </section>
       <p className="mt-8 text-sm text-muted-foreground">

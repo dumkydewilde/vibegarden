@@ -22,6 +22,18 @@ const defaultHandler = {
       const userId = request.headers.get("x-test-user-id") || "test-user";
       const clubId = request.headers.get("x-test-club-id") || "test-club";
       const scope = grant.scope.filter((value) => value === "projects:read" || value === "content:read");
+      const now = Date.now();
+      await env.DB.batch([
+        env.DB.prepare(
+          "INSERT OR IGNORE INTO users (id, email, name, role, stage, created_at) VALUES (?, ?, 'OAuth test user', 'user', 'exploring', ?)",
+        ).bind(userId, `${userId}@example.test`, now),
+        env.DB.prepare(
+          "INSERT OR IGNORE INTO clubs (id, name, slug, model_policy, status, created_by, created_at, updated_at) VALUES (?, 'OAuth test club', ?, 'all_models', 'active', ?, ?, ?)",
+        ).bind(clubId, clubId, userId, now, now),
+        env.DB.prepare(
+          "INSERT OR IGNORE INTO club_memberships (club_id, user_id, role, onboarding_stage, joined_at, updated_at) VALUES (?, ?, 'member', 'exploring', ?, ?)",
+        ).bind(clubId, userId, now, now),
+      ]);
       const completed = await api.completeAuthorization({
         request: grant,
         userId,

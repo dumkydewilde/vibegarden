@@ -22,7 +22,7 @@ test is supporting evidence, not a substitute for either host check.
 | Field | Value |
 | --- | --- |
 | Test date (UTC) | `2026-07-19` |
-| Tested build SHA | `ec5c5e74991e770eb92f2f900ae44970d4d2fa2f` |
+| Tested build SHA | `PENDING — refresh for the club-aware candidate` |
 | Reviewer fixture version | `reviewer A plus data-only reviewer B, seeded 2026-07-19` |
 | Staging connector URL | `https://mcp-staging.vibegarden.club/mcp` |
 | Observed server version | `PENDING` |
@@ -39,6 +39,10 @@ npm run build
 npm run dev
 npm run mcp:inspect
 ```
+
+Build and deploy staging with `npm run deploy:staging`; its
+`CLOUDFLARE_ENV=staging` build step selects the staging bindings before the
+generated Worker bundle is handed to Wrangler.
 
 In MCP Inspector's connection pane, select **Streamable HTTP** and enter
 `http://localhost:5173/mcp`. Record the server and protocol versions in the

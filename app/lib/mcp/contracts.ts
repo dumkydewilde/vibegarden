@@ -7,6 +7,10 @@ export type McpPrincipal = {
   clubId: string;
   scopes: McpScope[];
 };
+export type ResolvedMcpPrincipal = McpPrincipal & {
+  clubSlug: string;
+  clubName: string;
+};
 export const LIST_PAGE_DEFAULT = 20;
 export const LIST_PAGE_MAX = 50;
 export const CONVERSATION_PAGE_DEFAULT = 50;

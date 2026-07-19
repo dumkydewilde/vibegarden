@@ -26,6 +26,13 @@ function env(overrides: Partial<Env> = {}): Env {
     SESSION_SECRET: "tool-discovery-test-secret",
     MCP_GENERAL_LIMITER: { limit: vi.fn().mockResolvedValue({ success: true }) },
     MCP_HISTORY_LIMITER: { limit: vi.fn().mockResolvedValue({ success: true }) },
+    DB: {
+      prepare: vi.fn(() => ({
+        bind: vi.fn(() => ({
+          first: vi.fn(async () => ({ clubSlug: "wotf", clubName: "WOTF Club" })),
+        })),
+      })),
+    },
     ...overrides,
   } as Env;
 }
@@ -53,7 +60,7 @@ async function callTool(
   await client.connect(clientTransport);
   try {
     return await runWithMcpRequestProps(
-      { userId: "callback-user", scopes: ["content:read"] },
+      { userId: "callback-user", clubId: "club-a", scopes: ["content:read"] },
       () => client.callTool({ name, arguments: args }),
     );
   } finally {

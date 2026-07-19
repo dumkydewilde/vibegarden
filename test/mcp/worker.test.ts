@@ -399,6 +399,40 @@ describe("Gardener MCP Worker", () => {
     });
   });
 
+  it("binds a grant to one club and revalidates membership on every request", async () => {
+    const userId = `multi-club-${crypto.randomUUID()}`;
+    const firstClub = `first-club-${crypto.randomUUID()}`;
+    const secondClub = `second-club-${crypto.randomUUID()}`;
+    const firstProject = await seedOwnedProject(userId, firstClub);
+    const secondProject = await seedOwnedProject(userId, secondClub);
+    const firstToken = await accessTokenFor(userId, "projects:read", firstClub);
+    const secondToken = await accessTokenFor(userId, "projects:read", secondClub);
+
+    const crossClub = await mcpJson(await mcpRpc(firstToken, "tools/call", {
+      name: "get_project",
+      arguments: { project_id: secondProject },
+    }));
+    expectPrivateNotFound(crossClub, [secondProject]);
+
+    const ownClub = await mcpJson(await mcpRpc(secondToken, "tools/call", {
+      name: "get_project",
+      arguments: { project_id: secondProject },
+    }));
+    expect(JSON.stringify(ownClub)).toContain(secondProject);
+    expect(JSON.stringify(ownClub)).not.toContain(firstProject);
+
+    await env.DB.prepare(
+      "DELETE FROM club_memberships WHERE club_id = ? AND user_id = ?",
+    ).bind(secondClub, userId).run();
+
+    const afterRevocation = await mcpJson(await mcpRpc(secondToken, "tools/call", {
+      name: "list_projects",
+      arguments: {},
+    }));
+    expect(JSON.stringify(afterRevocation)).toContain("connected club is unavailable");
+    expect(JSON.stringify(afterRevocation)).not.toContain(secondProject);
+  });
+
   it("keeps concurrent OAuth MCP requests isolated by their request props", async () => {
     const firstUser = `concurrent-first-${crypto.randomUUID()}`;
     const secondUser = `concurrent-second-${crypto.randomUUID()}`;

@@ -40,13 +40,21 @@ function canonicalUrl(appOrigin: string, path: string): string {
   return new URL(path, appOrigin).toString();
 }
 
-function conversationUrl(appOrigin: string, id: string): string {
-  return canonicalUrl(appOrigin, `/garden/conversations/${encodeURIComponent(id)}`);
+function clubBase(clubSlug: string) {
+  return `/clubs/${encodeURIComponent(clubSlug)}`;
+}
+
+function conversationUrl(appOrigin: string, clubSlug: string, id: string): string {
+  return canonicalUrl(
+    appOrigin,
+    `${clubBase(clubSlug)}/garden/conversations/${encodeURIComponent(id)}`,
+  );
 }
 
 /** Maps a private project row to the fixed public MCP shape. */
 export function presentProject(
   appOrigin: string,
+  clubSlug: string,
   project: ProjectInput,
   conversations?: ProjectConversations,
 ) {
@@ -59,7 +67,7 @@ export function presentProject(
     updated_at: project.updatedAt,
     url: canonicalUrl(
       appOrigin,
-      `/garden/projects/${encodeURIComponent(project.id)}`,
+      `${clubBase(clubSlug)}/garden/projects/${encodeURIComponent(project.id)}`,
     ),
   };
 
@@ -69,10 +77,10 @@ export function presentProject(
     ...result,
     conversations: [
       ...(conversations.primary
-        ? [presentConversationSummary(appOrigin, conversations.primary)]
+        ? [presentConversationSummary(appOrigin, clubSlug, conversations.primary)]
         : []),
       ...(conversations.linked ?? []).map((thread) =>
-        presentConversationSummary(appOrigin, thread),
+        presentConversationSummary(appOrigin, clubSlug, thread),
       ),
     ],
   };
@@ -81,6 +89,7 @@ export function presentProject(
 /** Maps a private thread summary to the fixed public MCP shape. */
 export function presentConversationSummary(
   appOrigin: string,
+  clubSlug: string,
   conversation: ConversationInput,
 ) {
   return {
@@ -88,7 +97,7 @@ export function presentConversationSummary(
     title: conversation.title,
     updated_at: conversation.updatedAt,
     message_count: conversation.messageCount,
-    url: conversationUrl(appOrigin, conversation.id),
+    url: conversationUrl(appOrigin, clubSlug, conversation.id),
   };
 }
 
@@ -111,6 +120,7 @@ function presentMessage(message: ConversationMessageInput) {
 /** Maps an owned thread page to public conversation and message fields only. */
 export function presentConversationPage(
   appOrigin: string,
+  clubSlug: string,
   page: ConversationPageInput,
 ) {
   const result = {
@@ -118,7 +128,7 @@ export function presentConversationPage(
       id: page.thread.id,
       title: page.thread.title,
       updated_at: page.thread.updatedAt,
-      url: conversationUrl(appOrigin, page.thread.id),
+      url: conversationUrl(appOrigin, clubSlug, page.thread.id),
     },
     messages: page.messages.map(presentMessage),
   };

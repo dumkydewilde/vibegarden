@@ -7,7 +7,7 @@ import { BODY_MAX_CHARS } from "~/lib/mcp/contracts";
 
 describe("MCP project presenters", () => {
   it("never returns identity or storage fields", () => {
-    const result = presentProject("https://vibegarden.test", {
+    const result = presentProject("https://vibegarden.test", "wotf", {
       id: "project-1",
       userId: "user-secret",
       title: "A useful project",
@@ -21,7 +21,7 @@ describe("MCP project presenters", () => {
     });
     expect(result).toMatchObject({
       id: "project-1",
-      url: "https://vibegarden.test/garden/projects/project-1",
+      url: "https://vibegarden.test/clubs/wotf/garden/projects/project-1",
     });
     expect(JSON.stringify(result)).not.toContain("user-secret");
     expect(result).not.toHaveProperty("userId");
@@ -29,7 +29,7 @@ describe("MCP project presenters", () => {
   });
 
   it("removes internal markers and labels stored text as user-authored", () => {
-    const result = presentConversationPage("https://vibegarden.test", {
+    const result = presentConversationPage("https://vibegarden.test", "wotf", {
       thread: { id: "thread-1", title: "Thread", createdAt: 1, updatedAt: 2 },
       messages: [{
         id: "message-1",
@@ -48,7 +48,7 @@ describe("MCP project presenters", () => {
 
   it("caps conversation content and encodes private record IDs in canonical URLs", () => {
     const id = "project /?";
-    const project = presentProject("https://vibegarden.test", {
+    const project = presentProject("https://vibegarden.test", "club /?", {
       id,
       title: "Project",
       oneLiner: null,
@@ -56,7 +56,7 @@ describe("MCP project presenters", () => {
       moduleList: [],
       updatedAt: 1,
     });
-    const conversation = presentConversationPage("https://vibegarden.test", {
+    const conversation = presentConversationPage("https://vibegarden.test", "club /?", {
       thread: { id, title: "Thread", createdAt: 1, updatedAt: 2 },
       messages: [{
         role: "user",
@@ -66,8 +66,8 @@ describe("MCP project presenters", () => {
       }],
     });
 
-    expect(project.url).toBe("https://vibegarden.test/garden/projects/project%20%2F%3F");
-    expect(conversation.conversation.url).toBe("https://vibegarden.test/garden/conversations/project%20%2F%3F");
+    expect(project.url).toBe("https://vibegarden.test/clubs/club%20%2F%3F/garden/projects/project%20%2F%3F");
+    expect(conversation.conversation.url).toBe("https://vibegarden.test/clubs/club%20%2F%3F/garden/conversations/project%20%2F%3F");
     expect(conversation.messages[0].content).toHaveLength(BODY_MAX_CHARS);
   });
 });

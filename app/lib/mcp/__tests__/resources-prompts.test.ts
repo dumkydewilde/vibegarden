@@ -34,6 +34,13 @@ function env(): Env {
     SESSION_SECRET: "resource-prompt-test-secret",
     MCP_GENERAL_LIMITER: { limit: mocks.generalLimit },
     MCP_HISTORY_LIMITER: { limit: mocks.historyLimit },
+    DB: {
+      prepare: vi.fn(() => ({
+        bind: vi.fn(() => ({
+          first: vi.fn(async () => ({ clubSlug: "wotf", clubName: "WOTF Club" })),
+        })),
+      })),
+    },
   } as Env;
 }
 
@@ -51,7 +58,7 @@ function project(id = "project-a") {
 
 function serverFor(userId: string, scopes = ["projects:read", "content:read"]) {
   mocks.getMcpAuthContext.mockReturnValue({
-    props: { userId, scopes },
+    props: { userId, clubId: "club-a", scopes },
   });
   const server = createGardenerMcpServer(env());
   connectedServers.push(server);
@@ -95,7 +102,11 @@ async function getPrompt(
 
 beforeEach(() => {
   mocks.getMcpAuthContext.mockReturnValue({
-    props: { userId: "user-a", scopes: ["projects:read", "content:read"] },
+    props: {
+      userId: "user-a",
+      clubId: "club-a",
+      scopes: ["projects:read", "content:read"],
+    },
   });
   mocks.generalLimit.mockResolvedValue({ success: true });
   mocks.historyLimit.mockResolvedValue({ success: true });
@@ -124,8 +135,8 @@ describe("Gardener MCP resources and prompts", () => {
   });
 
   it("uses the verified caller for foreign project resource lookups without disclosing ownership", async () => {
-    mocks.getProject.mockImplementation(async (_env, userId: string, projectId: string) => (
-      userId === "user-b" && projectId === "private-project"
+    mocks.getProject.mockImplementation(async (_env, scope: { userId: string }, projectId: string) => (
+      scope.userId === "user-b" && projectId === "private-project"
         ? project(projectId)
         : null
     ));
@@ -138,7 +149,7 @@ describe("Gardener MCP resources and prompts", () => {
     });
     expect(mocks.getProject).toHaveBeenCalledWith(
       expect.anything(),
-      "user-a",
+      expect.objectContaining({ userId: "user-a", clubId: "club-a" }),
       "private-project",
     );
   });

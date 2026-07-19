@@ -1,5 +1,9 @@
 import { getArticles, getArticleRaw } from "~/lib/content";
-import { BODY_MAX_CHARS, CONVERSATION_PAGE_DEFAULT, type McpPrincipal } from "~/lib/mcp/contracts";
+import {
+  BODY_MAX_CHARS,
+  CONVERSATION_PAGE_DEFAULT,
+  type ResolvedMcpPrincipal,
+} from "~/lib/mcp/contracts";
 import { presentArticle, presentModule } from "~/lib/mcp/content-presenter";
 import { McpPublicError } from "~/lib/mcp/errors.server";
 import {
@@ -37,7 +41,10 @@ function canonicalUrl(appOrigin: string, path: string): string {
   return new URL(path, appOrigin).toString();
 }
 
-function requireScope(principal: McpPrincipal, scope: McpPrincipal["scopes"][number]) {
+function requireScope(
+  principal: ResolvedMcpPrincipal,
+  scope: ResolvedMcpPrincipal["scopes"][number],
+) {
   if (!principal.scopes.includes(scope)) {
     throw new McpPublicError("insufficient_scope", "The required scope is missing.");
   }
@@ -63,7 +70,7 @@ function contentMatches(
 
 export async function searchKnowledge(
   env: Env,
-  principal: McpPrincipal,
+  principal: ResolvedMcpPrincipal,
   query: string,
 ): Promise<SearchPayload> {
   const term = searchTerm(query);
@@ -78,14 +85,17 @@ export async function searchKnowledge(
       ...projects.map((project) => ({
         id: `project:${project.id}`,
         title: project.title,
-        url: canonicalUrl(env.APP_ORIGIN, `/garden/projects/${encodeURIComponent(project.id)}`),
+        url: canonicalUrl(
+          env.APP_ORIGIN,
+          `/clubs/${encodeURIComponent(principal.clubSlug)}/garden/projects/${encodeURIComponent(project.id)}`,
+        ),
       })),
       ...conversations.map((conversation) => ({
         id: `conversation:${conversation.id}`,
         title: conversation.title ?? "Untitled conversation",
         url: canonicalUrl(
           env.APP_ORIGIN,
-          `/garden/conversations/${encodeURIComponent(conversation.id)}`,
+          `/clubs/${encodeURIComponent(principal.clubSlug)}/garden/conversations/${encodeURIComponent(conversation.id)}`,
         ),
       })),
     );
@@ -101,7 +111,10 @@ export async function searchKnowledge(
       .map((article) => ({
         id: `article:${article.slug}`,
         title: article.title,
-        url: canonicalUrl(env.APP_ORIGIN, `/learning/${encodeURIComponent(article.slug)}`),
+        url: canonicalUrl(
+          env.APP_ORIGIN,
+          `/clubs/${encodeURIComponent(principal.clubSlug)}/learning/${encodeURIComponent(article.slug)}`,
+        ),
       }));
     const modules = getModules()
       .flatMap((module) => {
@@ -114,7 +127,7 @@ export async function searchKnowledge(
         title: module.title,
         url: canonicalUrl(
           env.APP_ORIGIN,
-          `/garden/modules/${encodeURIComponent(module.slug)}`,
+          `/clubs/${encodeURIComponent(principal.clubSlug)}/garden/modules/${encodeURIComponent(module.slug)}`,
         ),
       }));
     results.push(...articles, ...modules);
@@ -132,7 +145,7 @@ export async function searchKnowledge(
 
 export async function fetchKnowledge(
   env: Env,
-  principal: McpPrincipal,
+  principal: ResolvedMcpPrincipal,
   id: string,
 ): Promise<FetchPayload> {
   const { kind, value } = parseKnowledgeId(id);
@@ -153,7 +166,7 @@ export async function fetchKnowledge(
       ? conversations.items.find((thread) => thread.id === project.threadId)
       : undefined;
     const linked = conversations.items.filter((thread) => thread.id !== project.threadId);
-    const presented = presentProject(env.APP_ORIGIN, project, {
+    const presented = presentProject(env.APP_ORIGIN, principal.clubSlug, project, {
       primary,
       linked,
     });
@@ -172,7 +185,7 @@ export async function fetchKnowledge(
     });
     if (!page) throw new McpPublicError("not_found", "The knowledge item was not found.");
 
-    const presented = presentConversationPage(env.APP_ORIGIN, page);
+    const presented = presentConversationPage(env.APP_ORIGIN, principal.clubSlug, page);
     return {
       id,
       title: page.thread.title ?? "Untitled conversation",
@@ -188,7 +201,7 @@ export async function fetchKnowledge(
     if (!article || raw === undefined) {
       throw new McpPublicError("not_found", "The knowledge item was not found.");
     }
-    const presented = presentArticle(env.APP_ORIGIN, article, raw);
+    const presented = presentArticle(env.APP_ORIGIN, principal.clubSlug, article, raw);
     return {
       id,
       title: presented.title,
@@ -202,7 +215,7 @@ export async function fetchKnowledge(
   if (!module || raw === undefined) {
     throw new McpPublicError("not_found", "The knowledge item was not found.");
   }
-  const presented = presentModule(env.APP_ORIGIN, module, raw);
+  const presented = presentModule(env.APP_ORIGIN, principal.clubSlug, module, raw);
   return {
     id,
     title: presented.title,

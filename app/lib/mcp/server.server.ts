@@ -25,9 +25,10 @@ import {
   searchInput,
   searchOutput,
   slugInput,
+  type ResolvedMcpPrincipal,
   type McpScope,
 } from "~/lib/mcp/contracts";
-import { getMcpPrincipal, runMcpProtocolRequest, runMcpTool } from "~/lib/mcp/auth.server";
+import { runMcpProtocolRequest, runMcpTool } from "~/lib/mcp/auth.server";
 import { fetchKnowledge, searchKnowledge } from "~/lib/mcp/compatibility.server";
 import { listLearningContent, presentArticle, presentModule } from "~/lib/mcp/content-presenter";
 import { decodeCursor, encodeCursor, type CursorPayload } from "~/lib/mcp/cursor.server";
@@ -119,7 +120,11 @@ function run(
   scope: McpScope | McpScope[],
   limiter: "general" | "history",
   requestId: string | number,
-  handler: () => Promise<Record<string, unknown> | ReturnType<typeof compatibilityResult> | ReturnType<typeof shortResult>>,
+  handler: (principal: ResolvedMcpPrincipal) => Promise<
+    Record<string, unknown>
+    | ReturnType<typeof compatibilityResult>
+    | ReturnType<typeof shortResult>
+  >,
 ) {
   return runMcpTool({
     env,
@@ -155,7 +160,11 @@ function resourceResult(uri: URL, mimeType: "application/json" | "text/markdown"
   };
 }
 
-async function ownedProjectPayload(env: Env, principal: import("~/lib/mcp/contracts").McpPrincipal, projectId: string) {
+async function ownedProjectPayload(
+  env: Env,
+  principal: ResolvedMcpPrincipal,
+  projectId: string,
+) {
   const project = await getProject(env, principal, projectId);
   if (!project) return notFound();
   const conversations = await listProjectThreadsPage(
@@ -165,7 +174,7 @@ async function ownedProjectPayload(env: Env, principal: import("~/lib/mcp/contra
     project.threadId,
     { limit: clampPageSize(undefined, "list") },
   );
-  return presentProject(env.APP_ORIGIN, project, {
+  return presentProject(env.APP_ORIGIN, principal.clubSlug, project, {
     primary: project.threadId
       ? conversations.items.find((item) => item.id === project.threadId)
       : undefined,
@@ -206,7 +215,7 @@ function registerResources(server: McpServer, env: Env) {
       limit: clampPageSize(undefined, "conversation"),
     });
     if (!page) return notFound();
-    const payload = presentConversationPage(env.APP_ORIGIN, { ...page });
+    const payload = presentConversationPage(env.APP_ORIGIN, principal.clubSlug, { ...page });
     return resourceResult(uri, "application/json", JSON.stringify(payload));
   }));
 
@@ -220,12 +229,16 @@ function registerResources(server: McpServer, env: Env) {
     requiredScope: "content:read",
     limiter: "general",
     kind: "resource",
-  }, async () => {
+  }, async (principal) => {
     const slug = resourceVariable(variables.slug);
     const article = getArticles().find((item) => item.slug === slug);
     const raw = article ? getArticleRaw(article.slug) : undefined;
     if (!article || raw === undefined) return notFound();
-    return resourceResult(uri, "text/markdown", presentArticle(env.APP_ORIGIN, article, raw).body);
+    return resourceResult(
+      uri,
+      "text/markdown",
+      presentArticle(env.APP_ORIGIN, principal.clubSlug, article, raw).body,
+    );
   }));
 
   server.registerResource("module", new ResourceTemplate("vibegarden://module/{slug}", { list: undefined }), {
@@ -238,12 +251,16 @@ function registerResources(server: McpServer, env: Env) {
     requiredScope: "content:read",
     limiter: "general",
     kind: "resource",
-  }, async () => {
+  }, async (principal) => {
     const slug = resourceVariable(variables.slug);
     const module = getModules().find((item) => item.slug === slug);
     const raw = module ? getModuleRaw(module.slug) : undefined;
     if (!module || raw === undefined) return notFound();
-    return resourceResult(uri, "text/markdown", presentModule(env.APP_ORIGIN, module, raw).body);
+    return resourceResult(
+      uri,
+      "text/markdown",
+      presentModule(env.APP_ORIGIN, principal.clubSlug, module, raw).body,
+    );
   }));
 
   server.registerResource("gardener-guide", "vibegarden://guide/gardener", {
@@ -326,8 +343,7 @@ function registerTools(server: McpServer, env: Env) {
     inputSchema: listProjectsInput,
     outputSchema: listProjectsOutput,
     ...metadata("projects:read"),
-  }, async (input, extra) => run(env, "list_projects", "projects:read", "general", extra.requestId, async () => {
-    const principal = getMcpPrincipal();
+  }, async (input, extra) => run(env, "list_projects", "projects:read", "general", extra.requestId, async (principal) => {
     const position = await cursorPosition(env, input.cursor, "projects", isUpdatedAtPosition);
     const page = await listProjectsPage(env, principal, {
       status: input.status,
@@ -335,7 +351,11 @@ function registerTools(server: McpServer, env: Env) {
       limit: clampPageSize(input.page_size, "list"),
     });
     const payload = {
-      projects: page.items.map((project) => presentProject(env.APP_ORIGIN, project)),
+      projects: page.items.map((project) => presentProject(
+        env.APP_ORIGIN,
+        principal.clubSlug,
+        project,
+      )),
       ...(page.nextPosition
         ? { next_cursor: await nextCursor(env, "projects", page.nextPosition) }
         : {}),
@@ -349,8 +369,7 @@ function registerTools(server: McpServer, env: Env) {
     inputSchema: getProjectInput,
     outputSchema: getProjectOutput,
     ...metadata("projects:read"),
-  }, async (input, extra) => run(env, "get_project", "projects:read", "general", extra.requestId, async () => {
-    const principal = getMcpPrincipal();
+  }, async (input, extra) => run(env, "get_project", "projects:read", "general", extra.requestId, async (principal) => {
     const project = await getProject(env, principal, input.project_id);
     if (!project) return notFound();
     const conversations = await listProjectThreadsPage(
@@ -361,7 +380,7 @@ function registerTools(server: McpServer, env: Env) {
       { limit: clampPageSize(undefined, "list") },
     );
     return shortResult(
-      presentProject(env.APP_ORIGIN, project, {
+      presentProject(env.APP_ORIGIN, principal.clubSlug, project, {
         primary: project.threadId
           ? conversations.items.find((item) => item.id === project.threadId)
           : undefined,
@@ -377,8 +396,7 @@ function registerTools(server: McpServer, env: Env) {
     inputSchema: listProjectConversationsInput,
     outputSchema: listProjectConversationsOutput,
     ...metadata("projects:read"),
-  }, async (input, extra) => run(env, "list_project_conversations", "projects:read", "general", extra.requestId, async () => {
-    const principal = getMcpPrincipal();
+  }, async (input, extra) => run(env, "list_project_conversations", "projects:read", "general", extra.requestId, async (principal) => {
     const project = await getProject(env, principal, input.project_id);
     if (!project) return notFound();
     const position = await cursorPosition(env, input.cursor, "project_conversations", isUpdatedAtPosition);
@@ -390,7 +408,11 @@ function registerTools(server: McpServer, env: Env) {
       { position, limit: clampPageSize(input.page_size, "list") },
     );
     const payload = {
-      conversations: page.items.map((item) => presentConversationSummary(env.APP_ORIGIN, item)),
+      conversations: page.items.map((item) => presentConversationSummary(
+        env.APP_ORIGIN,
+        principal.clubSlug,
+        item,
+      )),
       ...(page.nextPosition
         ? { next_cursor: await nextCursor(env, "project_conversations", page.nextPosition) }
         : {}),
@@ -404,15 +426,14 @@ function registerTools(server: McpServer, env: Env) {
     inputSchema: getConversationInput,
     outputSchema: getConversationOutput,
     ...metadata("projects:read"),
-  }, async (input, extra) => run(env, "get_conversation", "projects:read", "history", extra.requestId, async () => {
-    const principal = getMcpPrincipal();
+  }, async (input, extra) => run(env, "get_conversation", "projects:read", "history", extra.requestId, async (principal) => {
     const position = await cursorPosition(env, input.cursor, "conversation_messages", isCreatedAtPosition);
     const page = await getThreadPage(env, principal, input.conversation_id, {
       position,
       limit: clampPageSize(input.page_size, "conversation"),
     });
     if (!page) return notFound();
-    const payload = presentConversationPage(env.APP_ORIGIN, {
+    const payload = presentConversationPage(env.APP_ORIGIN, principal.clubSlug, {
       ...page,
       nextCursor: await nextCursor(env, "conversation_messages", page.nextPosition),
     });
@@ -425,13 +446,12 @@ function registerTools(server: McpServer, env: Env) {
     inputSchema: listLearningContentInput,
     outputSchema: listLearningContentOutput,
     ...metadata("content:read"),
-  }, async (input, extra) => run(env, "list_learning_content", "content:read", "general", extra.requestId, async () => {
-    const principal = getMcpPrincipal();
-    void principal;
+  }, async (input, extra) => run(env, "list_learning_content", "content:read", "general", extra.requestId, async (principal) => {
     const position = await cursorPosition(env, input.cursor, "learning_content", isOffsetPosition);
     const pageSize = clampPageSize(input.page_size, "list");
     const payload = listLearningContent({
       appOrigin: env.APP_ORIGIN,
+      clubSlug: principal.clubSlug,
       query: input.query,
       kind: input.kind,
       category: input.category,
@@ -450,13 +470,14 @@ function registerTools(server: McpServer, env: Env) {
     inputSchema: slugInput,
     outputSchema: articleOutput,
     ...metadata("content:read"),
-  }, async (input, extra) => run(env, "read_article", "content:read", "general", extra.requestId, async () => {
-    const principal = getMcpPrincipal();
-    void principal;
+  }, async (input, extra) => run(env, "read_article", "content:read", "general", extra.requestId, async (principal) => {
     const article = getArticles().find((item) => item.slug === input.slug);
     const raw = article ? getArticleRaw(article.slug) : undefined;
     if (!article || raw === undefined) return notFound();
-    return shortResult(presentArticle(env.APP_ORIGIN, article, raw), "Article returned.");
+    return shortResult(
+      presentArticle(env.APP_ORIGIN, principal.clubSlug, article, raw),
+      "Article returned.",
+    );
   }));
 
   server.registerTool("read_module", {
@@ -465,13 +486,14 @@ function registerTools(server: McpServer, env: Env) {
     inputSchema: slugInput,
     outputSchema: moduleOutput,
     ...metadata("content:read"),
-  }, async (input, extra) => run(env, "read_module", "content:read", "general", extra.requestId, async () => {
-    const principal = getMcpPrincipal();
-    void principal;
+  }, async (input, extra) => run(env, "read_module", "content:read", "general", extra.requestId, async (principal) => {
     const module = getModules().find((item) => item.slug === input.slug);
     const raw = module ? getModuleRaw(module.slug) : undefined;
     if (!module || raw === undefined) return notFound();
-    return shortResult(presentModule(env.APP_ORIGIN, module, raw), "Module returned.");
+    return shortResult(
+      presentModule(env.APP_ORIGIN, principal.clubSlug, module, raw),
+      "Module returned.",
+    );
   }));
 
   if (env.MOTHERDUCK_TOKEN) {
@@ -482,8 +504,6 @@ function registerTools(server: McpServer, env: Env) {
       outputSchema: freshReadsOutput,
       ...metadata("content:read"),
     }, async (input, extra) => run(env, "fresh_reads", "content:read", "general", extra.requestId, async () => {
-      const principal = getMcpPrincipal();
-      void principal;
       try {
         const { queryFreshReads } = await import("~/lib/motherduck.server");
         const reads = await queryFreshReads(env, {
@@ -516,8 +536,7 @@ function registerTools(server: McpServer, env: Env) {
     inputSchema: searchInput,
     outputSchema: searchOutput,
     ...metadata(["projects:read", "content:read"]),
-  }, async (input, extra) => run(env, "search", ["projects:read", "content:read"], "general", extra.requestId, async () => {
-    const principal = getMcpPrincipal();
+  }, async (input, extra) => run(env, "search", ["projects:read", "content:read"], "general", extra.requestId, async (principal) => {
     return compatibilityResult(await searchKnowledge(env, principal, input.query));
   }));
 
@@ -527,8 +546,7 @@ function registerTools(server: McpServer, env: Env) {
     inputSchema: fetchInput,
     outputSchema: fetchOutput,
     ...metadata(["projects:read", "content:read"]),
-  }, async (input, extra) => run(env, "fetch", ["projects:read", "content:read"], "general", extra.requestId, async () => {
-    const principal = getMcpPrincipal();
+  }, async (input, extra) => run(env, "fetch", ["projects:read", "content:read"], "general", extra.requestId, async (principal) => {
     return compatibilityResult(await fetchKnowledge(env, principal, input.id));
   }));
 }

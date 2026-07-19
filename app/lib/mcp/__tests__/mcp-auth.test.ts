@@ -17,6 +17,7 @@ import { BODY_MAX_CHARS, RESPONSE_MAX_CHARS } from "~/lib/mcp/contracts";
 
 const generalLimit = vi.fn();
 const historyLimit = vi.fn();
+const clubAccess = vi.fn();
 const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined);
 const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
@@ -30,6 +31,11 @@ function env(): Env {
     SESSION_SECRET: "worker-test-session-secret",
     MCP_GENERAL_LIMITER: { limit: generalLimit },
     MCP_HISTORY_LIMITER: { limit: historyLimit },
+    DB: {
+      prepare: vi.fn(() => ({
+        bind: vi.fn(() => ({ first: clubAccess })),
+      })),
+    },
   } as Env;
 }
 
@@ -39,6 +45,7 @@ beforeEach(() => {
   });
   generalLimit.mockResolvedValue({ success: true });
   historyLimit.mockResolvedValue({ success: true });
+  clubAccess.mockResolvedValue({ clubSlug: "wotf", clubName: "WOTF Club" });
   consoleInfo.mockClear();
   consoleError.mockClear();
 });
@@ -117,6 +124,48 @@ describe("MCP tool auth wrapper", () => {
         "mcp/www_authenticate": [expect.stringContaining("insufficient_scope")],
       },
     });
+  });
+
+  it("resolves the active club before invoking a tool", async () => {
+    const handler = vi.fn(async (principal) => ({
+      club_id: principal.clubId,
+      club_slug: principal.clubSlug,
+    }));
+
+    const result = await runMcpTool({
+      env: env(),
+      toolName: "list_projects",
+      requestId: "request-club",
+      requiredScope: "projects:read",
+      limiter: "general",
+    }, handler);
+
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({
+      userId: "user-a",
+      clubId: "club-a",
+      clubSlug: "wotf",
+      clubName: "WOTF Club",
+    }));
+    expect(result.structuredContent).toEqual({
+      club_id: "club-a",
+      club_slug: "wotf",
+    });
+  });
+
+  it("fails closed when the token's club membership is no longer active", async () => {
+    clubAccess.mockResolvedValue(null);
+    const handler = vi.fn(async () => ({ title: "Never reached" }));
+
+    const result = await runMcpTool({
+      env: env(),
+      toolName: "list_projects",
+      requestId: "request-revoked",
+      requiredScope: "projects:read",
+      limiter: "general",
+    }, handler);
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.content[0].text).toContain("not_found");
   });
 
   it("uses the history limiter only for get_conversation", async () => {
