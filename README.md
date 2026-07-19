@@ -23,6 +23,67 @@ npm test           # vitest
 npm run typecheck  # react-router typegen + tsc
 ```
 
+## MCP connection
+
+Vibe Garden exposes a read-only remote MCP server at
+`https://vibegarden.club/mcp`. Setup details are public at `/connect` and
+data-use information at `/privacy/mcp`. People can revoke a connected app from
+`/settings` after signing in, then open a club's **Connected apps** page.
+
+For local OAuth development, put these overrides and the normal session secret
+in `.dev.vars`; the resource and issuer must match the Vite Worker origin
+exactly:
+
+```dotenv
+SESSION_SECRET=replace-with-a-local-secret
+APP_ORIGIN=http://localhost:5173
+MCP_RESOURCE_URL=http://localhost:5173/mcp
+```
+
+Create the OAuth KV namespace and bind it as `OAUTH_KV` in `wrangler.jsonc`
+before deploying the MCP server. The production Worker also needs the
+`MCP_GENERAL_LIMITER` and `MCP_HISTORY_LIMITER` bindings shown there.
+
+```sh
+npm run test:mcp       # Worker/OAuth integration suite
+npm run mcp:inspect    # inspect a running MCP endpoint
+```
+
+Before a release, follow the [Gardener MCP release checklist](docs/testing/gardener-mcp-release-checklist.md).
+It includes the local Inspector protocol and the required staging verification
+in Claude and ChatGPT. The cross-user isolation checks in both real hosts are
+release-blocking; a local Worker test alone does not pass that gate.
+
+Deploy in this order: create D1 and apply migrations, create and bind OAuth KV
+and rate limiters, set `SESSION_SECRET` plus any reviewer secrets, then deploy
+the Worker. Use `npm run deploy:staging` for staging: the Cloudflare Vite build
+must select the staging environment before Wrangler deploys its generated
+bundle. Do not put production secrets in `.dev.vars` or source control.
+
+### Reviewer data
+
+Set `MCP_REVIEW_EMAIL` and `MCP_REVIEW_PASSWORD` as Worker secrets to enable
+the isolated `/review/login` page. It creates a normal user session only. To
+load the deterministic reviewer sample after deployment, run it against an
+explicit Worker environment:
+
+```sh
+MCP_REVIEW_EMAIL='reviewer@example.test' node scripts/seed-mcp-reviewer.mjs --env staging
+```
+
+Use the same email configured as `MCP_REVIEW_EMAIL` in the staging Worker
+secret. Wrangler does not reveal Worker secret values, so provide that email
+locally when running the command. For the release-blocking cross-user checks,
+run the command again with a second, unused fixture email. That second identity
+is data-only: sign in as the configured reviewer, then use the second
+reviewer's deterministic project and conversation IDs for the isolation tests.
+
+The seeder is idempotent, uses `--remote`, and refuses to run without exactly
+one `--env <name>` target. It writes only its deterministic reviewer user,
+WOTF club membership, projects, conversations, and messages. Review the target
+environment before running it. Do not run it as part of local development or
+tests.
+
 ## Content
 
 Learning articles are MDX files in `content/learning/`. Drop in a file with

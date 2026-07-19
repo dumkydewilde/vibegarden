@@ -1,4 +1,15 @@
-import { and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  isNull,
+  like,
+  lt,
+  or,
+  sql,
+} from "drizzle-orm";
 import { getDb, type Db } from "./db.server";
 import type { ClubUserScope } from "./projects.server";
 import { chatMessages, chatThreads, projects, users } from "~/db/schema";
@@ -10,6 +21,20 @@ export type StoredContext = {
   label: string;
   content: string;
 };
+
+export type MessagePosition = { createdAt: number; id: string };
+export type ThreadPosition = { updatedAt: number; id: string };
+
+function ownedLike(
+  column: typeof chatThreads.title | typeof chatMessages.content,
+  term: string,
+) {
+  return sql`${like(sql`lower(${column})`, term)} escape '\\'`;
+}
+
+function escapedLikeTerm(query: string) {
+  return `%${query.trim().toLowerCase().replace(/[\\%_]/g, "\\$&")}%`;
+}
 
 /** Stored context JSON on a message row, parsed defensively. */
 export function parseContext(raw: string | null): StoredContext[] | undefined {
@@ -149,6 +174,88 @@ export async function listProjectThreads(
     .orderBy(desc(chatThreads.updatedAt));
 }
 
+export async function listProjectThreadsPage(
+  env: Env,
+  scope: ClubUserScope,
+  projectId: string,
+  primaryThreadId: string | null,
+  input: { position?: ThreadPosition; limit: number },
+) {
+  const filters = [
+    eq(chatThreads.clubId, scope.clubId),
+    eq(chatThreads.userId, scope.userId),
+    primaryThreadId
+      ? or(
+          eq(chatThreads.projectId, projectId),
+          eq(chatThreads.id, primaryThreadId),
+        )
+      : eq(chatThreads.projectId, projectId),
+  ];
+  if (input.position) {
+    filters.push(
+      or(
+        lt(chatThreads.updatedAt, input.position.updatedAt),
+        and(
+          eq(chatThreads.updatedAt, input.position.updatedAt),
+          lt(chatThreads.id, input.position.id),
+        ),
+      )!,
+    );
+  }
+  const rows = await getDb(env)
+    .select({
+      id: chatThreads.id,
+      title: chatThreads.title,
+      updatedAt: chatThreads.updatedAt,
+      messageCount: sql<number>`count(${chatMessages.id})`,
+    })
+    .from(chatThreads)
+    .innerJoin(chatMessages, eq(chatMessages.threadId, chatThreads.id))
+    .where(and(...filters))
+    .groupBy(chatThreads.id)
+    .orderBy(desc(chatThreads.updatedAt), desc(chatThreads.id))
+    .limit(input.limit + 1);
+  const hasMore = rows.length > input.limit;
+  const items = rows.slice(0, input.limit);
+  const last = items.at(-1);
+  return {
+    items,
+    nextPosition:
+      hasMore && last
+        ? { updatedAt: last.updatedAt, id: last.id }
+        : undefined,
+  };
+}
+
+export async function searchOwnedThreads(
+  env: Env,
+  scope: ClubUserScope,
+  query: string,
+  limit: number,
+) {
+  const term = escapedLikeTerm(query);
+  return getDb(env)
+    .selectDistinct({
+      id: chatThreads.id,
+      title: chatThreads.title,
+      updatedAt: chatThreads.updatedAt,
+    })
+    .from(chatThreads)
+    .leftJoin(chatMessages, eq(chatMessages.threadId, chatThreads.id))
+    .where(
+      and(
+        eq(chatThreads.clubId, scope.clubId),
+        eq(chatThreads.userId, scope.userId),
+        or(
+          ownedLike(chatThreads.title, term),
+          ownedLike(chatMessages.content, term),
+        ),
+      ),
+    )
+    .orderBy(desc(chatThreads.updatedAt), desc(chatThreads.id))
+    .limit(Math.min(Math.max(Math.trunc(limit), 0), 20));
+}
+
 /** The active (latest) thread and its messages, for the sidebar. */
 export async function activeThread(env: Env, scope: ClubUserScope, limit = 50) {
   const db = getDb(env);
@@ -218,6 +325,62 @@ export async function getThread(env: Env, scope: ClubUserScope, threadId: string
     .where(eq(chatMessages.threadId, threadId))
     .orderBy(asc(chatMessages.createdAt));
   return { thread, messages };
+}
+
+export async function getThreadPage(
+  env: Env,
+  scope: ClubUserScope,
+  threadId: string,
+  input: { position?: MessagePosition; limit: number },
+) {
+  const db = getDb(env);
+  const owned = await db
+    .select()
+    .from(chatThreads)
+    .where(
+      and(
+        eq(chatThreads.id, threadId),
+        eq(chatThreads.clubId, scope.clubId),
+        eq(chatThreads.userId, scope.userId),
+      ),
+    )
+    .limit(1);
+  if (!owned[0]) return null;
+
+  const filters = [
+    eq(chatThreads.id, threadId),
+    eq(chatThreads.clubId, scope.clubId),
+    eq(chatThreads.userId, scope.userId),
+  ];
+  if (input.position) {
+    filters.push(
+      or(
+        gt(chatMessages.createdAt, input.position.createdAt),
+        and(
+          eq(chatMessages.createdAt, input.position.createdAt),
+          gt(chatMessages.id, input.position.id),
+        ),
+      )!,
+    );
+  }
+  const rows = await db
+    .select({ message: chatMessages })
+    .from(chatMessages)
+    .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.threadId))
+    .where(and(...filters))
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
+    .limit(input.limit + 1);
+  const hasMore = rows.length > input.limit;
+  const messages = rows.slice(0, input.limit).map((row) => row.message);
+  const last = messages.at(-1);
+  return {
+    thread: owned[0],
+    messages,
+    nextPosition:
+      hasMore && last
+        ? { createdAt: last.createdAt, id: last.id }
+        : undefined,
+  };
 }
 
 /** A thread for an already-authorized admin to review. */

@@ -1,5 +1,6 @@
 import type { ToolSpec } from "@vibegarden/agent-core";
 import { getArticle, getArticleRaw, getArticles } from "./content";
+import { stripFrontmatter } from "./markdown";
 import { getModule, getModuleRaw, getModules } from "./modules";
 import {
   formatFreshReads,
@@ -25,11 +26,6 @@ export const TOOL_RESULT_MAX_CHARS = 20_000;
 export const DIAGRAM_TITLE_MAX_CHARS = 120;
 export const DIAGRAM_SOURCE_MAX_CHARS = 12_000;
 const FETCH_TIMEOUT_MS = 10_000;
-
-/** Strip MDX frontmatter; the model gets the prose, not the metadata. */
-function stripFrontmatter(raw: string) {
-  return raw.replace(/^---\n[\s\S]*?\n---\n/, "").trim();
-}
 
 /** Very small HTML-to-text: good enough for grounding, not for rendering. */
 export function htmlToText(html: string) {

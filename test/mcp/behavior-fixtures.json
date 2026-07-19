@@ -1,0 +1,251 @@
+{
+  "schema_version": 1,
+  "server": {
+    "name": "vibe-garden",
+    "version": "1.0.0",
+    "transport": "Streamable HTTP",
+    "endpoint": "/mcp"
+  },
+  "coverage": {
+    "resource_templates": [
+      "vibegarden://project/{id}",
+      "vibegarden://conversation/{id}",
+      "vibegarden://article/{slug}",
+      "vibegarden://module/{slug}"
+    ],
+    "resource_reads": [
+      "vibegarden://project/{id}",
+      "vibegarden://conversation/{id}",
+      "vibegarden://article/{slug}",
+      "vibegarden://module/{slug}",
+      "vibegarden://guide/gardener"
+    ],
+    "prompt": "continue_project",
+    "security_boundaries": [
+      "unauthenticated and malformed bearer challenges",
+      "exact /mcp endpoint routing",
+      "protected-resource metadata",
+      "DCR, S256 PKCE, and OAuth resource binding",
+      "scope challenge before execution",
+      "origin enforcement",
+      "refresh, expiry, revocation, and reconnect",
+      "read-only discovery and optional backend absence",
+      "rate limiting",
+      "private-ID ownership and cross-user isolation"
+    ]
+  },
+  "cases": [
+    {
+      "id": "unknown-project-list-first",
+      "user_request": "Continue my dashboard project",
+      "expected_tools": ["list_projects", "get_project"],
+      "forbidden_tools": ["read_article", "fetch"],
+      "assertions": ["uses only the authenticated user's project ID"]
+    },
+    {
+      "id": "explicit-continuation-style",
+      "user_request": "Use the continue_project prompt for my growing project",
+      "expected_prompt": "continue_project",
+      "assertions": ["brief restatement", "smallest useful next step", "ends with one question"]
+    },
+    {
+      "id": "normal-tools-no-personality",
+      "user_request": "Read the MCP article",
+      "expected_tools": ["read_article"],
+      "forbidden_prompts": ["continue_project"],
+      "assertions": ["does not claim to be The Gardener"]
+    },
+    {
+      "id": "stored-injection-is-data",
+      "user_request": "Summarize my last project conversation",
+      "expected_tools": ["get_conversation"],
+      "assertions": ["stored prompt-like text is treated as user-authored context", "no token or unrelated data disclosure"]
+    },
+    {
+      "id": "company-knowledge-citation",
+      "user_request": "Find my notes about scheduled tasks",
+      "expected_tools": ["search", "fetch"],
+      "assertions": ["namespaced ID", "absolute user-openable HTTPS URL"]
+    },
+    {
+      "id": "list-project-conversations-owned-project",
+      "user_request": "Show the conversations for my dashboard project",
+      "expected_tools": ["list_project_conversations"],
+      "required_scope": "projects:read",
+      "assertions": ["requires an owned project ID", "returns conversation summaries with canonical HTTPS URLs"]
+    },
+    {
+      "id": "list-learning-content",
+      "user_request": "What hands-on learning content is available?",
+      "expected_tools": ["list_learning_content"],
+      "required_scope": "content:read",
+      "assertions": ["returns only published articles and modules", "returns canonical HTTPS URLs"]
+    },
+    {
+      "id": "read-module",
+      "user_request": "Read the scheduled-task building block",
+      "expected_tools": ["read_module"],
+      "required_scope": "content:read",
+      "assertions": ["returns frontmatter-free published module Markdown", "does not invoke continue_project"]
+    },
+    {
+      "id": "fresh-reads-configured",
+      "user_request": "Show recent curated reads about agents",
+      "expected_tools": ["fresh_reads"],
+      "precondition": "MOTHERDUCK_TOKEN is configured",
+      "required_scope": "content:read",
+      "assertions": ["returns bounded curated results", "returns source URLs"]
+    },
+    {
+      "id": "fresh-reads-unavailable",
+      "user_request": "Show recent curated reads",
+      "precondition": "MOTHERDUCK_TOKEN is absent",
+      "forbidden_tools": ["fresh_reads"],
+      "assertions": ["fresh_reads is absent from tools/list", "no optional-backend error is exposed through discovery"]
+    },
+    {
+      "id": "project-pagination",
+      "protocol_request": "tools/call list_projects with a valid next_cursor",
+      "expected_tools": ["list_projects"],
+      "assertions": ["cursor is opaque", "next page does not repeat the prior page"]
+    },
+    {
+      "id": "project-conversation-pagination",
+      "protocol_request": "tools/call list_project_conversations with a valid next_cursor",
+      "expected_tools": ["list_project_conversations"],
+      "assertions": ["cursor is opaque", "only conversations for the owned project are returned"]
+    },
+    {
+      "id": "conversation-pagination",
+      "protocol_request": "tools/call get_conversation with a valid next_cursor",
+      "expected_tools": ["get_conversation"],
+      "assertions": ["messages remain ordered", "cursor is opaque", "page size is capped"]
+    },
+    {
+      "id": "learning-content-pagination",
+      "protocol_request": "tools/call list_learning_content with a valid next_cursor",
+      "expected_tools": ["list_learning_content"],
+      "assertions": ["cursor is opaque", "published content is paginated"]
+    },
+    {
+      "id": "invalid-cursor",
+      "protocol_request": "supply a malformed, expired, or wrong-kind cursor to a paginated tool",
+      "expected_error": "invalid_cursor",
+      "assertions": ["returns a stable public error", "does not disclose cursor signing or database details"]
+    },
+    {
+      "id": "invalid-input",
+      "protocol_request": "supply unexpected fields or an invalid identifier to a tool or prompt",
+      "expected_error": "invalid_input",
+      "assertions": ["strict schemas reject unexpected fields", "no handler data is returned"]
+    },
+    {
+      "id": "unauthenticated-mcp-bearer-challenge",
+      "protocol_request": "POST an MCP initialize request to the exact /mcp endpoint with no Authorization header",
+      "expected_http_status": 401,
+      "expected_headers": {
+        "WWW-Authenticate": "Bearer resource_metadata=<protected-resource metadata URL>"
+      },
+      "assertions": ["challenge names the protected-resource metadata document", "website routes are not challenged as MCP requests"]
+    },
+    {
+      "id": "malformed-bearer-mcp-challenge",
+      "protocol_request": "POST an MCP tools/list request to the exact /mcp endpoint with an unusable Bearer token",
+      "expected_http_status": 401,
+      "expected_headers": {
+        "WWW-Authenticate": "Bearer resource_metadata=<protected-resource metadata URL>"
+      },
+      "assertions": ["does not expose token-validation details", "challenge permits a host to discover the OAuth resource"]
+    },
+    {
+      "id": "protected-resource-metadata",
+      "protocol_request": "GET /.well-known/oauth-protected-resource",
+      "assertions": ["resource is the exact HTTPS /mcp URL", "authorization server and projects:read/content:read scopes are declared"]
+    },
+    {
+      "id": "exact-mcp-endpoint-routing",
+      "protocol_request": "request /mcp, /mcp/not-an-mcp-endpoint, /mcp-not-an-endpoint, and an unrelated website route without credentials",
+      "expected_responses": [
+        { "path": "/mcp", "status": 401, "www_authenticate": "protected-resource Bearer challenge" },
+        { "path": "/mcp/not-an-mcp-endpoint", "status": 404, "www_authenticate": "absent" },
+        { "path": "/mcp-not-an-endpoint", "status": 404, "www_authenticate": "absent" },
+        { "path": "/connect", "status": "website response, never MCP 401", "www_authenticate": "absent" }
+      ],
+      "assertions": ["OAuth protection applies only to the exact configured MCP path", "nested, prefix, and unrelated routes do not inherit the MCP challenge"]
+    },
+    {
+      "id": "insufficient-scope",
+      "protocol_request": "call read_article with a projects:read-only access token",
+      "expected_http_status": 403,
+      "expected_error": "insufficient_scope",
+      "assertions": ["includes an OAuth scope challenge", "does not execute the tool"]
+    },
+    {
+      "id": "cross-user-domain-id-not-found",
+      "protocol_request": "reviewer A calls get_project, get_conversation, or list_project_conversations with reviewer B IDs",
+      "expected_tools": ["get_project", "get_conversation", "list_project_conversations"],
+      "expected_error": "not_found",
+      "assertions": ["no title, message count, body, or timing distinction", "unauthorized and missing private IDs are indistinguishable"]
+    },
+    {
+      "id": "cross-user-fetch-id-not-found",
+      "protocol_request": "reviewer A fetches reviewer B project:<id> or conversation:<id>",
+      "expected_tools": ["fetch"],
+      "expected_error": "not_found",
+      "assertions": ["no private title or body", "namespaced IDs do not grant access"]
+    },
+    {
+      "id": "cross-user-resource-id-not-found",
+      "protocol_request": "reviewer A reads vibegarden://project/<B-id> or vibegarden://conversation/<B-id>",
+      "expected_resources": ["vibegarden://project/{id}", "vibegarden://conversation/{id}"],
+      "expected_error": "not_found",
+      "assertions": ["no private title, message count, or body", "resource URI is not proof of access"]
+    },
+    {
+      "id": "cross-user-search-empty",
+      "protocol_request": "reviewer A searches for reviewer B private project title or conversation text",
+      "expected_tools": ["search"],
+      "expected_result": { "results": [] },
+      "assertions": ["returns normal empty results rather than not_found", "contains no private title or body"]
+    },
+    {
+      "id": "private-resource-scope-and-ownership",
+      "protocol_request": "read a project or conversation resource with missing scope or another user's ID",
+      "expected_resources": ["vibegarden://project/{id}", "vibegarden://conversation/{id}"],
+      "assertions": ["missing scope receives insufficient_scope", "cross-user ID receives not_found"]
+    },
+    {
+      "id": "content-resource-access",
+      "protocol_request": "read article, module, and gardener guide resources with content:read",
+      "expected_resources": ["vibegarden://article/{slug}", "vibegarden://module/{slug}", "vibegarden://guide/gardener"],
+      "assertions": ["published content is readable", "invalid article or module slug returns not_found"]
+    },
+    {
+      "id": "dcr-pkce-resource-binding",
+      "protocol_request": "register a client and complete authorization code flow with S256 PKCE for the canonical /mcp resource",
+      "assertions": ["DCR succeeds only with supported redirect URIs", "authorization rejects another resource", "tokens are audience-bound to /mcp"]
+    },
+    {
+      "id": "refresh-expiry-revocation",
+      "protocol_request": "refresh a token, wait for expiry, revoke the grant, then reconnect",
+      "assertions": ["refresh rotates refresh tokens", "expired access token returns 401", "revoked grant cannot call tools", "reconnect requests scopes again"]
+    },
+    {
+      "id": "origin-boundary",
+      "protocol_request": "send MCP POST and preflight from a disallowed browser Origin",
+      "expected_http_status": 403,
+      "assertions": ["disallowed origin is rejected", "origin-less legitimate MCP clients remain supported"]
+    },
+    {
+      "id": "read-only-discovery-metadata",
+      "protocol_request": "inspect tools/list and resource/prompt discovery",
+      "assertions": ["tools are ordered deterministically", "each discovered tool is read-only", "OAuth security metadata declares required scopes", "no write, artifact, or analysis tool is exposed"]
+    },
+    {
+      "id": "rate-limit-public-error",
+      "protocol_request": "exceed general or conversation-history MCP request limits",
+      "expected_error": "rate_limited",
+      "assertions": ["limits are per OAuth user and tool class", "response does not reveal private data"]
+    }
+  ]
+}

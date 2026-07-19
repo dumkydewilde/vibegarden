@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, like, lt, or, sql } from "drizzle-orm";
 import { getDb } from "./db.server";
 import { isModuleName } from "./modules";
 import { chatThreads, projects, type Project } from "~/db/schema";
@@ -15,6 +15,21 @@ export function parseModules(raw: string | null): string[] {
   }
 }
 
+export type DescPosition = { updatedAt: number; id: string };
+export type ProjectPageInput = {
+  status?: "seed" | "growing" | "bloomed";
+  position?: DescPosition;
+  limit: number;
+};
+
+function ownedLike(column: typeof projects.title, term: string) {
+  return sql`${like(sql`lower(${column})`, term)} escape '\\'`;
+}
+
+function escapedLikeTerm(query: string) {
+  return `%${query.trim().toLowerCase().replace(/[\\%_]/g, "\\$&")}%`;
+}
+
 export async function listProjects(env: Env, scope: ClubUserScope) {
   const rows = await getDb(env)
     .select()
@@ -27,6 +42,69 @@ export async function listProjects(env: Env, scope: ClubUserScope) {
     )
     .orderBy(desc(projects.updatedAt));
   return rows.map((p) => ({ ...p, moduleList: parseModules(p.modules) }));
+}
+
+export async function listProjectsPage(
+  env: Env,
+  scope: ClubUserScope,
+  input: ProjectPageInput,
+) {
+  const filters = [
+    eq(projects.clubId, scope.clubId),
+    eq(projects.userId, scope.userId),
+  ];
+  if (input.status) filters.push(eq(projects.status, input.status));
+  if (input.position) {
+    filters.push(
+      or(
+        lt(projects.updatedAt, input.position.updatedAt),
+        and(
+          eq(projects.updatedAt, input.position.updatedAt),
+          lt(projects.id, input.position.id),
+        ),
+      )!,
+    );
+  }
+  const rows = await getDb(env)
+    .select()
+    .from(projects)
+    .where(and(...filters))
+    .orderBy(desc(projects.updatedAt), desc(projects.id))
+    .limit(input.limit + 1);
+  const hasMore = rows.length > input.limit;
+  const items = rows.slice(0, input.limit).map((project) => ({
+    ...project,
+    moduleList: parseModules(project.modules),
+  }));
+  const last = items.at(-1);
+  return {
+    items,
+    nextPosition:
+      hasMore && last
+        ? { updatedAt: last.updatedAt, id: last.id }
+        : undefined,
+  };
+}
+
+export async function searchOwnedProjects(
+  env: Env,
+  scope: ClubUserScope,
+  query: string,
+  limit: number,
+) {
+  const term = escapedLikeTerm(query);
+  return getDb(env)
+    .select()
+    .from(projects)
+    .where(
+      and(
+        eq(projects.clubId, scope.clubId),
+        eq(projects.userId, scope.userId),
+        or(ownedLike(projects.title, term), ownedLike(projects.oneLiner, term)),
+      ),
+    )
+    .orderBy(desc(projects.updatedAt), desc(projects.id))
+    .limit(Math.min(Math.max(Math.trunc(limit), 0), 20));
 }
 
 export async function getProject(env: Env, scope: ClubUserScope, id: string) {

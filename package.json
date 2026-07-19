@@ -7,15 +7,19 @@
   ],
   "scripts": {
     "build": "react-router build",
+    "build:staging": "CLOUDFLARE_ENV=staging react-router build",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc",
     "deploy": "npm run build && wrangler deploy",
+    "deploy:staging": "npm run build:staging && wrangler deploy --env staging",
     "preview": "npm run build && vite preview",
     "test": "vitest run",
     "test:d1": "vitest run --config vitest.d1.config.ts",
     "test:migrations": "vitest run --config vitest.migration.config.ts",
-    "test:all": "npm test && npm run test:d1 && npm run test:migrations",
+    "test:mcp": "vitest run --config vitest.worker.config.ts",
+    "test:all": "npm test && npm run test:d1 && npm run test:migrations && npm run test:mcp",
+    "mcp:inspect": "mcp-inspector",
     "cf-typegen": "wrangler types",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 migrations apply DB --local",
@@ -24,10 +28,14 @@
   "dependencies": {
     "@vibegarden/agent-core": "*",
     "@vibegarden/agent-web": "*",
+    "@cloudflare/workers-oauth-provider": "0.8.0",
+    "@duckdb/duckdb-wasm": "^1.33.1-dev57.0",
     "@fontsource-variable/merriweather": "^5.2.6",
     "@fontsource/roboto": "^5.2.10",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@react-router/node": "8.0.0",
     "@react-router/serve": "8.0.0",
+    "agents": "0.16.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
@@ -43,13 +51,15 @@
     "react-markdown": "^10.1.0",
     "react-router": "8.0.0",
     "sonner": "^2.0.7",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.44.0",
+    "@cloudflare/vite-plugin": "^1.45.1",
     "@cloudflare/vitest-pool-workers": "^0.18.6",
     "@cloudflare/workers-types": "^5.20260708.1",
     "@mdx-js/rollup": "^3.1.1",
+    "@modelcontextprotocol/inspector": "^0.22.0",
     "@react-router/dev": "8.0.0",
     "@tailwindcss/vite": "^4.2.2",
     "@testing-library/dom": "^10.4.1",
@@ -71,12 +81,6 @@
     "typescript": "^5.9.3",
     "vite": "^8.0.3",
     "vitest": "^4.1.10",
-    "wrangler": "^4.97.0"
-  },
-  "overrides": {
-    "@cloudflare/vitest-pool-workers": {
-      "miniflare": "4.20260708.1",
-      "wrangler": "4.110.0"
-    }
+    "wrangler": "^4.112.0"
   }
 }

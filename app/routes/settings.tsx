@@ -215,13 +215,29 @@ export default function Settings() {
                   </p>
                 </div>
                 {club.status === "active" && membership.role === "owner" ? (
-                  <p className="text-sm text-muted-foreground">Transfer ownership before leaving this club.</p>
+                  <div className="flex items-center gap-3">
+                    <Link
+                      to={clubPath(club.slug, "settings/connections")}
+                      className="text-sm underline-offset-4 hover:underline"
+                    >
+                      Connected apps
+                    </Link>
+                    <p className="text-sm text-muted-foreground">Transfer ownership before leaving this club.</p>
+                  </div>
                 ) : club.status === "active" ? (
-                  <Form method="post">
-                    <input type="hidden" name="intent" value="leave-club" />
-                    <input type="hidden" name="clubId" value={club.id} />
-                    <Button variant="outline" type="submit">Leave club</Button>
-                  </Form>
+                  <div className="flex items-center gap-3">
+                    <Link
+                      to={clubPath(club.slug, "settings/connections")}
+                      className="text-sm underline-offset-4 hover:underline"
+                    >
+                      Connected apps
+                    </Link>
+                    <Form method="post">
+                      <input type="hidden" name="intent" value="leave-club" />
+                      <input type="hidden" name="clubId" value={club.id} />
+                      <Button variant="outline" type="submit">Leave club</Button>
+                    </Form>
+                  </div>
                 ) : null}
               </li>
             ))}

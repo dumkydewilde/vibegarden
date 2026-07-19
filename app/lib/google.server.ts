@@ -1,4 +1,5 @@
 import { signValue, verifyValue } from "./auth.server";
+import { safeInternalPath } from "./return-path";
 
 const STATE_COOKIE = "vg_oauth_state";
 
@@ -11,25 +12,17 @@ function callbackUrl(request: Request) {
   return `${url.origin}/auth/google/callback`;
 }
 
-function safeNextPath(request: Request, value: string | null) {
-  if (!value?.startsWith("/") || value.startsWith("//")) return "/";
-  const current = new URL(request.url);
-  const destination = new URL(value, current);
-  if (destination.origin !== current.origin) return "/";
-  return `${destination.pathname}${destination.search}${destination.hash}`;
-}
-
 function nextPath(request: Request) {
   const url = new URL(request.url);
   const explicit = url.searchParams.get("next");
-  if (explicit) return safeNextPath(request, explicit);
+  if (explicit) return safeInternalPath(request, explicit);
 
   const referer = request.headers.get("Referer");
   if (!referer) return "/";
   try {
     const source = new URL(referer);
     if (source.origin !== url.origin || source.pathname !== "/login") return "/";
-    return safeNextPath(request, source.searchParams.get("next"));
+    return safeInternalPath(request, source.searchParams.get("next"));
   } catch {
     return "/";
   }
@@ -53,7 +46,7 @@ export async function googleAuthRedirect(
   const signed = await signValue(
     JSON.stringify({
       state,
-      next: next === undefined ? nextPath(request) : safeNextPath(request, next),
+      next: next === undefined ? nextPath(request) : safeInternalPath(request, next),
     }),
     env.SESSION_SECRET,
   );
@@ -130,6 +123,6 @@ export async function handleGoogleCallback(
     ok: true,
     email: info.email,
     name: info.name ?? null,
-    next: safeNextPath(request, storedState.next ?? null),
+    next: safeInternalPath(request, storedState.next ?? null),
   };
 }

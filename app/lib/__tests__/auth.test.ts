@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { signValue, verifyValue } from "~/lib/auth.server";
+import {
+  googleAuthRedirect,
+  handleGoogleCallback,
+} from "~/lib/google.server";
 import {
   codesMatch,
   generateCode,
@@ -38,6 +42,84 @@ describe("session cookie signing", () => {
     await expect(
       verifyValue(`value.${"ab".repeat(32)}`, ""),
     ).rejects.toThrow(/SESSION_SECRET is not set/);
+  });
+});
+
+describe("Google OAuth login state", () => {
+  const env = {
+    GOOGLE_CLIENT_ID: "google-client",
+    GOOGLE_CLIENT_SECRET: "google-secret",
+    SESSION_SECRET: "test-secret",
+  } as Env;
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function callbackFor(next: string) {
+    const redirectRequest = new Request(
+      `https://vibegarden.test/auth/google?next=${encodeURIComponent(next)}`,
+    );
+    const { url, stateCookie } = await googleAuthRedirect(env, redirectRequest);
+    const nonce = new URL(url).searchParams.get("state");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ access_token: "token" }), {
+            status: 200,
+          }),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              email: "ada@example.com",
+              email_verified: true,
+              name: "Ada",
+            }),
+            { status: 200 },
+          ),
+        ),
+    );
+
+    return handleGoogleCallback(
+      env,
+      new Request(
+        `https://vibegarden.test/auth/google/callback?code=code&state=${nonce}`,
+        { headers: { Cookie: stateCookie } },
+      ),
+    );
+  }
+
+  it("preserves a safe internal return path in its signed state cookie", async () => {
+    const response = await callbackFor("/authorize?client_id=abc");
+
+    expect(response).toEqual({
+      ok: true,
+      email: "ada@example.com",
+      name: "Ada",
+      next: "/authorize?client_id=abc",
+    });
+  });
+
+  it.each(["//evil.example/steal", "https://evil.example/steal"])(
+    "rejects an unsafe return path %s",
+    async (next) => {
+      const response = await callbackFor(next);
+
+      expect(response).toMatchObject({ ok: true, next: "/" });
+    },
+  );
+
+  it("rejects a malformed state cookie without throwing", async () => {
+    await expect(
+      handleGoogleCallback(
+        env,
+        new Request(
+          "https://vibegarden.test/auth/google/callback?code=code&state=nonce",
+          { headers: { Cookie: "vg_oauth_state=%" } },
+        ),
+      ),
+    ).resolves.toEqual({ ok: false, error: "bad-state" });
   });
 });
 

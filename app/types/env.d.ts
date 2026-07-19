@@ -1,6 +1,16 @@
 // Optional secrets merged into the generated Env (worker-configuration.d.ts).
 // Set via `wrangler secret put` in production or .dev.vars locally.
 interface Env {
+  APP_ORIGIN: string;
+  MCP_RESOURCE_URL: string;
+  MCP_ALLOWED_ORIGINS: string;
+  SUPPORT_EMAIL: string;
+  OAUTH_KV: KVNamespace;
+  OAUTH_PROVIDER: import("@cloudflare/workers-oauth-provider").OAuthHelpers;
+  MCP_GENERAL_LIMITER: RateLimit;
+  MCP_HISTORY_LIMITER: RateLimit;
+  MCP_REVIEW_EMAIL?: string;
+  MCP_REVIEW_PASSWORD?: string;
   /** Development-only credential for /dev/login. */
   DEV_LOGIN_TOKEN?: string;
   RESEND_API_KEY?: string;
