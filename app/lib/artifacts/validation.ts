@@ -152,6 +152,7 @@ export function normalizeArtifactPath(input: string): string {
 export function validateZipArtifactEntry(file: Pick<ArtifactPackageFile, "path" | "zipUnixMode" | "zipIsDirectory">): string {
   if (file.zipIsDirectory) return throwArtifact("invalid_manifest");
   if (file.zipUnixMode !== undefined) {
+    if (!Number.isSafeInteger(file.zipUnixMode)) return throwArtifact("invalid_manifest");
     const fileType = file.zipUnixMode & 0o170000;
     if (fileType !== 0 && fileType !== 0o100000) return throwArtifact("invalid_manifest");
   }
@@ -307,6 +308,7 @@ export function isStaticDependencyOrigin(origin: string): boolean {
 }
 
 export function canonicalManifest(files: readonly ArtifactManifestFile[]): string {
+  if (!Array.isArray(files)) return throwArtifact("invalid_manifest");
   const normalized = files
     .map((file) => {
       if (!isRecord(file)) return throwArtifact("invalid_manifest");

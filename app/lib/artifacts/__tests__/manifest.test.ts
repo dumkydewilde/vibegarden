@@ -21,6 +21,21 @@ describe("artifact manifests", () => {
     },
   );
 
+  it.each([null, "not manifest files", { path: "index.html" }])(
+    "rejects a non-array manifest root before mapping: %o",
+    async (input) => {
+      expect(() => canonicalManifest(input as unknown as typeof files)).toThrow(ArtifactError);
+      try {
+        canonicalManifest(input as unknown as typeof files);
+      } catch (error) {
+        expect(error).toMatchObject({ code: "invalid_manifest" } satisfies Partial<ArtifactError>);
+      }
+      await expect(manifestHash(input as unknown as typeof files)).rejects.toMatchObject({
+        code: "invalid_manifest",
+      } satisfies Partial<ArtifactError>);
+    },
+  );
+
   it("hashes manifest entries in normalized path order with lowercase checksums", async () => {
     const first = await manifestHash(files);
     const second = await manifestHash([...files].reverse());

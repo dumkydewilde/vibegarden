@@ -196,6 +196,13 @@ The approval review found two Important malformed-input consistency gaps:
 1. `canonicalManifest()` permits non-string MIME or checksum fields to reach native coercion or regex operations rather than returning a stable `ArtifactError`.
 2. `mutationFingerprint()` accepts file paths that collide after NFC normalization.
 
+## Final approval review findings
+
+The final approval review found two further Important malformed-input gaps:
+
+1. `canonicalManifest()` and `manifestHash()` call `.map()` without confirming that the supplied files value is an array.
+2. ZIP mode metadata is used in a bitwise operation before runtime numeric validation, allowing non-numeric values to throw native errors.
+
 ## Approval review fixes — 2026-07-19
 
 ### Scope
@@ -251,3 +258,59 @@ exit 0
 - Checksums are type-checked before their SHA-256 regular expression is evaluated, preventing Symbol coercion failures.
 - Fingerprint paths are normalized by the existing canonical file helper, then checked as a set before hashing, so canonically equivalent paths cannot produce a misleading fingerprint.
 - The direct manifest regression also asserts MIME/path mismatch rejection. The unrelated untracked documentation plan remains excluded.
+
+## Final approval review fixes — 2026-07-19
+
+### Scope
+
+Resolved the final two Important malformed-input findings:
+
+1. `canonicalManifest()` now checks its root input with `Array.isArray()` before calling `.map()`. `manifestHash()` inherits the same stable `invalid_manifest` rejection through the canonicalization boundary.
+2. `validateZipArtifactEntry()` now requires `zipUnixMode` to be a safe integer before applying the ZIP file-type bit mask. Symbols, bigints, strings, non-finite values, and fractional values all return a stable `invalid_manifest` `ArtifactError`.
+
+### TDD evidence
+
+RED (tests added before production changes):
+
+```text
+npm test -- app/lib/artifacts/__tests__/validation.test.ts app/lib/artifacts/__tests__/manifest.test.ts
+exit 1
+2 test files failed; 8 tests failed and 72 passed.
+
+Expected failures:
+- `canonicalManifest()` threw native TypeErrors for `null`, a primitive, and a record root because `.map()` was called before input validation;
+- `manifestHash()` therefore rejected with those native TypeErrors rather than `invalid_manifest`;
+- Symbol and bigint ZIP modes threw native TypeErrors during bitwise coercion, while string, infinite, and fractional modes were coerced instead of rejected.
+```
+
+GREEN (after the minimal boundary guards):
+
+```text
+npm test -- app/lib/artifacts/__tests__/validation.test.ts app/lib/artifacts/__tests__/manifest.test.ts
+exit 0
+2 test files passed; 80 tests passed.
+
+npm run typecheck
+react-router typegen && tsc
+exit 0
+
+git diff --check
+exit 0
+```
+
+### Files changed
+
+- `app/lib/artifacts/validation.ts`
+- `app/lib/artifacts/__tests__/validation.test.ts`
+- `app/lib/artifacts/__tests__/manifest.test.ts`
+- `.superpowers/sdd/task-3-report.md`
+
+### Commit
+
+`HEAD` — `fix: validate artifact manifest inputs`
+
+### Self-review
+
+- The root guard is before the only `.map()` call, so every non-array root is an `ArtifactError` with the stable `invalid_manifest` code.
+- The ZIP mode guard is before the only bitwise operation and uses `Number.isSafeInteger`, retaining normal valid integer mode behavior without coercing malformed values.
+- Focused tests, typechecking, and whitespace validation pass. The pre-existing untracked documentation plan remains excluded from the change.

@@ -102,6 +102,19 @@ describe("artifact packages", () => {
     );
   });
 
+  it.each([Symbol("mode"), 0o100644n, "0o100644", Number.POSITIVE_INFINITY, 0o100644 + 0.5])(
+    "rejects a non-integral ZIP Unix mode before applying a bitwise mask: %s",
+    (zipUnixMode) => {
+      expectCode(
+        () => validateZipArtifactEntry({
+          path: "index.html",
+          zipUnixMode: zipUnixMode as unknown as number,
+        }),
+        "invalid_manifest",
+      );
+    },
+  );
+
   it.each([
     ["html", "index.html", "text/html"],
     ["html", "assets/app.js", "text/javascript"],
