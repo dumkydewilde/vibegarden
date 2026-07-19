@@ -1,5 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { assertWebsiteWriteOrigin } from "~/lib/request-security.server";
+
+const routeHandler = vi.hoisted(() => vi.fn());
+
+vi.mock("react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router")>();
+  return {
+    ...actual,
+    createRequestHandler: vi.fn(() => routeHandler),
+  };
+});
+
+vi.mock("virtual:react-router/server-build", () => ({}));
+
+const { handleReactRouterRequest } = await import("../../../workers/react-router");
 
 const env = {
   WEB_ALLOWED_ORIGINS: "https://vibegarden.club, http://localhost:5173",
@@ -50,5 +64,46 @@ describe("assertWebsiteWriteOrigin", () => {
     expect(() => assertWebsiteWriteOrigin(request("POST", "*"), {
       WEB_ALLOWED_ORIGINS: "*",
     } as Env)).toThrow(expect.objectContaining({ status: 403 }));
+  });
+});
+
+describe("handleReactRouterRequest", () => {
+  it.each([undefined, null, "https://usercontent.vibegarden.club", "https://evil.example"])(
+    "returns 403 before invoking the route handler for unsafe origin %s",
+    async (origin) => {
+      routeHandler.mockReset();
+
+      const response = await handleReactRouterRequest(request("POST", origin), env, {} as ExecutionContext);
+
+      expect(response.status).toBe(403);
+      expect(await response.text()).toBe("Forbidden");
+      expect(routeHandler).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["GET", "HEAD", "OPTIONS"])("dispatches safe %s requests normally", async (method) => {
+    routeHandler.mockReset();
+    routeHandler.mockResolvedValue(new Response("route response"));
+
+    const response = await handleReactRouterRequest(request(method), env, {} as ExecutionContext);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("route response");
+    expect(routeHandler).toHaveBeenCalledOnce();
+  });
+
+  it("dispatches unsafe writes from an allowed origin normally", async () => {
+    routeHandler.mockReset();
+    routeHandler.mockResolvedValue(new Response("route response"));
+
+    const response = await handleReactRouterRequest(
+      request("POST", "https://vibegarden.club"),
+      env,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("route response");
+    expect(routeHandler).toHaveBeenCalledOnce();
   });
 });

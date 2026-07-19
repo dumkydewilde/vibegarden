@@ -10,7 +10,13 @@ const requestHandler = createRequestHandler(
 /** The existing website handler, intentionally kept separate from MCP routing. */
 export const reactRouterHandler = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    assertWebsiteWriteOrigin(request, env);
+    try {
+      assertWebsiteWriteOrigin(request, env);
+    } catch (error) {
+      if (error instanceof Response) return error;
+      throw error;
+    }
+
     const context = new RouterContextProvider();
     context.set(cloudflareContext, { env, ctx });
     return requestHandler(request, context);

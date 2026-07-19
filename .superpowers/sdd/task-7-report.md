@@ -53,3 +53,40 @@ npm run test:worker
 ## Commit
 
 Pending commit: `security: require exact origins for website writes`.
+
+## Review remediation: returned Worker 403 responses
+
+### Root cause
+
+`assertWebsiteWriteOrigin` intentionally throws `new Response("Forbidden", { status: 403 })` for a rejected unsafe request. `handleReactRouterRequest` previously invoked that guard before constructing the React Router context but did not catch the response. Because this call is outside React Router's request handling, the response escaped as a Worker rejection instead of becoming the HTTP response.
+
+### RED
+
+Added a focused test of the actual `handleReactRouterRequest` wrapper. The test mocks only React Router's generated request handler, calls the real Worker wrapper, and asserts that the route handler is not invoked.
+
+```text
+npm test -- app/lib/__tests__/request-security.test.ts
+exit 1
+20 tests run; 4 failures
+```
+
+The four failing cases were unsafe `POST` requests with a missing Origin, `Origin: null`, the renderer origin, and an unrelated origin. Each failure surfaced the thrown `Response` with status 403, proving the wrapper was rejecting rather than returning it. The safe-method cases already dispatched normally.
+
+### GREEN
+
+`handleReactRouterRequest` now catches a `Response` thrown by its origin guard and returns it immediately, before the Router context or route handler is reached. Non-Response errors are still rethrown.
+
+The regression covers:
+
+- missing, `null`, renderer, and unrelated Origins returning the exact `403 Forbidden` response, with no route-handler invocation;
+- GET, HEAD, and OPTIONS dispatching normally; and
+- an allowed-origin POST dispatching normally.
+
+```text
+npm test -- app/lib/__tests__/request-security.test.ts app/routes/__tests__/artifact-origin.test.ts
+2 files passed, 83 tests passed.
+
+npm run typecheck
+react-router typegen && tsc
+exit 0
+```

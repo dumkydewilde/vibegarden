@@ -7,6 +7,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "~": fileURLToPath(new URL("./app", import.meta.url)),
+      "virtual:react-router/server-build": fileURLToPath(
+        new URL("./test/fixtures/react-router-server-build.ts", import.meta.url),
+      ),
     },
   },
   test: {
