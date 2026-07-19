@@ -58,4 +58,10 @@ describe("multi-club migration contract", () => {
       );
     }
   });
+
+  test("keeps slug-claim trigger guards compatible with remote D1 migrations", async () => {
+    const migration = await readFile("drizzle/0007_club_slug_claims.sql", "utf8");
+
+    expect(migration).not.toContain("SELECT CASE WHEN EXISTS");
+  });
 });
