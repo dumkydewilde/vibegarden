@@ -243,6 +243,21 @@ describe("content inspection", () => {
     );
   });
 
+  it("uses an intrinsic typed-array operation for the Parquet footer", () => {
+    const content = bytes("PAR1dataPAR1");
+    Object.defineProperty(content, "slice", {
+      value: () => {
+        throw new Error("untrusted slice called");
+      },
+    });
+
+    expect(() => inspectArtifactContent({
+      path: "data.parquet",
+      mimeType: "application/vnd.apache.parquet",
+      content,
+    })).not.toThrow();
+  });
+
   it("stream-decodes UTF-8 text with fatal decoding", async () => {
     const valid = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -281,6 +296,43 @@ describe("content inspection", () => {
       getReader: () => {
         throw new Error("reader construction failed");
       },
+    } as unknown as ReadableStream<Uint8Array>;
+
+    await expect(assertUtf8Stream(stream)).rejects.toMatchObject({ code: "invalid_input" });
+  });
+
+  it("translates a throwing getReader getter to a stable artifact error", async () => {
+    const stream = Object.defineProperty({}, "getReader", {
+      get: () => {
+        throw new Error("getReader getter failed");
+      },
+    }) as ReadableStream<Uint8Array>;
+
+    await expect(assertUtf8Stream(stream)).rejects.toMatchObject({ code: "invalid_input" });
+  });
+
+  it("translates a throwing read getter to a stable artifact error", async () => {
+    const stream = {
+      getReader: () => Object.defineProperty({}, "read", {
+        get: () => {
+          throw new Error("read getter failed");
+        },
+      }),
+    } as unknown as ReadableStream<Uint8Array>;
+
+    await expect(assertUtf8Stream(stream)).rejects.toMatchObject({ code: "invalid_input" });
+  });
+
+  it("translates a throwing releaseLock getter to a stable artifact error", async () => {
+    const reader = Object.defineProperty({
+      read: async () => ({ done: true, value: undefined }),
+    }, "releaseLock", {
+      get: () => {
+        throw new Error("releaseLock getter failed");
+      },
+    });
+    const stream = {
+      getReader: () => reader,
     } as unknown as ReadableStream<Uint8Array>;
 
     await expect(assertUtf8Stream(stream)).rejects.toMatchObject({ code: "invalid_input" });

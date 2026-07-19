@@ -225,6 +225,13 @@ The final gate review found two further Important error-path gaps:
 
 The last reviewer found that a detached `Uint8Array` can pass nominal type validation but throw natively during Parquet signature inspection. It must be translated to a stable ArtifactError before binary inspection.
 
+## Last review findings
+
+The last reviewer found two final runtime-safety gaps:
+
+1. Parquet footer inspection uses the instance `slice` method after validating a typed array, allowing an overridden method to throw natively.
+2. Stream and reader member property access can invoke throwing getters outside the stable-error conversion path.
+
 ## Approval review fixes — 2026-07-19
 
 ### Scope
@@ -559,3 +566,57 @@ exit 0
 - The validation uses the intrinsic typed-array method, so a user-defined `slice` property cannot affect the detached-buffer check.
 - A valid empty `Uint8Array` remains accepted; only a view whose backing buffer has been detached is rejected.
 - The change is limited to the existing typed-array boundary guard. No unrelated tracked files were changed, and the pre-existing untracked documentation plan remains excluded.
+
+## Last review fixes — 2026-07-19
+
+### Scope
+
+Resolved both final runtime-safety findings:
+
+1. Parquet footer validation now uses `Uint8Array.prototype.slice.call(content, -4)` rather than the untrusted instance `content.slice`. The intrinsic operation is contained so an exotic or unusable view rejects through the normal stable `invalid_type` path rather than exposing a native exception.
+2. `assertUtf8Stream()` now captures `getReader`, `read`, and `releaseLock` property values inside stable-error guards before invoking them. Getter failures reject as `invalid_input`; valid reader methods remain invoked with their original receiver, and cleanup remains best-effort.
+
+### TDD evidence
+
+RED (tests added before production changes):
+
+```text
+npm test -- app/lib/artifacts/__tests__/validation.test.ts
+exit 1
+1 test file failed; 76 tests run; 72 passed and 4 failed.
+
+Expected failures:
+- a genuine `Uint8Array` whose own `slice` throws caused valid Parquet inspection to leak `Error: untrusted slice called`;
+- throwing getters for `getReader`, `read`, and `releaseLock` each leaked their native error instead of an `invalid_input` ArtifactError.
+```
+
+GREEN (after the minimal intrinsic operation and guarded member captures):
+
+```text
+npm test -- app/lib/artifacts/__tests__/validation.test.ts app/lib/artifacts/__tests__/manifest.test.ts
+exit 0
+2 test files passed; 99 tests passed.
+
+npm run typecheck
+react-router typegen && tsc
+exit 0
+
+git diff --check
+exit 0
+```
+
+### Files changed
+
+- `app/lib/artifacts/validation.ts`
+- `app/lib/artifacts/__tests__/validation.test.ts`
+- `.superpowers/sdd/task-3-report.md`
+
+### Commit
+
+This commit — `fix: harden artifact intrinsics`
+
+### Self-review
+
+- The Parquet regression uses a genuine `Uint8Array` with an overridden `slice` that throws; valid signature inspection still succeeds because only the typed-array intrinsic is used.
+- The getter regressions cover each requested member separately and verify a stable `invalid_input` ArtifactError.
+- Focused artifact tests, typechecking, and whitespace validation pass. The pre-existing untracked `docs/plans/2026-07-18-artifact-upload-and-rendering.md` remains excluded.

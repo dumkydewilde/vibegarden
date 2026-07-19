@@ -217,6 +217,15 @@ function hasPrefix(content: Uint8Array, signature: number[]): boolean {
   return signature.every((byte, index) => content[index] === byte);
 }
 
+function hasParquetSignature(content: Uint8Array): boolean {
+  try {
+    return hasPrefix(content, [0x50, 0x41, 0x52, 0x31]) &&
+      hasPrefix(Uint8Array.prototype.slice.call(content, -4), [0x50, 0x41, 0x52, 0x31]);
+  } catch {
+    return false;
+  }
+}
+
 function assertBinarySignature(mimeType: string, content: Uint8Array): void {
   const valid =
     (mimeType === "image/png" && hasPrefix(content, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) ||
@@ -225,7 +234,7 @@ function assertBinarySignature(mimeType: string, content: Uint8Array): void {
     (mimeType === "application/zip" && (hasPrefix(content, [0x50, 0x4b, 0x03, 0x04]) || hasPrefix(content, [0x50, 0x4b, 0x05, 0x06]) || hasPrefix(content, [0x50, 0x4b, 0x07, 0x08]))) ||
     (mimeType === "application/gzip" && hasPrefix(content, [0x1f, 0x8b, 0x08])) ||
     (mimeType === "application/wasm" && hasPrefix(content, [0, 0x61, 0x73, 0x6d, 1, 0, 0, 0])) ||
-    (mimeType === "application/vnd.apache.parquet" && hasPrefix(content, [0x50, 0x41, 0x52, 0x31]) && hasPrefix(content.slice(-4), [0x50, 0x41, 0x52, 0x31]));
+    (mimeType === "application/vnd.apache.parquet" && hasParquetSignature(content));
   const needsSignature = new Set([
     "image/png", "image/jpeg", "application/pdf", "application/zip", "application/gzip", "application/wasm", "application/vnd.apache.parquet",
   ]).has(mimeType);
@@ -267,27 +276,39 @@ export function inspectArtifactContent(input: Pick<ArtifactPackageFile, "path" |
 
 /** Decodes text incrementally so callers do not need to concatenate upload streams. */
 export async function assertUtf8Stream(stream: ReadableStream<Uint8Array>): Promise<void> {
-  if (!stream || typeof stream !== "object" || typeof stream.getReader !== "function") {
+  if (!stream || typeof stream !== "object") {
     throwArtifact("invalid_input");
   }
-  let reader: ReadableStreamDefaultReader<Uint8Array>;
+  let getReader: unknown;
   try {
-    reader = stream.getReader();
+    getReader = stream.getReader;
   } catch {
     throwArtifact("invalid_input");
   }
-  if (
-    !reader ||
-    typeof reader !== "object" ||
-    typeof reader.read !== "function" ||
-    typeof reader.releaseLock !== "function"
-  ) {
+  if (typeof getReader !== "function") throwArtifact("invalid_input");
+
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
+  try {
+    reader = getReader.call(stream) as ReadableStreamDefaultReader<Uint8Array>;
+  } catch {
     throwArtifact("invalid_input");
   }
+  if (!reader || typeof reader !== "object") throwArtifact("invalid_input");
+
+  let read: ReadableStreamDefaultReader<Uint8Array>["read"];
+  let releaseLock: ReadableStreamDefaultReader<Uint8Array>["releaseLock"];
+  try {
+    read = reader.read;
+    releaseLock = reader.releaseLock;
+  } catch {
+    throwArtifact("invalid_input");
+  }
+  if (typeof read !== "function" || typeof releaseLock !== "function") throwArtifact("invalid_input");
+
   const decoder = new TextDecoder("utf-8", { fatal: true });
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await read.call(reader);
       if (done) break;
       decoder.decode(value, { stream: true });
     }
@@ -296,7 +317,7 @@ export async function assertUtf8Stream(stream: ReadableStream<Uint8Array>): Prom
     throwArtifact("invalid_type");
   } finally {
     try {
-      reader.releaseLock();
+      releaseLock.call(reader);
     } catch {
       // Cleanup must not replace the stream's validation result.
     }
