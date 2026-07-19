@@ -35,6 +35,34 @@ describe("artifact manifests", () => {
     ).rejects.toMatchObject({ code: "invalid_checksum" } satisfies Partial<ArtifactError>);
   });
 
+  it.each([
+    ["mimeType", Symbol("mimeType"), "invalid_manifest"],
+    ["sha256", Symbol("sha256"), "invalid_checksum"],
+  ] as const)("rejects a non-string manifest %s before canonical serialization", (field, value, code) => {
+    const file = {
+      path: "index.html",
+      mimeType: "text/html",
+      byteSize: 1,
+      sha256: "a".repeat(64),
+      [field]: value,
+    };
+
+    expect(() => canonicalManifest([file] as unknown as typeof files)).toThrow(ArtifactError);
+    try {
+      canonicalManifest([file] as unknown as typeof files);
+    } catch (error) {
+      expect(error).toMatchObject({ code } satisfies Partial<ArtifactError>);
+    }
+  });
+
+  it("rejects a manifest MIME type that is incompatible with its path", () => {
+    expect(() =>
+      canonicalManifest([
+        { path: "index.html", mimeType: "text/plain", byteSize: 1, sha256: "a".repeat(64) },
+      ]),
+    ).toThrow(expect.objectContaining({ code: "invalid_manifest" }));
+  });
+
   it("rejects manifest paths that collide after NFC normalization", async () => {
     await expect(
       manifestHash([
@@ -92,5 +120,16 @@ describe("mutation fingerprints", () => {
     { files: [{ path: "index.html", sha256: "a".repeat(64), byteSize: 12, payload: "<secret>" }] },
   ])("rejects unrecognized mutation fields that could contain raw content: %o", async (input) => {
     await expect(mutationFingerprint(input)).rejects.toMatchObject({ code: "invalid_input" });
+  });
+
+  it("rejects file paths that collide after NFC normalization", async () => {
+    await expect(
+      mutationFingerprint({
+        files: [
+          { path: "café.txt", mimeType: "text/plain", byteSize: 1, sha256: "a".repeat(64) },
+          { path: "café.txt", mimeType: "text/plain", byteSize: 1, sha256: "b".repeat(64) },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
   });
 });

@@ -312,6 +312,13 @@ export function canonicalManifest(files: readonly ArtifactManifestFile[]): strin
       if (!isRecord(file)) return throwArtifact("invalid_manifest");
       const path = normalizeArtifactPath(file.path);
       if (!Number.isSafeInteger(file.byteSize) || file.byteSize < 0) throwArtifact("invalid_manifest");
+      if (
+        typeof file.mimeType !== "string" ||
+        mimeFor(path, { ...HTML_PACKAGE_MIME_BY_EXTENSION, ...SAFE_DOWNLOAD_MIME_BY_EXTENSION }) !== file.mimeType
+      ) {
+        throwArtifact("invalid_manifest");
+      }
+      if (typeof file.sha256 !== "string") throwArtifact("invalid_checksum");
       if (!SHA256.test(file.sha256)) throwArtifact("invalid_checksum");
       return { ...file, path, sha256: file.sha256.toLowerCase() };
     })
@@ -395,7 +402,14 @@ function canonicalMutationValue(input: Record<string, unknown>): Record<string, 
       canonical[key] = normalizeArtifactOrigins(value);
     } else if (key === "files") {
       if (!Array.isArray(value)) return throwArtifact("invalid_input");
-      canonical[key] = value.map(canonicalMutationFile);
+      const files = value.map(canonicalMutationFile);
+      const paths = new Set<string>();
+      for (const file of files) {
+        const path = file.path;
+        if (typeof path !== "string" || paths.has(path)) return throwArtifact("invalid_input");
+        paths.add(path);
+      }
+      canonical[key] = files;
     } else if (
       typeof value === "string" &&
       Array.from(value).length <= (key === "title" ? ARTIFACT_LIMITS.titleChars : ARTIFACT_LIMITS.descriptionChars)
