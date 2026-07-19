@@ -73,6 +73,7 @@ export type UploadSessionResult = {
   artifactId: string;
   versionId: string;
   expiresAt: number;
+  completed: UploadedFileResult[];
 };
 
 export type UploadedFileResult = {
@@ -200,8 +201,20 @@ function projectTarget(project: ProjectSelection): string {
   return "projectId" in project ? `project:${project.projectId}` : "project:draft";
 }
 
-function uploadResult(row: Pick<StoredUpload, "id" | "artifact_id" | "version_id" | "expires_at">): UploadSessionResult {
-  return { uploadId: row.id, artifactId: row.artifact_id, versionId: row.version_id, expiresAt: row.expires_at };
+async function uploadResult(
+  env: Env,
+  row: Pick<StoredUpload, "id" | "artifact_id" | "version_id" | "expires_at">,
+): Promise<UploadSessionResult> {
+  const files = await env.DB.prepare(
+    "SELECT path, mime_type AS mimeType, byte_size AS byteSize, sha256 FROM artifact_upload_files WHERE upload_id = ? ORDER BY path",
+  ).bind(row.id).all<UploadedFileResult>();
+  return {
+    uploadId: row.id,
+    artifactId: row.artifact_id,
+    versionId: row.version_id,
+    expiresAt: row.expires_at,
+    completed: files.results,
+  };
 }
 
 function sourceFor(source: ArtifactPackageSource): "web" | "mcp" {
@@ -304,7 +317,7 @@ async function createUploadSessionInternal(
       "SELECT id, artifact_id, version_id, expires_at FROM artifact_uploads WHERE artifact_id = ? AND version_id = ? AND user_id = ? LIMIT 1",
     ).bind(replay.artifactId, replay.versionId, userId).first<Pick<StoredUpload, "id" | "artifact_id" | "version_id" | "expires_at">>();
     if (!upload) artifactError("state_conflict");
-    return uploadResult(upload);
+    return uploadResult(env, upload);
   }
 
   const timestamp = now();
@@ -343,11 +356,11 @@ async function createUploadSessionInternal(
       const upload = await env.DB.prepare(
         "SELECT id, artifact_id, version_id, expires_at FROM artifact_uploads WHERE artifact_id = ? AND version_id = ? AND user_id = ? LIMIT 1",
       ).bind(concurrent.artifactId, concurrent.versionId, userId).first<Pick<StoredUpload, "id" | "artifact_id" | "version_id" | "expires_at">>();
-      if (upload) return uploadResult(upload);
+      if (upload) return uploadResult(env, upload);
     }
     throw new ArtifactError("internal");
   }
-  return { uploadId: row.id, artifactId: row.artifactId, versionId: row.versionId, expiresAt: row.expiresAt };
+  return { uploadId: row.id, artifactId: row.artifactId, versionId: row.versionId, expiresAt: row.expiresAt, completed: [] };
 }
 
 /** Starts a browser upload. R2 object keys, artifact IDs, and source are always server composed. */

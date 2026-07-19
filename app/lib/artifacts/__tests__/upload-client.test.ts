@@ -39,11 +39,48 @@ describe("uploadPreparedPackage", () => {
     expect(result).toMatchObject({ artifactId: "artifact-1", versionId: "version-1", resume: { uploadId: "upload-1" } });
   });
 
-  it("uses retained server acknowledgements to resume without reuploading files", async () => {
-    const fetcher = vi.fn()
-      .mockResolvedValueOnce(response({ uploadId: "upload-1", artifactId: "artifact-1", versionId: "version-1", expiresAt: 1 }, 201))
+  it("returns confirmed acknowledgements after a failed upload so retrying skips the confirmed file", async () => {
+    const firstAttempt = vi.fn()
+      .mockResolvedValueOnce(response({ uploadId: "upload-1", artifactId: "artifact-1", versionId: "version-1", expiresAt: 1, completed: [] }, 201))
+      .mockResolvedValueOnce(response({ path: "index.html", byteSize: 2, sha256: "a".repeat(64) }))
+      .mockResolvedValueOnce(response({ message: "temporary failure" }, 503));
+
+    const failure = await uploadPreparedPackage(prepared, {
+      project: { projectId: "project-1" }, title: "Demo", allowedDataOrigins: [], idempotencyKey: "key-1", fetch: firstAttempt,
+    }).catch((error: unknown) => error as Error & { resume?: unknown });
+
+    expect(failure.resume).toEqual({
+      uploadId: "upload-1",
+      artifactId: "artifact-1",
+      versionId: "version-1",
+      completed: [{ path: "index.html", byteSize: 2, sha256: "a".repeat(64) }],
+    });
+
+    const retry = vi.fn()
+      .mockResolvedValueOnce(response({
+        uploadId: "upload-1", artifactId: "artifact-1", versionId: "version-1", expiresAt: 1,
+        completed: [{ path: "index.html", byteSize: 2, sha256: "a".repeat(64) }],
+      }, 201))
       .mockResolvedValueOnce(response({ path: "assets/app.js", byteSize: 2, sha256: "b".repeat(64) }))
       .mockResolvedValueOnce(response({ artifactId: "artifact-1", versionId: "version-1" }));
+
+    await uploadPreparedPackage(prepared, {
+      project: { projectId: "project-1" }, title: "Demo", allowedDataOrigins: [], idempotencyKey: "key-1", fetch: retry,
+      resume: failure.resume as never,
+    });
+
+    expect(retry.mock.calls.map(([url]) => url)).toEqual([
+      "/api/artifact-uploads", "/api/artifact-uploads/upload-1/files", "/api/artifact-uploads/upload-1/finalize",
+    ]);
+    expect(new Headers(retry.mock.calls[1][1].headers).get("X-Artifact-Path")).toBe("assets/app.js");
+  });
+
+  it("uses only matching server-confirmed acknowledgements when supplied resume state is stale", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response({ uploadId: "upload-2", artifactId: "artifact-2", versionId: "version-2", expiresAt: 1, completed: [] }, 201))
+      .mockResolvedValueOnce(response({ path: "index.html", byteSize: 2, sha256: "a".repeat(64) }))
+      .mockResolvedValueOnce(response({ path: "assets/app.js", byteSize: 2, sha256: "b".repeat(64) }))
+      .mockResolvedValueOnce(response({ artifactId: "artifact-2", versionId: "version-2" }));
 
     await uploadPreparedPackage(prepared, {
       project: { projectId: "project-1" }, title: "Demo", allowedDataOrigins: [], idempotencyKey: "key-1", fetch: fetcher,
@@ -51,7 +88,7 @@ describe("uploadPreparedPackage", () => {
     });
 
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
-      "/api/artifact-uploads", "/api/artifact-uploads/upload-1/files", "/api/artifact-uploads/upload-1/finalize",
+      "/api/artifact-uploads", "/api/artifact-uploads/upload-2/files", "/api/artifact-uploads/upload-2/files", "/api/artifact-uploads/upload-2/finalize",
     ]);
   });
 

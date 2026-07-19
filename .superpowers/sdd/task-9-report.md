@@ -9,3 +9,9 @@ Implemented resumable sequential upload orchestration in `upload.client.ts`. It 
 TDD evidence: the first targeted run was red because the two new client modules did not exist. A later added malformed-directory-metadata case was red until directory Unix mode validation was added.
 
 Verification: `npm test -- app/lib/artifacts/__tests__/package-client.test.ts app/lib/artifacts/__tests__/upload-client.test.ts` (10 passed) and `npm run typecheck` passed.
+
+## Review follow-up: safe retry state
+
+Resolved the resume-state review findings. An upload failure after one or more acknowledged PUTs now attaches an `UploadPreparedPackageFailure.resume` value containing the server-selected upload, artifact, and version identities plus only the acknowledgements collected during that invocation. Retrying re-creates the idempotent session and takes completed paths solely from that authenticated response. The service now includes its recorded `artifact_upload_files` acknowledgements in idempotent session responses. A supplied resume is compared against the returned upload/artifact/version identity; mismatches start with no skipped paths, so stale caller data cannot suppress a PUT. Added regression coverage for failed-upload retry (the first confirmed file is not retransmitted) and mismatched stale state (both files upload).
+
+Verification: the two Task 9 suites pass with 11 tests, and `npm run typecheck` passes.

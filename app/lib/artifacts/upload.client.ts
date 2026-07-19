@@ -21,8 +21,13 @@ export type UploadPreparedPackageOptions = {
   onProgress?: (progress: { completedFiles: number; completedBytes: number; totalFiles: number; totalBytes: number }) => void;
 };
 
-type UploadSession = Omit<UploadResumeState, "completed"> & { expiresAt: number };
+type UploadSession = Omit<UploadResumeState, "completed"> & {
+  expiresAt: number;
+  /** Recorded by the authenticated idempotent session response. */
+  completed?: UploadAcknowledgement[];
+};
 type FinalizedUpload = { artifactId: string; versionId: string };
+export type UploadPreparedPackageFailure = Error & { resume: UploadResumeState };
 
 function abortError(): DOMException {
   return new DOMException("Upload was aborted.", "AbortError");
@@ -37,6 +42,38 @@ function sameAcknowledgement(file: UploadAcknowledgement, expected: UploadAcknow
   return file.path === expected.path && file.byteSize === expected.byteSize && file.sha256 === expected.sha256;
 }
 
+function sameSessionIdentity(left: Omit<UploadResumeState, "completed">, right: Omit<UploadResumeState, "completed">): boolean {
+  return left.uploadId === right.uploadId && left.artifactId === right.artifactId && left.versionId === right.versionId;
+}
+
+function serverConfirmedAcknowledgements(
+  acknowledgements: readonly UploadAcknowledgement[] | undefined,
+  prepared: PreparedArtifactPackage,
+): UploadAcknowledgement[] {
+  const confirmed: UploadAcknowledgement[] = [];
+  for (const file of prepared.files) {
+    const expected: UploadAcknowledgement = { path: file.path, byteSize: file.byteSize, sha256: file.sha256 };
+    const acknowledgement = acknowledgements?.find((candidate) => sameAcknowledgement(candidate, expected));
+    if (acknowledgement) confirmed.push(acknowledgement);
+  }
+  return confirmed;
+}
+
+function resumeState(session: UploadSession, completed: readonly UploadAcknowledgement[]): UploadResumeState {
+  return {
+    uploadId: session.uploadId,
+    artifactId: session.artifactId,
+    versionId: session.versionId,
+    completed: [...completed],
+  };
+}
+
+function attachResume(error: unknown, resume: UploadResumeState): never {
+  const failure = error instanceof Error ? error : new Error("Artifact upload failed.", { cause: error });
+  Object.assign(failure, { resume });
+  throw failure as UploadPreparedPackageFailure;
+}
+
 /** Creates/resumes a single idempotent session and uploads its files one at a time. */
 export async function uploadPreparedPackage(
   prepared: PreparedArtifactPackage,
@@ -45,6 +82,7 @@ export async function uploadPreparedPackage(
   const fetcher = options.fetch ?? globalThis.fetch;
   const totalBytes = prepared.files.reduce((total, file) => total + file.byteSize, 0);
   let session: UploadSession | undefined;
+  let completed: UploadAcknowledgement[] = [];
   let abortSent = false;
 
   const abort = async () => {
@@ -78,7 +116,11 @@ export async function uploadPreparedPackage(
       signal: options.signal,
     }));
 
-    const completed = [...(options.resume?.completed ?? [])];
+    const suppliedResumeMatchesSession = options.resume === undefined || sameSessionIdentity(options.resume, session);
+    // A caller can only name a prior session. Its paths are never trusted; a
+    // matching identity permits use of paths recorded by the authenticated
+    // idempotent session response. Stale state starts with no local skips.
+    completed = suppliedResumeMatchesSession ? serverConfirmedAcknowledgements(session.completed, prepared) : [];
     let completedFiles = completed.length;
     let completedBytes = completed.reduce((total, file) => total + file.byteSize, 0);
     options.onProgress?.({ completedFiles, completedBytes, totalFiles: prepared.files.length, totalBytes });
@@ -114,9 +156,10 @@ export async function uploadPreparedPackage(
       `/api/artifact-uploads/${encodeURIComponent(session.uploadId)}/finalize`,
       { method: "POST", credentials: "same-origin", signal: options.signal },
     ));
-    return { ...finalized, resume: { uploadId: session.uploadId, artifactId: session.artifactId, versionId: session.versionId, completed } };
+    return { ...finalized, resume: resumeState(session, completed) };
   } catch (error) {
     if (options.signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) await abort();
+    if (session && completed.length > 0) attachResume(error, resumeState(session, completed));
     throw error;
   } finally {
     options.signal?.removeEventListener("abort", onAbort);
