@@ -325,3 +325,60 @@ finalization batch executes.
   post-preflight mutation to `../x`, an empty segment, non-NFC text, or any
   other changed/noncanonical path cannot satisfy the batch predicate, even if
   its raw concatenated key and lease are changed to match.
+
+## Important review remediation: storage-provider error disclosure
+
+### Root cause
+
+`getVersionObject` and `deleteKeys` validated and recomposed their private R2
+keys, but returned the corresponding R2 promises directly. An R2 provider
+exception could therefore reach a caller unchanged, including its private
+object-key detail.
+
+### RED
+
+Added two focused worker regressions with R2 stubs that throw errors containing
+the requested private object key. Before the implementation change, the
+required targeted command failed with two assertions because the caller
+received each raw R2 error message and neither error had the expected
+`storage_unavailable` code:
+
+`npm run test:worker -- test/worker/artifact-object-store.test.ts`
+
+- Failed: 1 file, 6 tests; 2 failures (read and delete provider errors).
+
+### GREEN
+
+`npm run test:worker -- test/worker/artifact-object-store.test.ts`
+
+- Passed: 1 file, 6 tests.
+- The new read and delete regressions prove that a provider exception carrying
+  a private key becomes the generic `storage_unavailable` ArtifactError with
+  the safe `Artifact storage is temporarily unavailable.` message.
+
+`npm run typecheck`
+
+- Passed: `react-router typegen && tsc` exited 0.
+
+### Files changed
+
+- `app/lib/artifacts/object-store.server.ts`
+- `test/worker/artifact-object-store.test.ts`
+
+### Commit
+
+- `948182e fix: mask artifact storage provider errors`
+
+### Self-review
+
+- Key/path validation remains outside the new R2 `try` blocks, so deliberate
+  `invalid_path` and other validation failures preserve their existing
+  behavior.
+- Only unexpected R2 read/delete errors are translated, and both discard the
+  original provider exception rather than exposing a cause or key detail.
+- Empty deletion remains a no-op without calling R2.
+
+### Concerns
+
+- None. The unrelated untracked
+  `docs/plans/2026-07-18-artifact-upload-and-rendering.md` remains untouched.
