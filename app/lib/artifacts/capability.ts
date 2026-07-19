@@ -1,4 +1,5 @@
 import { normalizeArtifactOrigins, normalizeArtifactPath } from "./validation";
+import { ARTIFACT_LIMITS } from "./contracts";
 
 const encoder = new TextEncoder();
 const TOKEN_VERSION = 1;
@@ -35,6 +36,11 @@ export type CapabilitySecrets = {
 export type VerifyCapabilityOptions = {
   rendererSigningSecret: string;
   /** Unix seconds. Defaults to the current clock for production verification. */
+  now?: number;
+};
+
+export type IssueCapabilityOptions = {
+  /** Unix seconds. Defaults to the current clock for production issuance. */
   now?: number;
 };
 
@@ -134,10 +140,31 @@ function assertSigningSecrets(secrets: CapabilitySecrets): void {
   }
 }
 
+function capabilityNow(now: number | undefined): number {
+  const value = now ?? Math.floor(Date.now() / 1000);
+  if (!Number.isSafeInteger(value) || value < 0 || value > Number.MAX_SAFE_INTEGER - ARTIFACT_LIMITS.capabilityTtlSeconds) {
+    invalidCapability();
+  }
+  return value;
+}
+
+function hasExactCapabilityLifetime(capability: RendererCapability, now: number): boolean {
+  return capability.exp === now + ARTIFACT_LIMITS.capabilityTtlSeconds;
+}
+
+function hasSupportedCapabilityLifetime(capability: RendererCapability, now: number): boolean {
+  return capability.exp > now && capability.exp <= now + ARTIFACT_LIMITS.capabilityTtlSeconds;
+}
+
 /** Issues the only supported canonical, signed renderer capability format. */
-export async function issueCapability(input: RendererCapability, secrets: CapabilitySecrets): Promise<string> {
+export async function issueCapability(
+  input: RendererCapability,
+  secrets: CapabilitySecrets,
+  options: IssueCapabilityOptions = {},
+): Promise<string> {
   assertSigningSecrets(secrets);
   const capability = canonicalCapability(input);
+  if (!hasExactCapabilityLifetime(capability, capabilityNow(options.now))) invalidCapability();
   const payload = base64urlEncode(encoder.encode(canonicalJson(capability)));
   const signature = await crypto.subtle.sign("HMAC", await hmacKey(secrets.rendererSigningSecret), encoder.encode(payload));
   return `${payload}.${base64urlEncode(new Uint8Array(signature))}`;
@@ -160,8 +187,7 @@ export async function verifyCapability(token: string, options: VerifyCapabilityO
     const decoded = new TextDecoder("utf-8", { fatal: true }).decode(payload);
     const capability = canonicalCapability(JSON.parse(decoded));
     if (canonicalJson(capability) !== decoded) return null;
-    const now = options.now ?? Math.floor(Date.now() / 1000);
-    return Number.isSafeInteger(now) && capability.exp > now ? capability : null;
+    return hasSupportedCapabilityLifetime(capability, capabilityNow(options.now)) ? capability : null;
   } catch {
     return null;
   }

