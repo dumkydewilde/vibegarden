@@ -31,3 +31,35 @@ RED: Added a real Worker-dispatch regression for unsafe artifact upload requests
 GREEN: The central unsafe-origin rejection now includes `Cache-Control: private, no-store`. This narrow, general boundary policy covers pre-router rejections for artifact requests while preserving the existing `403 Forbidden` behavior for every other website write.
 
 Verification: RED `npm test -- app/routes/__tests__/artifact-api.test.ts` (3 expected cache-header failures); GREEN `npm test -- app/routes/__tests__/artifact-api.test.ts app/routes/__tests__/artifact-origin.test.ts` (110 passed), `npm test -- app/lib/artifacts app/routes/__tests__/artifact-origin.test.ts` (167 passed), `npm run test:worker` (44 passed), and `npm run typecheck` passed. `npm run test:security` remains blocked before test execution because Playwright discovery loads Vitest test modules and Vite-only `import.meta.glob` code; this remediation does not modify that harness.
+
+## Final review remediation: bounded streaming upload bodies
+
+- Replaced `request.arrayBuffer()` in the file-write route with a bounded
+  `TransformStream`. Headers are still strictly validated; a declared value
+  above `ARTIFACT_LIMITS.browserBytes` is rejected before the route pulls the
+  request stream or calls storage. Otherwise, the production `putUploadFile`
+  path receives the stream directly and the transform rejects the first byte
+  beyond the declared size. The service continues to verify stored size and
+  checksum, so short bodies and underdeclared bodies cannot become manifest
+  rows.
+- The response remains the artifact helper's safe `private, no-store` error.
+
+### RED/GREEN evidence
+
+- **RED:** `npm test -- app/routes/__tests__/artifact-api.test.ts` produced two
+  expected failures: the over-limit case observed the route pull the body, and
+  the underdeclared-body case never reached the streaming service boundary
+  because the route had already buffered and rejected it.
+- **GREEN:** route tests now prove that an over-limit declaration neither pulls
+  beyond Request construction nor invokes `putUploadFile`, and that an
+  underdeclared stream is passed to storage as a stream which rejects on the
+  declared bound. The same test confirms the safe no-store error response.
+
+| Command | Result |
+| --- | --- |
+| `npm test -- app/routes/__tests__/artifact-api.test.ts` | passed: 52 tests |
+| `npm test -- app/lib/artifacts app/routes/__tests__/artifact-api.test.ts app/routes/__tests__/artifact-origin.test.ts` | passed: 257 tests |
+| `npm run test:all` | passed: 45 Vitest files / 461 tests, 9 Worker files / 61 tests, 5 Playwright tests |
+| `npm run typecheck` | passed |
+| `npm run build` | passed |
+| `git diff --check` | passed |

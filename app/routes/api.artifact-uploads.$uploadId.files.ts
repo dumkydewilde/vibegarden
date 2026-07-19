@@ -1,5 +1,5 @@
 import type { Route } from "./+types/api.artifact-uploads.$uploadId.files";
-import { ArtifactError } from "~/lib/artifacts/contracts";
+import { ARTIFACT_LIMITS, ArtifactError } from "~/lib/artifacts/contracts";
 import { artifactJson, artifactJsonAction, artifactRejectMethod, artifactRequireMethod } from "~/lib/artifacts/http.server";
 import { putUploadFile } from "~/lib/artifacts/service.server";
 import { requireArtifactUser } from "~/lib/artifacts/auth.server";
@@ -10,6 +10,25 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 
 function inputError(): never {
   throw new ArtifactError("invalid_input");
+}
+
+/**
+ * Leaves the request body streaming while making an underdeclared upload fail
+ * as soon as it crosses its declared size. The route never materializes the
+ * body, and the service still performs the stored-size/checksum verification.
+ */
+function boundedBody(body: ReadableStream<Uint8Array>, maxBytes: number): ReadableStream<Uint8Array> {
+  let bytes = 0;
+  return body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      bytes += chunk.byteLength;
+      if (bytes > maxBytes) {
+        controller.error(new ArtifactError("invalid_input"));
+        return;
+      }
+      controller.enqueue(chunk);
+    },
+  }));
 }
 
 function uploadHeaders(request: Request) {
@@ -38,14 +57,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   return artifactJsonAction(async () => {
     if (!params.uploadId || !request.body) inputError();
     const input = uploadHeaders(request);
-    let body: ArrayBuffer;
-    try {
-      body = await request.arrayBuffer();
-    } catch {
-      inputError();
-    }
-    if (body.byteLength !== input.byteSize) inputError();
-    const stored = await putUploadFile(env, user.id, params.uploadId, input, body);
+    if (input.byteSize > ARTIFACT_LIMITS.browserBytes) inputError();
+    const stored = await putUploadFile(env, user.id, params.uploadId, input, boundedBody(request.body, input.byteSize));
     return artifactJson({ path: stored.path, byteSize: stored.byteSize, sha256: stored.sha256 });
   });
 }

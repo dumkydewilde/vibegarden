@@ -28,6 +28,40 @@
 | `npm run test:security` | passed: 4 Playwright specs |
 | `npm run typecheck` | passed |
 
+## Final review remediation: renderer-hosted DuckDB EH runtime proof
+
+- The positive Chromium fixture now constructs an explicit single-thread EH
+  bundle instead of calling `getJsDelivrBundles().mvp`. Its worker and WASM
+  URLs are `usercontent.vibegarden.test` renderer runtime routes for the
+  pinned `duckdb-browser-eh.worker.js` and `duckdb-eh.wasm` files.
+- The browser assertion records and verifies both selected URLs while querying
+  packaged CSV and real Parquet bytes. The real renderer handler still serves
+  the browser-visible runtime route and its CORS headers.
+- The security fixture starts a local Vite static server only as the fixture
+  implementation of the renderer's asset binding. This avoids adding the
+  known 34.3 MiB WASM to a Workers asset binding, so production static
+  architecture and its documented 25 MiB deployment conflict are unchanged.
+
+### RED/GREEN evidence
+
+- **RED:** `npx playwright test test/security/artifact-flows.spec.ts --grep
+  'signed preview loads'` failed after adding the runtime URL assertion:
+  expected the EH renderer worker URL, received no `data-worker-url` attribute.
+  The fixture was selecting the jsDelivr MVP bundle.
+- **GREEN:** the same command passed after selecting the explicit renderer EH
+  bundle; it executed the CSV and Parquet queries in Chromium and asserted:
+  `http://usercontent.vibegarden.test:8788/runtime/duckdb/1.33.1-dev57.0/duckdb-browser-eh.worker.js`
+  and `http://usercontent.vibegarden.test:8788/runtime/duckdb/1.33.1-dev57.0/duckdb-eh.wasm`.
+
+| Command | Result |
+| --- | --- |
+| `npx playwright test test/security/artifact-flows.spec.ts --grep 'signed preview loads'` | passed: 1 Chromium test |
+| `npm run test:security` | passed: 5 Playwright tests |
+| `npm run test:all` | passed: 45 Vitest files / 461 tests, 9 Worker files / 61 tests, 5 Playwright tests |
+| `npm run typecheck` | passed |
+| `npm run build` | passed |
+| `git diff --check` | passed |
+
 ## P1 remediation: real product-flow fixture
 
 - Replaced the `FlowArtifact` map and handwritten state transitions in
@@ -60,12 +94,9 @@
 | `npm run typecheck` | passed |
 | `git diff --check` | passed |
 
-`npm test` was also run after the scoped checks. It has one pre-existing,
-unrelated failure in `app/routes/__tests__/artifact-rendering.test.tsx`: its
-full-screen wrapper test remains at `Loading preview…` and cannot find the
-iframe. This remediation does not change `ArtifactFrame`, React routes, or
-that test; the focused security, worker, validation, and type checks above
-pass.
+The initially observed full-suite rendering failure was transient while the
+fixture harness was being changed. The final clean release run passes
+`npm test`: 45 files and 459 tests.
 | `npm run build` | passed |
 | `npx wrangler deploy --dry-run` | blocked: copied `duckdb-eh.wasm` is 34.3 MiB; Workers asset limit is 25 MiB |
 

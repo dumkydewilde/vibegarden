@@ -46,11 +46,14 @@ function fixtureKind(url: URL): "forbidden" | "positive" | null {
 function fixtureRendererEnv(env: SecurityFixtureEnv): RendererEnv {
   return {
     ARTIFACTS: env.ARTIFACTS,
+    // The security Worker cannot bind the 34 MiB WASM as a Workers static
+    // asset: that intentionally mirrors the known production deployment
+    // limit. This local origin serves the copied renderer directory while the
+    // actual renderer handler still owns the browser-visible runtime route.
     ASSETS: {
       fetch(request) {
         const pathname = new URL(request.url).pathname;
-        const file = pathname.slice(`${runtimePrefix}/`.length);
-        return fetch(`https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.33.1-dev57.0/dist/${file}`);
+        return fetch(`http://127.0.0.1:8789/renderer${pathname}`);
       },
     } as Fetcher,
     ARTIFACT_METRICS: {} as AnalyticsEngineDataset,
@@ -89,7 +92,11 @@ function positiveScript(remoteOrigin: string): string {
     async function text(path) { return new TextDecoder().decode(await bytes(path)); }
     async function queryPackagedData(csv, parquet) {
       const duckdb = await import("https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.33.1-dev57.0/+esm");
-      const bundle = duckdb.getJsDelivrBundles().mvp;
+      const runtime = new URL("${runtimePrefix}/", window.location.href);
+      const bundle = {
+        mainWorker: new URL("duckdb-browser-eh.worker.js", runtime).href,
+        mainModule: new URL("duckdb-eh.wasm", runtime).href,
+      };
       const worker = await duckdb.createWorker(bundle.mainWorker);
       const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
       await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
@@ -99,7 +106,7 @@ function positiveScript(remoteOrigin: string): string {
       const csvRow = await connection.query("SELECT animal, 1 AS total FROM read_csv_auto('fixture.csv')");
       const parquetRow = await connection.query("SELECT animal, 1 AS total FROM read_parquet('fixture.parquet')");
       await connection.close(); await db.terminate();
-      return { csv: csvRow.toArray()[0], parquet: parquetRow.toArray()[0] };
+      return { csv: csvRow.toArray()[0], parquet: parquetRow.toArray()[0], bundle };
     }
     text('${remoteOrigin}/data/remote.csv').then(() => { document.querySelector('#remote-result').textContent = 'remote csv loaded'; });
     Promise.all([bytes('data/fixture.csv'), bytes('data/fixture.parquet')])
@@ -108,6 +115,8 @@ function positiveScript(remoteOrigin: string): string {
         document.querySelector('#csv-result').textContent = rows.csv.animal + ',' + rows.csv.total;
         document.querySelector('#parquet-result').textContent = rows.parquet.animal + ',' + rows.parquet.total;
         document.querySelector('#duckdb-result').textContent = 'duckdb read csv and parquet';
+        document.querySelector('#duckdb-result').dataset.workerUrl = rows.bundle.mainWorker;
+        document.querySelector('#duckdb-result').dataset.wasmUrl = rows.bundle.mainModule;
         await document.fonts.load('16px Fixture', 'α');
         document.querySelector('#font-result').textContent = document.fonts.check('16px Fixture', 'α') ? 'font loaded' : 'font unavailable';
         document.querySelector('#font-result').dataset.loaded = String(document.fonts.check('16px Fixture', 'α'));

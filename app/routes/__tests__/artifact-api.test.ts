@@ -139,7 +139,13 @@ describe("artifact browser routes", () => {
     expect(putUploadFile).not.toHaveBeenCalled();
   });
 
-  it("compares declared and actual upload bytes before service work", async () => {
+  it("keeps declared-versus-actual upload byte validation in the streaming storage path", async () => {
+    const { ArtifactError } = await import("~/lib/artifacts/contracts");
+    putUploadFile.mockImplementationOnce(async (...args: unknown[]) => {
+      const bytes = await new Response(args[4] as ReadableStream<Uint8Array>).arrayBuffer();
+      if (bytes.byteLength !== 6) throw new ArtifactError("invalid_input");
+      throw new Error("the shorter stream must reject first");
+    });
     const { action } = await import("../api.artifact-uploads.$uploadId.files");
     const response = await action(actionArgs(new Request("https://vibegarden.club/api/artifact-uploads/upload-1/files", {
       method: "PUT",
@@ -153,7 +159,67 @@ describe("artifact browser routes", () => {
     }), { uploadId: "upload-1" }));
 
     expect(response.status).toBe(400);
+    expect(putUploadFile).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a declared browser-total overage without pulling the request stream or invoking storage", async () => {
+    const { ARTIFACT_LIMITS } = await import("~/lib/artifacts/contracts");
+    let pulls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        controller.enqueue(new TextEncoder().encode("unread"));
+        if (pulls > 1) controller.close();
+      },
+    });
+    const { action } = await import("../api.artifact-uploads.$uploadId.files");
+    const request = new Request("https://vibegarden.club/api/artifact-uploads/upload-1/files", {
+      method: "PUT",
+      headers: {
+        "X-Artifact-Path": "note.txt",
+        "X-Artifact-Mime": "text/plain",
+        "X-Artifact-Bytes": String(ARTIFACT_LIMITS.browserBytes + 1),
+        "X-Artifact-SHA256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+      },
+      body,
+      duplex: "half",
+    } as RequestInit);
+    const pullsBeforeAction = pulls;
+    const response = await action(actionArgs(request, { uploadId: "upload-1" }));
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(pulls).toBe(pullsBeforeAction);
     expect(putUploadFile).not.toHaveBeenCalled();
+  });
+
+  it("passes an underdeclared body to storage as a bounded stream instead of buffering it in the route", async () => {
+    const sourceBytes = new TextEncoder().encode("oversize");
+    const consumed = vi.fn();
+    putUploadFile.mockImplementationOnce(async (...args: unknown[]) => {
+      const body = args[4] as ReadableStream<Uint8Array>;
+      consumed();
+      await new Response(body).arrayBuffer();
+      throw new Error("the bounded stream must reject before this point");
+    });
+    const { action } = await import("../api.artifact-uploads.$uploadId.files");
+
+    const response = await action(actionArgs(new Request("https://vibegarden.club/api/artifact-uploads/upload-1/files", {
+      method: "PUT",
+      headers: {
+        "X-Artifact-Path": "note.txt",
+        "X-Artifact-Mime": "text/plain",
+        "X-Artifact-Bytes": "5",
+        "X-Artifact-SHA256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+      },
+      body: new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(sourceBytes); controller.close(); } }),
+      duplex: "half",
+    } as RequestInit), { uploadId: "upload-1" }));
+
+    expect(consumed).toHaveBeenCalledOnce();
+    expect(putUploadFile).toHaveBeenCalledWith(expect.anything(), "session-user", "upload-1", expect.objectContaining({ byteSize: 5 }), expect.anything());
+    expect(response.status).toBe(400);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
   });
 
   it("passes the session identity to upload file storage and returns no sensitive fields", async () => {

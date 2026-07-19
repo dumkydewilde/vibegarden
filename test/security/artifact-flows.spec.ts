@@ -22,6 +22,8 @@ test("a signed preview loads its relative HTML, CSS, JavaScript, image, font, an
   await expect(frame.locator("#csv-result")).toHaveText("duck,1");
   await expect(frame.locator("#parquet-result")).toHaveText("duck,1");
   await expect(frame.locator("#duckdb-result")).toHaveText("duckdb read csv and parquet");
+  await expect(frame.locator("#duckdb-result")).toHaveAttribute("data-worker-url", "http://usercontent.vibegarden.test:8788/runtime/duckdb/1.33.1-dev57.0/duckdb-browser-eh.worker.js");
+  await expect(frame.locator("#duckdb-result")).toHaveAttribute("data-wasm-url", "http://usercontent.vibegarden.test:8788/runtime/duckdb/1.33.1-dev57.0/duckdb-eh.wasm");
   await expect(frame.locator("#font-result")).toHaveText("font loaded");
   await expect(frame.locator("#font-result")).toHaveAttribute("data-loaded", "true");
 });
