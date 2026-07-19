@@ -260,7 +260,10 @@ describe("club invite links", () => {
       maxJoins: 2,
     });
 
-    await expect(joinWithInviteLink(testEnv, user, urlToken)).resolves.toMatchObject({ ok: true });
+    await expect(joinWithInviteLink(testEnv, user, urlToken)).resolves.toEqual({
+      ok: true,
+      clubSlug: clubContext.club.slug,
+    });
     await expect(joinWithInviteLink(testEnv, user, urlToken)).resolves.toMatchObject({ ok: true });
     expect(
       await env.DB

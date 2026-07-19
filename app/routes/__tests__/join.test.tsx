@@ -1,7 +1,17 @@
 import { render, screen } from "@testing-library/react";
 import { createRoutesStub } from "react-router";
-import { describe, expect, it } from "vitest";
-import Join from "../join";
+import { describe, expect, it, vi } from "vitest";
+
+const getUser = vi.hoisted(() => vi.fn());
+const joinWithInviteLink = vi.hoisted(() => vi.fn());
+
+vi.mock("~/lib/auth.server", () => ({ getUser }));
+vi.mock("~/lib/invites.server", () => ({
+  getInvitePreview: vi.fn(),
+  joinWithInviteLink,
+}));
+
+import Join, { action } from "../join";
 
 function renderJoin(loaderData: unknown) {
   const Stub = createRoutesStub([
@@ -15,6 +25,27 @@ function renderJoin(loaderData: unknown) {
 }
 
 describe("invite link join page", () => {
+  it("redirects into the club after a successful join", async () => {
+    getUser.mockResolvedValue({ id: "member" });
+    joinWithInviteLink.mockResolvedValue({
+      ok: true,
+      clubSlug: "sunday-makers",
+    });
+
+    const response = await action({
+      request: new Request("https://garden.test/join/example-token", {
+        method: "POST",
+      }),
+      params: { token: "example-token" },
+      context: { get: () => ({ env: {} }) },
+    } as never);
+
+    expect(response).toBeInstanceOf(Response);
+    expect((response as Response).headers.get("Location")).toBe(
+      "/clubs/sunday-makers",
+    );
+  });
+
   it("renders the same neutral message for an unavailable invitation", async () => {
     renderJoin({ clubName: null, available: false });
 
