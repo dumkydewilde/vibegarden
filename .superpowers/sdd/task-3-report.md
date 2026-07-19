@@ -203,6 +203,13 @@ The final approval review found two further Important malformed-input gaps:
 1. `canonicalManifest()` and `manifestHash()` call `.map()` without confirming that the supplied files value is an array.
 2. ZIP mode metadata is used in a bitwise operation before runtime numeric validation, allowing non-numeric values to throw native errors.
 
+## Gate review findings
+
+The gate review found two further Important runtime-type gaps:
+
+1. `validateZipArtifactEntry`, `inspectArtifactContent`, and `assertUtf8Stream` access properties or methods before validating root input types.
+2. `inspectArtifactContent` does not require a supplied `content` value to be a real `Uint8Array` before binary inspection.
+
 ## Approval review fixes — 2026-07-19
 
 ### Scope
@@ -314,3 +321,62 @@ exit 0
 - The root guard is before the only `.map()` call, so every non-array root is an `ArtifactError` with the stable `invalid_manifest` code.
 - The ZIP mode guard is before the only bitwise operation and uses `Number.isSafeInteger`, retaining normal valid integer mode behavior without coercing malformed values.
 - Focused tests, typechecking, and whitespace validation pass. The pre-existing untracked documentation plan remains excluded from the change.
+
+## Gate review fixes — 2026-07-19
+
+### Scope
+
+Resolved the gate review runtime-type gaps:
+
+1. `validateZipArtifactEntry()` now verifies that its entry is a non-array record before reading ZIP metadata, so a `null` root returns a stable `invalid_manifest` `ArtifactError`.
+2. `inspectArtifactContent()` now verifies its input is a record and its content is a real, cross-realm `Uint8Array` before reading bytes, checking MIME, decoding text, or examining binary signatures. `null` and indexed `byteLength` lookalikes return stable `invalid_input` errors.
+3. `assertUtf8Stream()` now verifies its root is an object with a `getReader` method before calling it, so a `null` root returns a stable `invalid_input` `ArtifactError`.
+
+### TDD evidence
+
+RED (tests added before production changes):
+
+```text
+npm test -- app/lib/artifacts/__tests__/validation.test.ts app/lib/artifacts/__tests__/manifest.test.ts
+exit 1
+2 test files run; 1 passed and 1 failed.
+85 tests run; 81 passed and 4 failed.
+
+Expected failures:
+- `validateZipArtifactEntry(null)` threw a native TypeError while reading `zipIsDirectory`;
+- `inspectArtifactContent(null)` threw a native TypeError while reading `content`;
+- an indexed `byteLength` lookalike reached signature validation and returned `invalid_type` instead of being rejected as invalid input;
+- `assertUtf8Stream(null)` threw a native TypeError while reading `getReader`.
+```
+
+GREEN:
+
+```text
+npm test -- app/lib/artifacts/__tests__/validation.test.ts app/lib/artifacts/__tests__/manifest.test.ts
+exit 0
+2 test files passed; 85 tests passed.
+
+npm run typecheck
+react-router typegen && tsc
+exit 0
+
+git diff --check
+exit 0
+```
+
+### Files changed
+
+- `app/lib/artifacts/validation.ts`
+- `app/lib/artifacts/__tests__/validation.test.ts`
+- `.superpowers/sdd/task-3-report.md`
+
+### Commit
+
+`HEAD` — `fix: validate artifact boundary inputs`
+
+### Self-review
+
+- Each exported boundary checks its root before reading a property or invoking a method, keeping malformed roots within the stable `ArtifactError` contract.
+- The content guard combines `ArrayBuffer.isView()` with the typed-array brand, accepting valid cross-realm `Uint8Array` values while rejecting structural byte lookalikes.
+- Existing valid content-signature and incremental UTF-8 tests remain green, preserving supported inputs.
+- The pre-existing untracked `docs/plans/2026-07-18-artifact-upload-and-rendering.md` remains excluded from the commit.

@@ -80,6 +80,13 @@ describe("public artifact errors", () => {
 });
 
 describe("artifact packages", () => {
+  it("rejects a null ZIP entry with a stable artifact error", () => {
+    expectCode(
+      () => validateZipArtifactEntry(null as unknown as { path: string }),
+      "invalid_manifest",
+    );
+  });
+
   it.each([null, "not an artifact file"]) (
     "rejects a non-object file entry: %o",
     (file) => {
@@ -160,6 +167,27 @@ describe("artifact packages", () => {
 });
 
 describe("content inspection", () => {
+  it("rejects a null content-inspection input with a stable artifact error", () => {
+    expectCode(
+      () => inspectArtifactContent(null as unknown as { path: string; mimeType: string }),
+      "invalid_input",
+    );
+  });
+
+  it.each([
+    ["null", null],
+    ["an indexed byteLength lookalike", { 0: 0x89, 1: 0x50, byteLength: 8 }],
+  ])("rejects %s content before binary inspection", (_name, content) => {
+    expectCode(
+      () => inspectArtifactContent({
+        path: "image.png",
+        mimeType: "image/png",
+        content: content as unknown as Uint8Array,
+      }),
+      "invalid_input",
+    );
+  });
+
   it.each([
     ["image.png", "image/png", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])],
     ["image.jpg", "image/jpeg", new Uint8Array([0xff, 0xd8, 0xff])],
@@ -197,6 +225,12 @@ describe("content inspection", () => {
       },
     });
     await expect(assertUtf8Stream(invalid)).rejects.toMatchObject({ code: "invalid_type" });
+  });
+
+  it("rejects a null UTF-8 stream with a stable artifact error", async () => {
+    await expect(assertUtf8Stream(null as unknown as ReadableStream<Uint8Array>)).rejects.toMatchObject({
+      code: "invalid_input",
+    });
   });
 });
 

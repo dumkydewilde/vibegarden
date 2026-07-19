@@ -150,6 +150,7 @@ export function normalizeArtifactPath(input: string): string {
 
 /** Validates ZIP metadata before any entry body is extracted. */
 export function validateZipArtifactEntry(file: Pick<ArtifactPackageFile, "path" | "zipUnixMode" | "zipIsDirectory">): string {
+  if (!isRecord(file)) return throwArtifact("invalid_manifest");
   if (file.zipIsDirectory) return throwArtifact("invalid_manifest");
   if (file.zipUnixMode !== undefined) {
     if (!Number.isSafeInteger(file.zipUnixMode)) return throwArtifact("invalid_manifest");
@@ -233,8 +234,12 @@ function isTextMime(mimeType: string): boolean {
   return mimeType.startsWith("text/") || TEXT_MIME_TYPES.has(mimeType);
 }
 
+function isUint8Array(value: unknown): value is Uint8Array {
+  return ArrayBuffer.isView(value) && Object.prototype.toString.call(value) === "[object Uint8Array]";
+}
+
 export function inspectArtifactContent(input: Pick<ArtifactPackageFile, "path" | "mimeType" | "content">): void {
-  if (!input.content) throwArtifact("invalid_input");
+  if (!isRecord(input) || !isUint8Array(input.content)) throwArtifact("invalid_input");
   const expectedMime = mimeFor(normalizeArtifactPath(input.path), {
     ...HTML_PACKAGE_MIME_BY_EXTENSION,
     ...SAFE_DOWNLOAD_MIME_BY_EXTENSION,
@@ -252,6 +257,9 @@ export function inspectArtifactContent(input: Pick<ArtifactPackageFile, "path" |
 
 /** Decodes text incrementally so callers do not need to concatenate upload streams. */
 export async function assertUtf8Stream(stream: ReadableStream<Uint8Array>): Promise<void> {
+  if (!stream || typeof stream !== "object" || typeof stream.getReader !== "function") {
+    throwArtifact("invalid_input");
+  }
   const reader = stream.getReader();
   const decoder = new TextDecoder("utf-8", { fatal: true });
   try {
