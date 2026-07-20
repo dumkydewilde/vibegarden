@@ -34,6 +34,8 @@ type SecurityFixtureEnv = {
 
 const prefix = "artifacts/security-artifact/versions/security-version";
 const runtimePrefix = "/runtime/duckdb/1.33.1-dev57.0";
+const runtimeObjectPrefix = "runtime/duckdb/1.33.1-dev57.0";
+const runtimeFixtureOrigin = "http://127.0.0.1:8789";
 const fontUrl = "https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.2.10/files/roboto-greek-ext-100-normal.woff2";
 const html = (body: string) => new Response(body, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
 let writeAttempts = { requests: 0, cookies: [] as string[], mutations: 0, rejectedByOriginGuard: 0, formRequests: 0 };
@@ -46,20 +48,25 @@ function fixtureKind(url: URL): "forbidden" | "positive" | null {
 function fixtureRendererEnv(env: SecurityFixtureEnv): RendererEnv {
   return {
     ARTIFACTS: env.ARTIFACTS,
-    // The security Worker cannot bind the 34 MiB WASM as a Workers static
-    // asset: that intentionally mirrors the known production deployment
-    // limit. This local origin serves the copied renderer directory while the
-    // actual renderer handler still owns the browser-visible runtime route.
-    ASSETS: {
-      fetch(request) {
-        const pathname = new URL(request.url).pathname;
-        return fetch(`http://127.0.0.1:8789/renderer${pathname}`);
-      },
-    } as Fetcher,
     ARTIFACT_METRICS: {} as AnalyticsEngineDataset,
     RENDERER_SIGNING_SECRET: env.RENDERER_SIGNING_SECRET,
     PARENT_ORIGIN: env.PARENT_ORIGIN,
   };
+}
+
+async function ensureRuntime(env: SecurityFixtureEnv): Promise<void> {
+  const files = [
+    ["duckdb-browser-eh.worker.js", "text/javascript"],
+    ["duckdb-eh.wasm", "application/wasm"],
+  ] as const;
+  for (const [file, contentType] of files) {
+    if (await env.ARTIFACTS.head(`${runtimeObjectPrefix}/${file}`)) continue;
+    const response = await fetch(`${runtimeFixtureOrigin}/duckdb/1.33.1-dev57.0/${file}`);
+    if (!response.ok || !response.body) throw new Error(`Could not load local renderer runtime ${file}.`);
+    await env.ARTIFACTS.put(`${runtimeObjectPrefix}/${file}`, response.body, {
+      httpMetadata: { contentType },
+    });
+  }
 }
 
 function bytesFromBase64(value: string): Uint8Array {
@@ -135,6 +142,7 @@ async function token(env: SecurityFixtureEnv, fixture: "forbidden" | "positive",
 
 async function seed(env: SecurityFixtureEnv, fixture: "forbidden" | "positive"): Promise<Response> {
   writeAttempts = { requests: 0, cookies: [], mutations: 0, rejectedByOriginGuard: 0, formRequests: 0 };
+  await ensureRuntime(env);
   await putFixture(env, fixture);
   const now = Math.floor(Date.now() / 1000);
   const current = await token(env, fixture, now + 300);

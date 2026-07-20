@@ -10,10 +10,10 @@ const parentOrigin = "https://vibegarden.club";
 const signingSecret = "test-renderer-signing-secret";
 const sessionSecret = "test-session-secret";
 const prefix = "artifacts/artifact-1/versions/version-1";
+const runtimePrefix = "runtime/duckdb/1.33.1-dev57.0";
 const now = Math.floor(Date.now() / 1000);
 
 type RendererEnv = Pick<Env, "ARTIFACTS" | "ARTIFACT_METRICS"> & {
-  ASSETS: Fetcher;
   RENDERER_SIGNING_SECRET: string;
   PARENT_ORIGIN: string;
 };
@@ -21,14 +21,6 @@ type RendererEnv = Pick<Env, "ARTIFACTS" | "ARTIFACT_METRICS"> & {
 const rendererEnv: RendererEnv = {
   ARTIFACTS: env.ARTIFACTS,
   ARTIFACT_METRICS: env.ARTIFACT_METRICS,
-  ASSETS: {
-    async fetch(input) {
-      const pathname = new URL(typeof input === "string" ? input : input.url).pathname;
-      if (pathname.endsWith("duckdb-browser-eh.worker.js")) return new Response("duckdb worker");
-      if (pathname.endsWith("duckdb-eh.wasm")) return new Response(new Uint8Array([0, 97, 115, 109]));
-      return new Response("Not found", { status: 404 });
-    },
-  } as Fetcher,
   RENDERER_SIGNING_SECRET: signingSecret,
   PARENT_ORIGIN: parentOrigin,
 };
@@ -220,6 +212,13 @@ describe("isolated artifact renderer", () => {
   });
 
   it("serves only the pinned runtime files with immutable caching", async () => {
+    await env.ARTIFACTS.put(`${runtimePrefix}/duckdb-browser-eh.worker.js`, "duckdb worker", {
+      httpMetadata: { contentType: "text/javascript" },
+    });
+    await env.ARTIFACTS.put(`${runtimePrefix}/duckdb-eh.wasm`, new Uint8Array([0, 97, 115, 109]), {
+      httpMetadata: { contentType: "application/wasm" },
+    });
+
     const worker = await request("/runtime/duckdb/1.33.1-dev57.0/duckdb-browser-eh.worker.js");
     const wasm = await request("/runtime/duckdb/1.33.1-dev57.0/duckdb-eh.wasm");
     const rejected = await request("/runtime/duckdb/1.33.1-dev57.0/duckdb-browser-mvp.worker.js");

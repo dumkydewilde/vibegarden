@@ -28,8 +28,8 @@ export default defineConfig({
   }],
   webServer: [
     {
-      command: "npx vite --host 127.0.0.1 --port 8789 --strictPort",
-      url: "http://127.0.0.1:8789/renderer/runtime/duckdb/1.33.1-dev57.0/duckdb-browser-eh.worker.js",
+      command: "npx vite --config test/security/vite.runtime.config.ts --host 127.0.0.1 --port 8789 --strictPort",
+      url: "http://127.0.0.1:8789/duckdb/1.33.1-dev57.0/duckdb-browser-eh.worker.js",
       reuseExistingServer: false,
       timeout: 30_000,
     },

@@ -18,11 +18,6 @@
 			"dataset": "vibe_garden_artifacts"
 		}
 	],
-	"assets": {
-		"directory": "./public/renderer",
-		"binding": "ASSETS",
-		"run_worker_first": true
-	},
 	"routes": [
 		{
 			"pattern": "usercontent.vibegarden.club",

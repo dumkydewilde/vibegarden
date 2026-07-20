@@ -15,7 +15,11 @@ website bindings. Cookies are host-only; never configure a shared `Domain`.
 
 Run `npm run copy:renderer-runtime` after dependency changes. It copies the
 pinned single-thread DuckDB-Wasm `1.33.1-dev57.0` runtime into
-`public/renderer`; do not switch to a CDN or an unpinned URL.
+the gitignored `.renderer-runtime` staging directory; do not switch to a CDN
+or an unpinned URL. `npm run deploy:renderer` uploads those two pinned files
+to the existing private R2 bucket before deploying the renderer. The renderer
+serves only those allowlisted R2 objects, so the bucket remains private and no
+static Workers asset exceeds its size limit.
 
 `npm run test:security` starts `wrangler.security.jsonc`. Chromium resolves
 `vibegarden.test` and `usercontent.vibegarden.test` to `127.0.0.1`; the fixture
@@ -52,16 +56,9 @@ refreshed by the authenticated website wrapper.
 
 ## Production order and gate
 
-Do not run these commands until the static-runtime delivery decision is
-approved: the pinned WASM file is 34.3 MiB while the Workers static-asset
-deployment limit is 25 MiB. The renderer dry-run is therefore an **unrun
-release gate**, not a passing check. The website dry-run currently fails for
-the same copied static asset, so it is also blocked rather than a deployable
-release gate. Remote provisioning and deployment are deferred.
-
-After approval, create the private bucket, apply migrations, then set the same
-new dedicated `RENDERER_SIGNING_SECRET` value in both Workers. Confirm without
-printing secrets that it differs from `SESSION_SECRET`.
+For the first deployment, create the private bucket, apply migrations, then
+set the same new dedicated `RENDERER_SIGNING_SECRET` value in both Workers.
+Confirm without printing secrets that it differs from `SESSION_SECRET`.
 
 ```sh
 npx wrangler r2 bucket create vibe-garden-artifacts

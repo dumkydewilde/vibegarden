@@ -3,6 +3,7 @@ import { buildRendererHeaders, type RendererAssetKind } from "../app/lib/artifac
 import { normalizeArtifactPath } from "../app/lib/artifacts/validation";
 
 const RUNTIME_PREFIX = "/runtime/duckdb/1.33.1-dev57.0/";
+const RUNTIME_OBJECT_PREFIX = "runtime/duckdb/1.33.1-dev57.0/";
 const RUNTIME_FILES = new Set(["duckdb-browser-eh.worker.js", "duckdb-eh.wasm"]);
 const DATA_EXTENSIONS = new Set([".json", ".csv", ".tsv", ".parquet"]);
 const CORS_ASSET_EXTENSIONS = new Set([".woff", ".woff2", ".ttf", ".otf"]);
@@ -11,7 +12,6 @@ const RUNTIME_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
 export type RendererEnv = {
   ARTIFACTS: R2Bucket;
-  ASSETS: Fetcher;
   ARTIFACT_METRICS: AnalyticsEngineDataset;
   RENDERER_SIGNING_SECRET: string;
   PARENT_ORIGIN: string;
@@ -72,13 +72,13 @@ async function runtimeResponse(request: Request, env: RendererEnv, url: URL): Pr
   if (!RUNTIME_FILES.has(file) || file.includes("/")) return privateError(404);
 
   try {
-    const asset = await env.ASSETS.fetch(new Request(new URL(url.pathname, request.url)));
-    if (!asset.ok) return privateError(404);
+    const object = await env.ARTIFACTS.get(`${RUNTIME_OBJECT_PREFIX}${file}`);
+    if (!object) return privateError(404);
     const headers = buildRendererHeaders({ rendererOrigin: rendererOrigin(url), parentOrigin: env.PARENT_ORIGIN, assetKind: "runtime" });
     headers.set("Cache-Control", RUNTIME_CACHE_CONTROL);
-    const contentType = asset.headers.get("Content-Type");
+    const contentType = object.httpMetadata?.contentType;
     if (contentType) headers.set("Content-Type", contentType);
-    return new Response(asset.body, { status: 200, headers });
+    return new Response(object.body, { status: 200, headers });
   } catch {
     return privateError(404);
   }

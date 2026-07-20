@@ -192,7 +192,5 @@ git diff --check
 `test:security` is deliberately limited to `test/security/**/*.spec.ts`; it
 starts a local two-host Worker and exercises the real renderer handler. See
 [the artifact-renderer runbook](docs/runbooks/artifact-renderer.md) for the
-separate-worker deployment, secret rotation, and rollback procedure. The
-renderer's 34.3 MiB pinned DuckDB-Wasm asset currently exceeds the 25 MiB
-Workers static-asset deployment limit, so both Worker dry-runs and deployment
-are explicitly blocked until the approved delivery decision is made.
+separate-worker deployment, private R2 runtime upload, secret rotation, and
+rollback procedure.

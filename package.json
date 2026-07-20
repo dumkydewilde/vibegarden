@@ -23,8 +23,9 @@
     "test:all": "npm test && npm run test:d1 && npm run test:migrations && npm run test:mcp && npm run test:worker && npm run test:security",
     "mcp:inspect": "mcp-inspector",
     "copy:renderer-runtime": "node scripts/copy-renderer-runtime.mjs",
+    "upload:renderer-runtime": "npm run copy:renderer-runtime && wrangler r2 object put vibe-garden-artifacts/runtime/duckdb/1.33.1-dev57.0/duckdb-browser-eh.worker.js --file=.renderer-runtime/duckdb/1.33.1-dev57.0/duckdb-browser-eh.worker.js --content-type=text/javascript --remote && wrangler r2 object put vibe-garden-artifacts/runtime/duckdb/1.33.1-dev57.0/duckdb-eh.wasm --file=.renderer-runtime/duckdb/1.33.1-dev57.0/duckdb-eh.wasm --content-type=application/wasm --remote",
     "cf-typegen": "wrangler types",
-    "deploy:renderer": "npm run copy:renderer-runtime && wrangler deploy --config wrangler.renderer.jsonc",
+    "deploy:renderer": "npm run upload:renderer-runtime && wrangler deploy --config wrangler.renderer.jsonc",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 migrations apply DB --local",
     "db:migrate:prod": "wrangler d1 migrations apply DB --remote"
