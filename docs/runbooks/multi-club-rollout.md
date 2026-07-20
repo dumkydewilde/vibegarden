@@ -177,9 +177,10 @@ With the IDs recorded, verify:
 4. a paid-model request is rejected; and
 5. the temporary credential is disabled or cleaned up.
 
-Also verify that a zero-dollar key limit still permits the allowlisted free
-request before using that defense in production. Stop if the provider behavior
-does not match all five checks. Do not copy a staging key into production.
+Also verify that the key has a $5 monthly limit. A zero-dollar key blocks even
+allowlisted free requests and must be repaired before proceeding. Stop if the
+provider behavior does not match all five checks. Do not copy a staging key
+into production.
 
 ### Staging cleanup or disable
 

@@ -995,7 +995,7 @@ Cover first provision, remote retry without duplicate usable keys, lost one-time
 
 Use stable names `vibegarden:club:<clubId>` and `vibegarden:free-only:v1`. Reconcile local hash against `listKeys(true)`. Create a key only when there is no usable encrypted local key, encrypt its one-time plaintext immediately, create or find the guardrail, assign by `key_hash`, verify the assignment, then set `ready` and `synced_policy`.
 
-For `free_only`, create the key with `limit: 0`, no reset, and assign the shared explicit free-model allowlist. For `all_models`, use a per-club guardrail with the full curated allowlist plus the club spending settings.
+For `free_only`, create the key with the default $5 monthly limit and assign the shared explicit free-model allowlist. OpenRouter blocks requests when a key has a zero-dollar limit, so the allowlist is the authoritative paid-model restriction. For `all_models`, use the club spending limit when configured, otherwise the same $5 monthly default, plus a per-club guardrail with the full curated allowlist.
 
 - [ ] **Step 3: Fail closed on drift and rotate safely**
 
@@ -1210,7 +1210,7 @@ Set `OPENROUTER_MANAGEMENT_KEY` and `OPENROUTER_CREDENTIAL_KEY_V1` with `wrangle
 
 ### Gate 4: Run the real OpenRouter smoke test
 
-After separate authorization for the named non-production OpenRouter workspace, create a temporary club and verify dedicated key creation, shared free-only guardrail assignment, one allowlisted free request, rejection of a paid model, and cleanup or disable. Confirm a zero-dollar key limit still permits the allowlisted free request before retaining that defense in production.
+After separate authorization for the named non-production OpenRouter workspace, create a temporary club and verify dedicated key creation with a $5 monthly limit, shared free-only guardrail assignment, one allowlisted free request, rejection of a paid model, and cleanup or disable.
 
 ### Gate 5: Provision WOTF and remove fallback
 

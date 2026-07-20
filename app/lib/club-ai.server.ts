@@ -52,6 +52,7 @@ type ReconciliationRow = ClubRow & Pick<CredentialRow, "keyHash" | "remoteGuardr
 type ReconciliationFindingKind = "orphaned_key" | "duplicate_key";
 
 const FREE_GUARDRAIL = "vibegarden:free-only:v1";
+const DEFAULT_KEY_SPENDING_LIMIT_USD = 5;
 const sanitizedFailure = "Club AI provisioning could not be completed.";
 const LEASE_TIMEOUT_MS = 30_000;
 const LEASE_HEARTBEAT_MS = 5_000;
@@ -62,6 +63,7 @@ type ProvisioningStage =
   | "resume_candidate"
   | "clear_candidate"
   | "create_key"
+  | "ensure_key"
   | "ensure_guardrail"
   | "mark_ready";
 
@@ -74,6 +76,30 @@ function provisioningErrorCode(error: unknown, stage: ProvisioningStage) {
 
 function keyName(clubId: string) {
   return `vibegarden:club:${clubId}`;
+}
+
+function keyInput(club: ClubRow): OpenRouterKeyInput {
+  return {
+    name: keyName(club.id),
+    limit: club.spendingLimitUsd ?? DEFAULT_KEY_SPENDING_LIMIT_USD,
+    limitReset: "monthly",
+  };
+}
+
+async function ensureKeyPolicy(
+  client: ClubAiManagementClient,
+  key: OpenRouterKey,
+  club: ClubRow,
+) {
+  const desired = keyInput(club);
+  if (
+    key.name !== desired.name ||
+    key.limit !== desired.limit ||
+    key.limitReset !== desired.limitReset
+  ) {
+    return client.updateKey(key.hash, desired);
+  }
+  return key;
 }
 
 function guardrailName(club: ClubRow) {
@@ -229,9 +255,7 @@ export async function reconcileClubAi(env: Env, suppliedClient?: ClubAiManagemen
 
         await resolveFinding(env, row.id, "orphaned_key");
         await resolveFinding(env, row.id, "duplicate_key");
-        if (key.name !== expectedKeyName || key.limit !== 0) {
-          await client.updateKey(key.hash, { name: expectedKeyName, limit: 0 });
-        }
+        await ensureKeyPolicy(client, key, row);
 
         const desiredGuardrail = guardrailInput(row);
         const currentGuardrail = guardrails.find((item) => item.id === row.remoteGuardrailId)
@@ -361,18 +385,18 @@ async function disableRemote(client: ClubAiManagementClient, keys: OpenRouterKey
 
 async function createAndStoreCurrent(
   env: Env,
-  clubId: string,
+  clubRow: ClubRow,
   client: ClubAiManagementClient,
   leaseToken?: string,
 ): Promise<CreatedOpenRouterKey> {
-  const created = await client.createKey({ name: keyName(clubId), limit: 0 });
+  const created = await client.createKey(keyInput(clubRow));
   try {
-    const encrypted = await encryptCredential(created.key, env.OPENROUTER_CREDENTIAL_KEY_V1!, 1, clubId);
+    const encrypted = await encryptCredential(created.key, env.OPENROUTER_CREDENTIAL_KEY_V1!, 1, clubRow.id);
     const stored = await env.DB.prepare(
       `UPDATE club_ai_credentials SET key_hash = ?, key_suffix = ?, ciphertext = ?, iv = ?, key_version = ?,
        candidate_key_hash = NULL, candidate_key_suffix = NULL, candidate_ciphertext = NULL, candidate_iv = NULL
        WHERE club_id = ? AND (? IS NULL OR provisioning_lease_token = ?)`,
-    ).bind(created.hash, created.key.slice(-4), encrypted.ciphertext, encrypted.iv, encrypted.keyVersion, clubId, leaseToken ?? null, leaseToken ?? null).run();
+    ).bind(created.hash, created.key.slice(-4), encrypted.ciphertext, encrypted.iv, encrypted.keyVersion, clubRow.id, leaseToken ?? null, leaseToken ?? null).run();
     if (leaseToken && stored.meta.changes !== 1) throw new Error("Provisioning lease was lost.");
     return created;
   } catch (error) {
@@ -390,6 +414,9 @@ async function completePromotedCandidate(
   leaseToken: string,
 ): Promise<boolean> {
   if (!current.candidateKeyHash || current.candidateKeyHash !== current.keyHash) return false;
+  const remote = keys.find((key) => key.hash === current.keyHash);
+  if (!remote || remote.disabled) throw new Error("Promoted candidate key is unavailable.");
+  await ensureKeyPolicy(client, remote, clubRow);
   await ensureGuardrail(env, clubRow, current.keyHash!, client, current.remoteGuardrailId, leaseToken);
   await requireLease(env, clubRow.id, leaseToken);
   await disableRemote(
@@ -459,8 +486,11 @@ export async function provisionClubAi(env: Env, clubId: string, suppliedClient?:
         ...keys.filter((key) => key.name === keyName(clubId)).map((key) => key.hash),
       ]);
       stage = "create_key";
-      hash = (await createAndStoreCurrent(env, clubId, client, leaseToken)).hash;
+      hash = (await createAndStoreCurrent(env, clubRow, client, leaseToken)).hash;
     }
+    stage = "ensure_key";
+    const activeKey = keys.find((key) => key.hash === hash);
+    if (activeKey) await ensureKeyPolicy(client, activeKey, clubRow);
     stage = "ensure_guardrail";
     await ensureGuardrail(env, clubRow, hash!, client, current.remoteGuardrailId, leaseToken);
     stage = "mark_ready";
@@ -530,7 +560,7 @@ export async function rotateClubCredential(env: Env, clubId: string, suppliedCli
     );
     if (!candidateUsable) {
       await disableRemote(client, keys, [old.candidateKeyHash]);
-      const created = await client.createKey({ name: keyName(clubId), limit: 0 });
+      const created = await client.createKey(keyInput(clubRow));
       try {
         const encrypted = await encryptCredential(created.key, env.OPENROUTER_CREDENTIAL_KEY_V1!, 1, clubId);
         const stored = await env.DB.prepare(

@@ -65,7 +65,14 @@ async function credentialAvailability(id: string) {
 }
 
 function managedKey(id: string, overrides: Partial<OpenRouterKey> = {}): OpenRouterKey {
-  return { hash: `hash-${id}`, name: `vibegarden:club:${id}`, disabled: false, limit: 0, ...overrides };
+  return {
+    hash: `hash-${id}`,
+    name: `vibegarden:club:${id}`,
+    disabled: false,
+    limit: 5,
+    limitReset: "monthly",
+    ...overrides,
+  };
 }
 
 function guardrail(id: string, overrides: Partial<OpenRouterGuardrail> = {}): OpenRouterGuardrail {
@@ -158,12 +165,19 @@ describe("club AI reconciliation", () => {
   it("repairs safe key and guardrail name and limit drift", async () => {
     await club("reconcile-drift");
     const client = new FakeManagementClient();
-    client.keys.push(managedKey("reconcile-drift", { name: "old key name", limit: 12 }));
+    client.keys.push(managedKey("reconcile-drift", {
+      name: "old key name",
+      limit: 0,
+    }));
     client.guardrails.push(guardrail("reconcile-drift", { name: "old guardrail name", limitUsd: 17 }));
 
     await reconcileClubAi(env, client);
 
-    expect(client.keys[0]).toMatchObject({ name: "vibegarden:club:reconcile-drift", limit: 0 });
+    expect(client.keys[0]).toMatchObject({
+      name: "vibegarden:club:reconcile-drift",
+      limit: 5,
+      limitReset: "monthly",
+    });
     expect(client.guardrails[0]).toMatchObject({ name: "vibegarden:club:reconcile-drift", limitUsd: null });
   });
 
