@@ -99,7 +99,11 @@ describe("club AI credential lifecycle", () => {
 
     await provisionClubAi(testEnv, "club-ai-first", client);
 
-    expect(client.keys).toEqual([expect.objectContaining({ name: "vibegarden:club:club-ai-first", limit: 0, limitReset: undefined })]);
+    expect(client.keys).toEqual([expect.objectContaining({
+      name: "vibegarden:club:club-ai-first",
+      limit: 5,
+      limitReset: "monthly",
+    })]);
     expect(client.guardrails[0]).toMatchObject({ name: "vibegarden:free-only:v1" });
     expect(client.assignments.get(client.guardrails[0].id)).toEqual(new Set(["hash-1"]));
     expect(await getClubChatCredential(testEnv, "club-ai-first")).toBe("sk-hash-1");
@@ -114,10 +118,22 @@ describe("club AI credential lifecycle", () => {
 
     await provisionClubAi(testEnv, "club-ai-monthly-limit", client);
 
+    expect(client.keys[0]).toMatchObject({ limit: 5, limitReset: "monthly" });
     expect(client.guardrails[0]).toMatchObject({
       limitUsd: 5,
       resetInterval: "monthly",
     });
+  });
+
+  it("repairs a zero-dollar limit on an existing free-only key", async () => {
+    await club("club-ai-zero-limit");
+    const client = new FakeManagementClient();
+    await provisionClubAi(testEnv, "club-ai-zero-limit", client);
+    Object.assign(client.keys[0], { limit: 0, limitReset: null });
+
+    await syncClubPolicy(testEnv, "club-ai-zero-limit", client);
+
+    expect(client.keys[0]).toMatchObject({ limit: 5, limitReset: "monthly" });
   });
 
   it("fails closed on policy drift, resumes idempotently, and safely rotates", async () => {
@@ -137,6 +153,10 @@ describe("club AI credential lifecycle", () => {
     await rotateClubCredential(testEnv, "club-ai-drift", client);
     expect(client.created).toBe(2);
     expect(client.keys.find((key) => key.hash === "hash-1")?.disabled).toBe(true);
+    expect(client.keys.find((key) => key.hash === "hash-2")).toMatchObject({
+      limit: 5,
+      limitReset: "monthly",
+    });
     expect(await getClubChatCredential(testEnv, "club-ai-drift")).toBe("sk-hash-2");
   });
 

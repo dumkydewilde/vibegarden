@@ -313,12 +313,13 @@ Self-created clubs receive:
 - `free_only` application policy.
 - An explicit curated allowlist of model IDs ending in `:free`.
 - A shared free-only guardrail assigned directly to the club's key.
-- A zero-dollar key spending limit as defense in depth. The allowlist remains
-  the authoritative paid-model restriction.
+- A $5 monthly per-key spending limit by default. OpenRouter blocks requests
+  when a key has a zero-dollar limit, so the allowlist remains the
+  authoritative paid-model restriction.
 
 WOTF receives `all_models`, its own key and guardrail, and the application's
-curated free and paid model list. It initially preserves current unlimited
-behavior. A super admin can later set a daily, weekly, or monthly cap.
+curated free and paid model list. It receives the same $5 monthly default; a
+super admin can change the cap later.
 
 The model picker receives only models allowed by the current club. The chat
 endpoint validates the requested model against the same policy before
