@@ -17,6 +17,16 @@ function clientWith(response: Response, fetchImpl = vi.fn(async () => response))
 }
 
 describe("OpenRouterManagementClient", () => {
+  it("calls an injected fetch implementation without a class receiver", async () => {
+    const fetchImpl = function (this: unknown) {
+      expect(this).toBeUndefined();
+      return Promise.resolve(Response.json({ data: [] }));
+    } as unknown as typeof fetch;
+    const client = new OpenRouterManagementClient(managementEnv, fetchImpl);
+
+    await expect(client.listKeys()).resolves.toEqual([]);
+  });
+
   it("creates a key with documented fields and only sends the management key to OpenRouter", async () => {
     const { client, fetchImpl } = clientWith(
       Response.json({

@@ -56,6 +56,22 @@ const sanitizedFailure = "Club AI provisioning could not be completed.";
 const LEASE_TIMEOUT_MS = 30_000;
 const LEASE_HEARTBEAT_MS = 5_000;
 
+type ProvisioningStage =
+  | "list_keys"
+  | "verify_lease"
+  | "resume_candidate"
+  | "clear_candidate"
+  | "create_key"
+  | "ensure_guardrail"
+  | "mark_ready";
+
+function provisioningErrorCode(error: unknown, stage: ProvisioningStage) {
+  const match = error instanceof Error
+    ? /^OpenRouter request failed \((\d{3})\)\.$/.exec(error.message)
+    : null;
+  return match ? `openrouter_http_${match[1]}` : `openrouter_unknown_${stage}`;
+}
+
 function keyName(clubId: string) {
   return `vibegarden:club:${clubId}`;
 }
@@ -65,11 +81,12 @@ function guardrailName(club: ClubRow) {
 }
 
 function guardrailInput(club: ClubRow): OpenRouterGuardrailInput {
+  const limitUsd = club.modelPolicy === "all_models" ? club.spendingLimitUsd : null;
   return {
     name: guardrailName(club),
     allowedModels: modelsForPolicy(club.modelPolicy).map((model) => model.id),
-    limitUsd: club.modelPolicy === "all_models" ? club.spendingLimitUsd : null,
-    resetInterval: null,
+    limitUsd,
+    resetInterval: limitUsd === null ? null : "monthly",
   };
 }
 
@@ -419,10 +436,14 @@ export async function provisionClubAi(env: Env, clubId: string, suppliedClient?:
   if (!leaseToken) return;
   const stopHeartbeat = heartbeatLease(env, clubId, leaseToken);
   const current = await credential(env, clubId);
+  let stage: ProvisioningStage = "list_keys";
   try {
     const keys = await client.listKeys(true);
+    stage = "verify_lease";
     await requireLease(env, clubId, leaseToken);
+    stage = "resume_candidate";
     if (await completePromotedCandidate(env, clubRow, current, keys, client, leaseToken)) return;
+    stage = "clear_candidate";
     await clearUnpromotedCandidate(env, current, keys, client, leaseToken);
     const remote = keys.find((key) => key.hash === current.keyHash);
     const usable = !!(
@@ -437,15 +458,25 @@ export async function provisionClubAi(env: Env, clubId: string, suppliedClient?:
         current.candidateKeyHash,
         ...keys.filter((key) => key.name === keyName(clubId)).map((key) => key.hash),
       ]);
+      stage = "create_key";
       hash = (await createAndStoreCurrent(env, clubId, client, leaseToken)).hash;
     }
+    stage = "ensure_guardrail";
     await ensureGuardrail(env, clubRow, hash!, client, current.remoteGuardrailId, leaseToken);
+    stage = "mark_ready";
     const completed = await env.DB.prepare(
       "UPDATE club_ai_credentials SET provisioning_state = 'ready', synced_policy = ?, last_synced_at = ?, sanitized_error = NULL, provisioning_lease_token = NULL, provisioning_lease_heartbeat_at = NULL WHERE club_id = ? AND provisioning_lease_token = ?",
     ).bind(clubRow.modelPolicy, Date.now(), clubId, leaseToken).run();
     if (completed.meta.changes !== 1) throw new Error("Provisioning lease was lost.");
   } catch (error) {
     await markFailed(env, clubId, leaseToken);
+    logOperation({
+      level: "error",
+      operation: "club_ai.provision",
+      clubId,
+      provisioningState: "failed",
+      code: provisioningErrorCode(error, stage),
+    });
     throw new Error(sanitizedFailure);
   } finally {
     stopHeartbeat();

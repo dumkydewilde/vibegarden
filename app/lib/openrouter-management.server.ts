@@ -174,7 +174,8 @@ export class OpenRouterManagementClient {
   }
 
   private async request(path: string, init: RequestInit = {}): Promise<unknown> {
-    const response = await this.fetchImpl(this.url(path), {
+    const fetchImpl = this.fetchImpl;
+    const response = await fetchImpl(this.url(path), {
       ...init,
       headers: {
         Authorization: `Bearer ${this.managementKey}`,

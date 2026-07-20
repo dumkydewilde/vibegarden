@@ -1,5 +1,5 @@
 import { env } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   clubCredentialNeedsProvisioning,
   getClubChatCredential,
@@ -80,10 +80,14 @@ class FakeManagementClient implements ClubAiManagementClient {
   async listKeyAssignments(id: string) { return [...(this.assignments.get(id) ?? [])]; }
 }
 
-async function club(id: string, policy: "free_only" | "all_models" = "free_only") {
+async function club(
+  id: string,
+  policy: "free_only" | "all_models" = "free_only",
+  spendingLimitUsd: number | null = null,
+) {
   const now = Date.now();
-  await env.DB.prepare("INSERT INTO clubs (id, name, slug, model_policy, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'active', ?, ?)")
-    .bind(id, id, id, policy, now, now).run();
+  await env.DB.prepare("INSERT INTO clubs (id, name, slug, model_policy, spending_limit_usd, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'active', ?, ?)")
+    .bind(id, id, id, policy, spendingLimitUsd, now, now).run();
   await env.DB.prepare("INSERT INTO club_ai_credentials (club_id, provisioning_state) VALUES (?, 'pending')")
     .bind(id).run();
 }
@@ -102,6 +106,18 @@ describe("club AI credential lifecycle", () => {
     const stored = await env.DB.prepare("SELECT ciphertext, iv, provisioning_state, synced_policy FROM club_ai_credentials WHERE club_id = ?").bind("club-ai-first").first<Record<string, string>>();
     expect(stored).toMatchObject({ provisioning_state: "ready", synced_policy: "free_only" });
     expect(`${stored?.ciphertext}${stored?.iv}`).not.toContain("sk-hash-1");
+  });
+
+  it("uses a monthly guardrail budget when a club has a spending limit", async () => {
+    await club("club-ai-monthly-limit", "all_models", 5);
+    const client = new FakeManagementClient();
+
+    await provisionClubAi(testEnv, "club-ai-monthly-limit", client);
+
+    expect(client.guardrails[0]).toMatchObject({
+      limitUsd: 5,
+      resetInterval: "monthly",
+    });
   });
 
   it("fails closed on policy drift, resumes idempotently, and safely rotates", async () => {
@@ -232,16 +248,49 @@ describe("club AI credential lifecycle", () => {
   it("records only a sanitized error when provider reconciliation fails", async () => {
     await club("club-ai-failure");
     const client = new FakeManagementClient();
-    client.failAssignments = true;
+    client.listKeys = async () => {
+      throw new Error("OpenRouter request failed (403).");
+    };
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     await expect(provisionClubAi(testEnv, "club-ai-failure", client)).rejects.toThrow(
       "Club AI provisioning could not be completed.",
     );
+    expect(errorLog).toHaveBeenCalledWith(JSON.stringify({
+      level: "error",
+      operation: "club_ai.provision",
+      clubId: "club-ai-failure",
+      provisioningState: "failed",
+      code: "openrouter_http_403",
+    }));
     expect(await env.DB.prepare("SELECT provisioning_state AS state, sanitized_error AS error FROM club_ai_credentials WHERE club_id = ?").bind("club-ai-failure").first()).toEqual({
       state: "failed",
       error: "Club AI provisioning could not be completed.",
     });
     expect(await clubCredentialNeedsProvisioning(testEnv, "club-ai-failure")).toBe(true);
+    errorLog.mockRestore();
+  });
+
+  it("logs the failed provisioning stage without provider details", async () => {
+    await club("club-ai-stage-failure");
+    const client = new FakeManagementClient();
+    client.listKeys = async () => {
+      throw new Error("provider details must not escape");
+    };
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await expect(provisionClubAi(testEnv, "club-ai-stage-failure", client)).rejects.toThrow(
+      "Club AI provisioning could not be completed.",
+    );
+
+    expect(errorLog).toHaveBeenCalledWith(JSON.stringify({
+      level: "error",
+      operation: "club_ai.provision",
+      clubId: "club-ai-stage-failure",
+      provisioningState: "failed",
+      code: "openrouter_unknown_list_keys",
+    }));
+    errorLog.mockRestore();
   });
 
   it("replaces an unusable lost one-time credential and disables it on archival", async () => {

@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { createRoutesStub } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import AdminClubs, { action, loader } from "../admin.clubs";
 import { requireSuperAdmin } from "~/lib/auth.server";
 import {
@@ -61,6 +61,10 @@ const clubs = [
   },
 ];
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 function actionArgs(intent: string, values: Record<string, string> = {}) {
   const form = new FormData();
   form.set("intent", intent);
@@ -107,6 +111,25 @@ describe("platform clubs dashboard", () => {
     expect(screen.getByText(/\$50 cap/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open club" })).toHaveAttribute("href", "/clubs/active-club");
     expect(screen.queryByRole("link", { name: "Open Archived Club" })).not.toBeInTheDocument();
+  });
+
+  it("revalidates a pending credential after two seconds", async () => {
+    vi.useFakeTimers();
+    const loader = vi.fn(() => ({
+      clubs: [{ ...clubs[0], credentialState: "pending", syncedPolicy: null, hasSyncDrift: true }],
+    }));
+    const Stub = createRoutesStub([{ path: "/admin/clubs", Component: AdminClubs, loader }]);
+    render(<Stub initialEntries={["/admin/clubs"]} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText("pending")).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+
+    expect(loader).toHaveBeenCalledTimes(2);
   });
 
   it.each([

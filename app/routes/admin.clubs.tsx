@@ -1,4 +1,5 @@
-import { Form, Link, useNavigation } from "react-router";
+import { useEffect, useRef } from "react";
+import { Form, Link, useNavigation, useRevalidator } from "react-router";
 import { ShieldCheck } from "lucide-react";
 import type { Route } from "./+types/admin.clubs";
 import { cloudflareContext } from "~/lib/context";
@@ -119,8 +120,32 @@ function policyLabel(policy: "free_only" | "all_models" | null) {
   return policy?.replace("_", " ") ?? "not configured";
 }
 
+const PENDING_REVALIDATION_DELAY_MS = 2_000;
+const MAX_PENDING_REVALIDATIONS = 5;
+
+function usePendingClubRevalidation(clubs: Route.ComponentProps["loaderData"]["clubs"]) {
+  const { revalidate, state } = useRevalidator();
+  const attempts = useRef(0);
+  const hasPendingClub = clubs.some((club) => club.credentialState === "pending");
+
+  useEffect(() => {
+    if (!hasPendingClub) {
+      attempts.current = 0;
+      return;
+    }
+    if (state !== "idle" || attempts.current >= MAX_PENDING_REVALIDATIONS) return;
+
+    const timer = window.setTimeout(() => {
+      attempts.current += 1;
+      revalidate();
+    }, PENDING_REVALIDATION_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [hasPendingClub, revalidate, state]);
+}
+
 export default function AdminClubs({ loaderData }: Route.ComponentProps) {
   const busy = useNavigation().state === "submitting";
+  usePendingClubRevalidation(loaderData.clubs);
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeader icon={ShieldCheck} title="Platform clubs" description="Platform-funded model access and club AI lifecycle controls." />

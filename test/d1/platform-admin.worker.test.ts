@@ -38,13 +38,14 @@ async function user(
 async function club(
   id: string,
   status: "active" | "archived" = "active",
+  spendingLimitUsd: number | null = 25,
 ) {
   const now = Date.now();
   await env.DB
     .prepare(
       "INSERT INTO clubs (id, name, slug, model_policy, status, spending_limit_usd, created_at, updated_at) VALUES (?, ?, ?, 'free_only', ?, ?, ?, ?)",
     )
-    .bind(id, `${id} club`, id, status, 25, now, now)
+    .bind(id, `${id} club`, id, status, spendingLimitUsd, now, now)
     .run();
   await env.DB
     .prepare(
@@ -153,6 +154,20 @@ describe("platform club administration", () => {
       "club.spending_limit_changed",
     ]);
     expect(JSON.stringify(audits.results)).not.toMatch(/key|cipher|secret|token/i);
+  });
+
+  it("defaults newly enabled model access to a five dollar cap", async () => {
+    const superAdmin = await user("platform-default-cap", "super_admin");
+    await club("platform-default-cap", "active", null);
+
+    await setClubModelPolicy(testEnv, superAdmin, "platform-default-cap", "all_models");
+
+    expect(
+      await env.DB
+        .prepare("SELECT spending_limit_usd AS spendingLimitUsd FROM clubs WHERE id = ?")
+        .bind("platform-default-cap")
+        .first(),
+    ).toEqual({ spendingLimitUsd: 5 });
   });
 
   it("restores archived clubs only for a super admin and records the platform lifecycle audit", async () => {
