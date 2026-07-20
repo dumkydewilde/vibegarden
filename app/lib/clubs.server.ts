@@ -311,10 +311,13 @@ export async function setClubModelPolicy(
     throw new Response("Invalid model policy", { status: 400 });
   }
   const now = Date.now();
+  const defaultSpendingLimitUsd = 5;
   const result = await env.DB.batch([
     env.DB
-      .prepare("UPDATE clubs SET model_policy = ?, updated_at = ? WHERE id = ?")
-      .bind(modelPolicy, now, clubId),
+      .prepare(
+        "UPDATE clubs SET model_policy = ?, spending_limit_usd = CASE WHEN ? = 'all_models' AND spending_limit_usd IS NULL THEN ? ELSE spending_limit_usd END, updated_at = ? WHERE id = ?",
+      )
+      .bind(modelPolicy, modelPolicy, defaultSpendingLimitUsd, now, clubId),
     env.DB
       .prepare(
         "UPDATE club_ai_credentials SET provisioning_state = 'pending', synced_policy = NULL, provisioning_lease_token = NULL, provisioning_lease_heartbeat_at = NULL WHERE club_id = ?",
