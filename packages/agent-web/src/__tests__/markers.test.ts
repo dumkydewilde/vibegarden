@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   diagramNote,
+  markerForEvent,
   splitToolNotes,
   stripToolNotes,
   toolNote,
@@ -10,6 +11,11 @@ const diagram = {
   title: "How questions become answers",
   diagram: "flowchart TD\n  A[Question] --> B[Answer]",
 };
+
+const articleSlugs = ["what-is-an-llm", "what-is-an-agent"];
+const articlesMarker = `[[tool:articles:${encodeURIComponent(
+  JSON.stringify({ version: 1, slugs: articleSlugs }),
+)}]]`;
 
 describe("splitToolNotes", () => {
   it("passes plain text through as one segment", () => {
@@ -54,6 +60,27 @@ describe("splitToolNotes", () => {
     expect(splitToolNotes(marker)).toEqual([{ type: "diagram", ...diagram }]);
   });
 
+  it("round-trips a compact learning-article recommendation", () => {
+    expect(
+      markerForEvent({ type: "articles", slugs: articleSlugs }),
+    ).toBe(articlesMarker);
+    expect(splitToolNotes(articlesMarker)).toEqual([
+      { type: "articles", slugs: articleSlugs },
+    ]);
+  });
+
+  it("keeps malformed article recommendation markers as text", () => {
+    expect(splitToolNotes("[[tool:articles:not-json]]")).toEqual([
+      { type: "text", text: "[[tool:articles:not-json]]" },
+    ]);
+    const tooMany = encodeURIComponent(
+      JSON.stringify({ version: 1, slugs: ["a", "b", "c", "d"] }),
+    );
+    expect(splitToolNotes(`[[tool:articles:${tooMany}]]`)).toEqual([
+      { type: "text", text: `[[tool:articles:${tooMany}]]` },
+    ]);
+  });
+
   it("keeps malformed and unknown diagram markers as text", () => {
     expect(splitToolNotes("[[tool:diagram:not-json]]")).toEqual([
       { type: "text", text: "[[tool:diagram:not-json]]" },
@@ -79,6 +106,11 @@ describe("stripToolNotes", () => {
 
   it("strips a valid diagram marker from model-bound history", () => {
     const text = `Before.\n\n${diagramNote(diagram)}\n\nAfter.`;
+    expect(stripToolNotes(text)).toBe("Before.\n\nAfter.");
+  });
+
+  it("strips article recommendation cards from model-bound history", () => {
+    const text = `Before.\n\n${articlesMarker}\n\nAfter.`;
     expect(stripToolNotes(text)).toBe("Before.\n\nAfter.");
   });
 });

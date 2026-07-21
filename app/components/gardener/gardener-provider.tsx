@@ -85,7 +85,7 @@ export type GardenerState = {
   model: Model;
   allowedModels: Model[];
   setModel: (model: Model) => void;
-  /** Web search via the OpenRouter web plugin; on by default. */
+  /** Web search via the OpenRouter web plugin; off until the person enables it. */
   webSearch: boolean;
   setWebSearch: (on: boolean) => void;
   /** Datasets loaded into the browser's DuckDB for the query_data tool. */
@@ -162,7 +162,7 @@ export function GardenerProvider({
   const [model, setModel] = useState<Model>(
     initialModel,
   );
-  const [webSearch, setWebSearch] = useState(true);
+  const [webSearch, setWebSearch] = useState(false);
   const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
   const [attachingDataset, setAttachingDataset] = useState<string | null>(
     null,

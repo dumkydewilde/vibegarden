@@ -19,7 +19,8 @@ import {
  * The Gardener's tools as agent-core ToolSpecs. gardenerToolSpecs(config) is
  * the full set (for executing whatever a model asks for); offered tools
  * per conversation come from offeredGardenerTools, which gates fresh_reads
- * on the MotherDuck token and query_data on attached datasets.
+ * on the MotherDuck token. query_data is always offered to tool-capable
+ * models because DuckDB can also build explicit mock/example data in memory.
  */
 
 export const TOOL_RESULT_MAX_CHARS = 20_000;
@@ -144,6 +145,69 @@ const readArticleSpec: ToolSpec = {
     return getArticle(slug)
       ? { type: "note", kind: "article", value: slug }
       : { type: "note", kind: "note", value: "looking for an article" };
+  },
+};
+
+type ArticleRecommendations = { slugs: string[] };
+type ArticleRecommendationValidation =
+  | { value: ArticleRecommendations; error?: never }
+  | { value?: never; error: string };
+
+function validateArticleRecommendations(
+  args: Record<string, unknown>,
+): ArticleRecommendationValidation {
+  if (!Array.isArray(args.slugs) || args.slugs.length < 1 || args.slugs.length > 3) {
+    return { error: "Error: choose between one and three learning article slugs." };
+  }
+  if (!args.slugs.every((slug) => typeof slug === "string")) {
+    return { error: "Error: every learning article slug must be a string." };
+  }
+  const slugs = [...new Set(args.slugs.map((slug) => slug.trim()).filter(Boolean))];
+  const unknown = slugs.filter((slug) => !getArticle(slug));
+  if (slugs.length === 0 || unknown.length > 0) {
+    const known = getArticles()
+      .map((article) => article.slug)
+      .join(", ");
+    return {
+      error: `Error: unknown learning article slug${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ") || "empty"}. Available slugs: ${known}.`,
+    };
+  }
+  return { value: { slugs } };
+}
+
+const recommendArticlesSpec: ToolSpec = {
+  name: "recommend_articles",
+  description:
+    "Display one to three known Vibe Garden learning articles as clickable cards. Use this for generic requests for articles, reading recommendations, or something to learn; do not replace them with unrelated web links.",
+  promptGuidance:
+    "recommend_articles(slugs): display one to three known learning articles as clickable cards. Use it for generic article, reading, or learning recommendations. The cards contain the links already, so explain briefly why they fit without repeating the links in prose.",
+  parameters: {
+    type: "object",
+    properties: {
+      slugs: {
+        type: "array",
+        minItems: 1,
+        maxItems: 3,
+        items: { type: "string" },
+        description: "One to three slugs from the learning article index.",
+      },
+    },
+    required: ["slugs"],
+  },
+  execute: (args) => {
+    const recommendations = validateArticleRecommendations(args);
+    if (recommendations.error) return recommendations.error;
+    const lines = recommendations.value.slugs.map((slug) => {
+      const article = getArticle(slug)!;
+      return `- [${article.meta.title}](/learning/${slug}): ${article.meta.description}`;
+    });
+    return `These learning article cards are displayed in the chat:\n${lines.join("\n")}\nBriefly explain why they fit. Do not repeat their links.`;
+  },
+  noteFor: (args) => {
+    const recommendations = validateArticleRecommendations(args);
+    return recommendations.error
+      ? null
+      : { type: "articles", slugs: recommendations.value.slugs };
   },
 };
 
@@ -298,8 +362,8 @@ const freshReadsSpec = (config: MotherDuckConfig = {}): ToolSpec => ({
 const queryDataSpec: ToolSpec = {
   name: "query_data",
   description:
-    "Run DuckDB SQL against the datasets the person attached. The query executes in their browser, never on a server; the capped result (max 50 rows) arrives in a follow-up message, after which you narrate the key numbers. Aggregate to few rows whenever possible. Optionally pass a chart to draw a small visual next to the result table when a trend or comparison is clearer visually.",
-  promptGuidance: `query_data(sql, chart?): run DuckDB SQL against the datasets the person attached (listed below). The query runs in their browser and a table appears in the chat automatically; the result comes back to you in a follow-up message capped at ${RESULT_MAX_ROWS} rows, so aggregate (GROUP BY, LIMIT) rather than selecting everything. Pass chart {type: line|scatter|bar, x, y, title} when a trend or comparison is clearer as a visual, and always when the person asks for a chart; the x and y must be columns of the query result. This is the only way to chart data (never Mermaid). Column types come from how the CSV was sniffed, so a date stored as text (e.g. "21-JUN-07") stays VARCHAR: parse it with strptime(col, '%d-%b-%y'), not CAST AS DATE, which fails on non-ISO formats. After the result arrives, state the key numbers plainly and briefly; never invent values you have not seen. If the result reports an error, change the SQL (do not resend the same query) and try again.`,
+    "Run DuckDB SQL in the person's browser. It can query attached datasets or create explicit mock/example data with VALUES, range, or generate_series; it never runs on a server. The capped result (max 50 rows) arrives in a follow-up message, after which you narrate the key numbers. Optionally pass a chart to draw a small visual next to the result table.",
+  promptGuidance: `query_data(sql, chart?): run DuckDB SQL in the person's browser and show its result as a table. With attached datasets (listed below), aggregate to a few rows (GROUP BY, LIMIT) rather than selecting everything. Without a dataset, use VALUES, range, or generate_series only when the person explicitly asks for mock or example data; never invent data for a factual question. Pass chart {type: line|scatter|bar, x, y, title} when a trend or comparison is clearer as a visual, and always when the person asks for a chart; x and y must be columns of the query result. This is the only way to chart data (never Mermaid). Results are capped at ${RESULT_MAX_ROWS} rows. Column types come from how a CSV was sniffed, so a date stored as text (e.g. "21-JUN-07") stays VARCHAR: parse it with strptime(col, '%d-%b-%y'), not CAST AS DATE. After the result arrives, state the key numbers plainly and briefly; never invent values you have not seen. If the result reports an error, change the SQL and try again.`,
   parameters: {
     type: "object",
     properties: {
@@ -362,6 +426,7 @@ export type GardenerToolsConfig = {
 export function gardenerToolSpecs(config: GardenerToolsConfig = {}): ToolSpec[] {
   return [
     readArticleSpec,
+    recommendArticlesSpec,
     readModuleSpec,
     fetchPageSpec,
     visualizeFlowSpec,
@@ -373,16 +438,14 @@ export function gardenerToolSpecs(config: GardenerToolsConfig = {}): ToolSpec[] 
 
 /**
  * The tools offered to the model for one conversation: fresh_reads only
- * when a MotherDuck token is configured, query_data only when the
- * conversation has attached datasets.
+ * when a MotherDuck token is configured. Browser DuckDB is useful both for
+ * attached datasets and for explicit standalone mock/example charts.
  */
 export function offeredGardenerTools(
   config: GardenerToolsConfig = {},
-  opts: { queryData?: boolean } = {},
 ): ToolSpec[] {
   return gardenerToolSpecs(config).filter((spec) => {
     if (spec.name === "fresh_reads") return !!config.freshReads?.token;
-    if (spec.name === "query_data") return !!opts.queryData;
     return true;
   });
 }

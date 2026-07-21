@@ -50,32 +50,61 @@ describe("gardener tool execution", () => {
     });
   });
 
-  it("gates fresh_reads on the token and query_data on datasets", () => {
+  it("gates fresh_reads on the token and always offers query_data", () => {
     const names = (offered: { name: string }[]) => offered.map((s) => s.name);
     expect(names(offeredGardenerTools(config))).toEqual([
       "read_article",
+      "recommend_articles",
       "read_module",
       "fetch_page",
       "visualize_flow",
       "attach_data",
+      "query_data",
     ]);
     expect(
       names(
         offeredGardenerTools(
           { freshReads: { token: "token" } },
-          { queryData: true },
         ),
       ),
     ).toContain("fresh_reads");
-    expect(names(offeredGardenerTools(config, { queryData: true }))).toContain(
-      "query_data",
-    );
+    expect(names(offeredGardenerTools(config))).toContain("query_data");
   });
 
   it("reads an article without its frontmatter", async () => {
     const result = await execute(call("read_article", { slug: "what-is-an-llm" }));
     expect(result).toContain("A very good guesser");
     expect(result).not.toMatch(/^---/);
+  });
+
+  it("offers and renders one to three known learning recommendations", async () => {
+    const definition = openAiToolDefinitions(offeredGardenerTools(config)).find(
+      (item) => item.function.name === "recommend_articles",
+    );
+    expect(definition).toMatchObject({
+      function: {
+        parameters: {
+          required: ["slugs"],
+          properties: { slugs: { type: "array", maxItems: 3 } },
+        },
+      },
+    });
+
+    const recommendations = call("recommend_articles", {
+      slugs: ["what-is-an-llm", "what-is-an-agent", "what-is-an-agent"],
+    });
+    const result = await execute(recommendations);
+    expect(result).toContain("[What is an LLM, really?](/learning/what-is-an-llm)");
+    expect(result).toContain("[What is an agent?](/learning/what-is-an-agent)");
+    expect(noteMarker(recommendations)).toContain("[[tool:articles:");
+  });
+
+  it("rejects unknown or empty learning recommendations without a marker", async () => {
+    for (const slugs of [[], ["not-a-real-article"]]) {
+      const recommendations = call("recommend_articles", { slugs });
+      expect(await execute(recommendations)).toContain("Error");
+      expect(noteMarker(recommendations)).toBeNull();
+    }
   });
 
   it("lists valid slugs when the article is unknown", async () => {

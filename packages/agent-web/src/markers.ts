@@ -44,6 +44,8 @@ export function markerForEvent(event: AgentEvent): string | null {
       );
     case "diagram":
       return diagramNote({ title: event.title, diagram: event.diagram });
+    case "articles":
+      return articlesNote({ slugs: event.slugs });
     case "delegated-call": {
       if (event.tool === "query_data") {
         const payload = event.payload as { sql?: unknown; chart?: unknown };
@@ -72,6 +74,11 @@ export type DiagramPayload = {
   diagram: string;
 };
 
+export type ArticlesPayload = {
+  version: 1;
+  slugs: string[];
+};
+
 export type QueryPayload = {
   version: 1;
   sql: string;
@@ -86,6 +93,7 @@ export type AttachPayload = {
 export type ToolNoteSegment =
   | { type: "text"; text: string }
   | { type: "tool"; kind: ToolNoteKind; value: string }
+  | { type: "articles"; slugs: string[] }
   | { type: "diagram"; title: string; diagram: string }
   | { type: "query"; sql: string; chart?: ChartSpec }
   | { type: "queryresult"; result: QueryResultEnvelope }
@@ -93,6 +101,7 @@ export type ToolNoteSegment =
   | { type: "attachresult"; result: AttachResultEnvelope };
 
 const NOTE_LINE = /^\[\[tool:(article|module|web|note):(.+?)\]\]$/;
+const ARTICLES_LINE = /^\[\[tool:articles:(.+?)\]\]$/;
 const DIAGRAM_LINE = /^\[\[tool:diagram:(.+?)\]\]$/;
 const QUERY_LINE = /^\[\[tool:query:(.+?)\]\]$/;
 const QUERY_RESULT_LINE = /^\[\[tool:queryresult:(.+?)\]\]$/;
@@ -101,6 +110,14 @@ const ATTACH_RESULT_LINE = /^\[\[tool:attachresult:(.+?)\]\]$/;
 
 export function toolNote(kind: ToolNoteKind, value: string): string {
   return `[[tool:${kind}:${value}]]`;
+}
+
+export function articlesNote(
+  payload: Omit<ArticlesPayload, "version">,
+): string {
+  return `[[tool:articles:${encodeURIComponent(
+    JSON.stringify({ version: 1, ...payload } satisfies ArticlesPayload),
+  )}]]`;
 }
 
 export function diagramNote(
@@ -141,6 +158,28 @@ function decodeDiagram(value: string): DiagramPayload | null {
       typeof parsed.diagram === "string"
       ? { version: 1, title: parsed.title, diagram: parsed.diagram }
       : null;
+  } catch {
+    return null;
+  }
+}
+
+function decodeArticles(value: string): ArticlesPayload | null {
+  try {
+    const parsed = JSON.parse(
+      decodeURIComponent(value),
+    ) as Partial<ArticlesPayload>;
+    if (
+      parsed.version !== 1 ||
+      !Array.isArray(parsed.slugs) ||
+      parsed.slugs.length < 1 ||
+      parsed.slugs.length > 3 ||
+      !parsed.slugs.every(
+        (slug) => typeof slug === "string" && /^[\w-]+$/.test(slug),
+      )
+    ) {
+      return null;
+    }
+    return { version: 1, slugs: [...new Set(parsed.slugs)] };
   } catch {
     return null;
   }
@@ -212,6 +251,18 @@ export function splitToolNotes(text: string): ToolNoteSegment[] {
   };
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
+    const articlesMatch = trimmed.match(ARTICLES_LINE);
+    if (articlesMatch) {
+      const payload = decodeArticles(articlesMatch[1]);
+      if (payload) {
+        flush();
+        segments.push({ type: "articles", slugs: payload.slugs });
+      } else {
+        buffer.push(line);
+      }
+      continue;
+    }
+
     const diagramMatch = trimmed.match(DIAGRAM_LINE);
     if (diagramMatch) {
       const payload = decodeDiagram(diagramMatch[1]);

@@ -35,7 +35,7 @@ export function ModelPicker() {
             />
             <span>{m.label}</span>
             <span className="ml-auto text-xs text-muted-foreground">
-              {m.note}
+              {m.note} · {m.tools ? "visuals + tools" : "text only"}
             </span>
           </DropdownMenuItem>
         ))}

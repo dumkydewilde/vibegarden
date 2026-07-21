@@ -32,21 +32,21 @@ vi.mock("~/lib/gardener.server", () => ({
   trimHistory: vi.fn().mockReturnValue([]),
   readSseRound: vi.fn(),
 }));
-vi.mock("~/lib/gardener-tools.server", () => ({
-  attachMarkerFor: vi.fn(),
-  executeTool: vi.fn(),
-  queryMarkerFor: vi.fn(),
-  toolDefinitions: vi.fn(),
-  toolNoteFor: vi.fn(),
-}));
-vi.mock("~/lib/query-tool", () => ({
-  MAX_DATASETS: 8,
-  parseAttachEnvelope: vi.fn(),
-  parseEnvelope: vi.fn(),
-}));
-vi.mock("~/lib/tool-notes", () => ({ attachResultNote: vi.fn(), queryResultNote: vi.fn() }));
-
 import { action } from "../api.chat";
+import { resolveClubModel } from "~/lib/models";
+
+function sseResponse(deltas: object[]) {
+  return new Response(
+    [
+      ...deltas.map((delta) =>
+        `data: ${JSON.stringify({ choices: [delta] })}`,
+      ),
+      "data: [DONE]",
+      "",
+    ].join("\n\n"),
+    { status: 200 },
+  );
+}
 
 describe("chat upstream failures", () => {
   beforeEach(() => {
@@ -75,5 +75,57 @@ describe("chat upstream failures", () => {
       "upstream_rejected",
     );
     expect(error.mock.calls.flat().join(" ")).not.toContain(secret);
+  });
+
+  it("streams article recommendation events as web markers", async () => {
+    vi.mocked(resolveClubModel).mockReturnValueOnce({
+      id: "model:free",
+      label: "Tool model",
+      note: "free",
+      tools: true,
+    });
+    mocks.fetch
+      .mockResolvedValueOnce(
+        sseResponse([
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_articles",
+                  function: {
+                    name: "recommend_articles",
+                    arguments: JSON.stringify({
+                      slugs: ["what-is-an-llm", "what-is-an-agent"],
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+          { delta: {}, finish_reason: "tool_calls" },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([
+          { delta: { content: "These are two useful starting points." } },
+          { delta: {}, finish_reason: "stop" },
+        ]),
+      );
+
+    const response = await action({
+      request: new Request("https://example.com/clubs/club-1/api/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "Any interesting articles?" }],
+        }),
+      }),
+      context: { get: () => ({ env: {} as Env }) },
+      params: { clubSlug: "club-1" },
+    } as never);
+
+    const text = await response.text();
+    expect(text).toContain("[[tool:articles:");
+    expect(text).toContain("These are two useful starting points.");
   });
 });
