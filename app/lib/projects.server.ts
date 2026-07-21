@@ -5,6 +5,17 @@ import { chatThreads, projects, type Project } from "~/db/schema";
 
 export type ClubUserScope = { clubId: string; userId: string };
 
+export class ProjectDeleteConflictError extends Error {
+  readonly code = "artifact_conflict";
+  readonly status = 409;
+
+  constructor() {
+    super("Projects with retained artifacts cannot be removed.");
+    this.name = "ProjectDeleteConflictError";
+    Object.setPrototypeOf(this, ProjectDeleteConflictError.prototype);
+  }
+}
+
 export function parseModules(raw: string | null): string[] {
   if (!raw) return [];
   try {
@@ -207,13 +218,15 @@ export async function updateProject(
 }
 
 export async function deleteProject(env: Env, scope: ClubUserScope, id: string) {
-  await getDb(env)
-    .delete(projects)
-    .where(
-      and(
-        eq(projects.id, id),
-        eq(projects.clubId, scope.clubId),
-        eq(projects.userId, scope.userId),
-      ),
-    );
+  const deleted = await env.DB.prepare(
+    `DELETE FROM projects
+     WHERE id = ? AND club_id = ? AND user_id = ?
+       AND NOT EXISTS (SELECT 1 FROM artifacts WHERE project_id = projects.id)
+       AND NOT EXISTS (SELECT 1 FROM artifact_uploads WHERE project_id = projects.id)`,
+  ).bind(id, scope.clubId, scope.userId).run();
+  if (deleted.meta.changes === 1) return;
+  const project = await env.DB.prepare(
+    "SELECT id FROM projects WHERE id = ? AND club_id = ? AND user_id = ? LIMIT 1",
+  ).bind(id, scope.clubId, scope.userId).first();
+  if (project) throw new ProjectDeleteConflictError();
 }

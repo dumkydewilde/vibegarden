@@ -1,0 +1,23 @@
+import type { Route } from "./+types/api.artifact-uploads.$uploadId.abort";
+import { ArtifactError } from "~/lib/artifacts/contracts";
+import { artifactEmpty, artifactJsonAction, artifactRejectMethod, artifactRequireMethod } from "~/lib/artifacts/http.server";
+import { abortUpload } from "~/lib/artifacts/service.server";
+import { requireArtifactUser } from "~/lib/artifacts/auth.server";
+import { cloudflareContext } from "~/lib/context";
+
+export function loader() {
+  return artifactRejectMethod();
+}
+
+export async function action({ request, params, context }: Route.ActionArgs) {
+  const methodError = artifactRequireMethod(request, "POST");
+  if (methodError) return methodError;
+  const { env } = context.get(cloudflareContext);
+  const user = await requireArtifactUser(env, request);
+  if (user instanceof Response) return user;
+  return artifactJsonAction(async () => {
+    if (!params.uploadId) throw new ArtifactError("invalid_input");
+    await abortUpload(env, user.id, params.uploadId);
+    return artifactEmpty();
+  });
+}

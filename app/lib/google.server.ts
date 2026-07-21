@@ -1,4 +1,4 @@
-import { signValue, verifyValue } from "./auth.server";
+import { secureCookieAttribute, signValue, verifyValue } from "./auth.server";
 import { safeInternalPath } from "./return-path";
 
 const STATE_COOKIE = "vg_oauth_state";
@@ -50,9 +50,10 @@ export async function googleAuthRedirect(
     }),
     env.SESSION_SECRET,
   );
+  const secure = secureCookieAttribute(request) ? "; Secure" : "";
   return {
     url: `https://accounts.google.com/o/oauth2/v2/auth?${params}`,
-    stateCookie: `${STATE_COOKIE}=${encodeURIComponent(signed)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`,
+    stateCookie: `${STATE_COOKIE}=${encodeURIComponent(signed)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600${secure}`,
   };
 }
 

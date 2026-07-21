@@ -1,119 +1,56 @@
-# Task 11: Grant Revocation, Reviewer Login, and Public Documentation
+# Task 11 Report: Signed Capability Codec and Renderer Policy
+Status: complete.
 
-## RED
+Implemented the v1 renderer capability codec with canonical base64url JSON and
+HMAC-SHA256 signatures. Issuance rejects empty or reused renderer/session
+secrets, malformed claims, non-v1 versions, invalid modes, non-immutable
+prefixes, non-normalized paths, and non-canonical data origins. Verification
+uses WebCrypto verification, returns no failure detail, rejects expired and
+non-canonical tokens, and validates the exact claim shape.
 
-Added route-level tests for user-owned OAuth grant listing/revocation,
-cross-origin POST rejection, reviewer POST-only login and normal-user role,
-and public connection/privacy disclosures.
+Added deterministic renderer CSP, Permissions Policy, and fresh response
+headers. The CSP is server-owned, allows only the approved static hosts and
+declared HTTPS data origins, contains no wildcard parent or connect source, and
+uses explicit production or loopback development parents. Capability responses
+are private/no-store, nosniff, and no-referrer. Only runtime and data assets
+receive credential-free CORS.
 
-Ran:
+TDD evidence: the two focused suites first failed because their modules did not
+exist. After implementation, `npm test --
+app/lib/artifacts/__tests__/capability.test.ts
+app/lib/artifacts/__tests__/policy.test.ts` passed (19 tests), `npm run
+typecheck` passed, and `git diff --check` passed. The broader artifact/origin
+suite passed (197 tests) and the Worker suite passed (46 tests).
 
-```sh
-npm test -- app/routes/__tests__/settings-connections.test.tsx app/routes/__tests__/review-login.test.tsx app/routes/__tests__/mcp-public-docs.test.tsx
-```
+`npm run test:security` was attempted but is currently misconfigured:
+`playwright test` collects Vitest suites and fails before security fixtures run
+with errors including "Vitest mocker was not initialized" and
+`import.meta.glob is not a function`. This task does not modify the Playwright
+configuration or the affected suites.
 
-Result: failed as expected because `settings.connections`, `review.login`,
-`connect`, and `privacy.mcp` routes did not exist.
+## Review remediation (2026-07-19)
 
-## GREEN
+Capability issuance now accepts an optional deterministic Unix-second clock and
+requires `exp` to equal `now + ARTIFACT_LIMITS.capabilityTtlSeconds` exactly.
+Verification also rejects correctly HMAC-signed claims whose expiry is more
+than that five-minute window ahead of the verifier clock, so a years-long
+claim is neither issuable nor valid. Tests cover the one-second-short,
+one-second-long, and years-long boundaries, as well as correctly signed future
+token and policy versions.
 
-- Added authenticated `/settings/connections`, with `requireUser`, owner-bound
-  `listUserGrants` and `revokeGrant`, same-origin POST checking, and HMAC-hashed
-  revocation audit fields.
-- Added isolated `/review/login`. GET only renders the form; POST rate-limits a
-  fixed key, makes SHA-256 byte-array comparisons for both normalized email and
-  password, returns one generic error for all failures, forces the persisted
-  reviewer role to `user`, then creates the normal `vg_session` cookie.
-- Added public `/connect` and `/privacy/mcp` pages plus README setup, operation,
-  reviewer-seeding, and revocation guidance.
-- Added an idempotent reviewer seeder using deterministic SHA-256-derived UUIDs,
-  escaped SQL literals, and only deterministic reviewer IDs. It exits before any
-  remote command when `MCP_REVIEW_EMAIL` is absent; the remote command was not
-  run during this task.
+The signature-tampering test now deterministically replaces its final base64url
+character with a different value, eliminating the prior same-character flake.
 
-## Verification
+Added the required uploaded-content negative fixture at
+`test/security/fixtures/forbidden.html` and the focused Playwright assertion in
+`test/security/artifact-policy.spec.ts`. It verifies that an uploaded attempt
+to set permissive CSP/CORS values or an untrusted download capability cannot
+widen the server-owned entry response policy. The fixture is deliberately a
+standalone artifact for Task 16's renderer-boundary coverage to reuse.
 
-| Command | Result |
-| --- | --- |
-| `npm test -- app/routes/__tests__/settings-connections.test.tsx app/routes/__tests__/review-login.test.tsx app/routes/__tests__/mcp-public-docs.test.tsx` | PASS — 3 files, 8 tests |
-| `npm run test:all` | PASS — 45 app files / 248 tests; 2 MCP files / 15 tests |
-| `npm run typecheck` | PASS |
-| `npm run build` | PASS |
-| `env -u MCP_REVIEW_EMAIL node scripts/seed-mcp-reviewer.mjs` | PASS — exits before remote execution with the expected required-variable error |
-| `git diff --check` | PASS |
-
-The MCP test run emitted existing third-party sourcemap warnings from
-`@modelcontextprotocol/sdk`; it still exited successfully. The production build
-emitted its existing chunk-size advisory and exited successfully.
-
-## Review Repair
-
-### RED
-
-Added failing coverage for non-POST reviewer-login and grant-revocation
-actions, four SHA-256 comparisons when credentials or reviewer configuration
-are invalid, deterministic reviewer identity, legacy-admin demotion,
-idempotent seed SQL, and the exact MCP return fields disclosed publicly.
-
-### GREEN
-
-- Both sensitive actions now reject every non-POST request with `405` and
-  `Allow: POST` before parsing form data or touching authentication services.
-- Reviewer login continues all four SHA-256 calculations before returning the
-  generic invalid-credentials response. New reviewer accounts use the same
-  deterministic UUIDv5-shaped SHA-256 identity as the seeder; an existing
-  matching account is demoted to `user` without replacing its identity.
-- The seeder exposes deterministic SQL generation for test coverage, inserts
-  a reviewer only when its email is absent, resolves an existing reviewer by
-  email for new sample rows, and updates only the deterministic reviewer row
-  and deterministic sample rows. It performs no remote work when the required
-  environment variable is absent.
-- The privacy page now enumerates the exact project, conversation, article,
-  module, and fresh-read response fields.
-
-### Verification
-
-| Command | Result |
-| --- | --- |
-| `npm test -- app/routes/__tests__/settings-connections.test.tsx app/routes/__tests__/review-login.test.tsx app/routes/__tests__/mcp-public-docs.test.tsx` | PASS — 3 files, 16 tests |
-| `npm run test:all` | PASS — 47 app files / 258 tests; 2 MCP files / 15 tests |
-| `npm run typecheck` | PASS |
-| `npm run build` | PASS |
-| `env -u MCP_REVIEW_EMAIL node scripts/seed-mcp-reviewer.mjs` | Expected failure before any remote command: `MCP_REVIEW_EMAIL must be set before seeding reviewer data.` |
-| `git diff --check` | PASS |
-
-The MCP test run still emits third-party `@modelcontextprotocol/sdk` sourcemap
-warnings, and the build still emits its existing chunk-size advisory; both
-commands exit successfully.
-
-## Identity Collision Repair
-
-### RED
-
-Added regression coverage for a valid reviewer credential whose configured
-email is already owned by a different participant ID, an `upsertUser` call
-with a conflicting forced reviewer ID, and deterministic seeder preflight
-rejection before it can compose or execute sample-row writes. Added an
-idempotence assertion for an existing deterministic reviewer ID.
-
-### GREEN
-
-- `upsertUser` now returns `null` before changing any existing user whenever a
-  caller requires a different deterministic ID. Reviewer login turns that
-  result into the existing `Invalid reviewer credentials` response and creates
-  no session.
-- The reviewer seeder first executes a read-only JSON preflight for the email.
-  It aborts when the resolved ID differs from the deterministic reviewer ID;
-  subsequent seed SQL binds every sample row directly to the deterministic ID,
-  never an email lookup.
-
-### Verification
-
-| Command | Result |
-| --- | --- |
-| `npm test -- app/routes/__tests__/settings-connections.test.tsx app/routes/__tests__/review-login.test.tsx app/routes/__tests__/mcp-public-docs.test.tsx` | PASS — 3 files, 17 tests |
-| `npm run test:all` | PASS — 47 app files / 262 tests; 2 MCP files / 15 tests |
-| `npm run typecheck` | PASS |
-| `npm run build` | PASS |
-| `env -u MCP_REVIEW_EMAIL node scripts/seed-mcp-reviewer.mjs` | Expected failure before any Wrangler command: required-variable error |
-| `git diff --check` | PASS |
+TDD evidence: lifetime tests first failed because issuance accepted off-boundary
+and years-long expiries and verification accepted a correctly signed years-long
+claim. The security assertion first failed because the mandatory fixture was
+absent. After the changes, the focused capability/policy tests passed (25
+tests), the focused security test passed (1 test), `npm run typecheck` passed,
+and `git diff --check` passed.

@@ -11,6 +11,11 @@ interface Env {
   MCP_HISTORY_LIMITER: RateLimit;
   MCP_REVIEW_EMAIL?: string;
   MCP_REVIEW_PASSWORD?: string;
+  ARTIFACTS: R2Bucket;
+  ARTIFACT_METRICS: AnalyticsEngineDataset;
+  RENDERER_ORIGIN: string;
+  WEB_ALLOWED_ORIGINS: string;
+  RENDERER_SIGNING_SECRET: string;
   /** Development-only credential for /dev/login. */
   DEV_LOGIN_TOKEN?: string;
   RESEND_API_KEY?: string;

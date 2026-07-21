@@ -6,7 +6,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router";
-import { ArrowLeft, MessageCircle, Sprout, Trash2 } from "lucide-react";
+import { ArrowLeft, MessageCircle, PackageOpen, Sprout, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Route } from "./+types/garden.projects.$id";
 import { cloudflareContext } from "~/lib/context";
@@ -37,10 +37,12 @@ import { modules } from "~/lib/modules";
 import {
   deleteProject,
   getProject,
+  ProjectDeleteConflictError,
   updateProject,
 } from "~/lib/projects.server";
 import { statusLabel } from "~/lib/project-status";
 import { listProjectThreads } from "~/lib/threads.server";
+import { listOwnedProjectArtifacts } from "~/lib/artifacts/service.server";
 import { cn } from "~/lib/utils";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -54,13 +56,11 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   const scope = { clubId: club.club.id, userId: user.id };
   const project = await getProject(env, scope, params.id);
   if (!project) throw new Response("Project not found", { status: 404 });
-  const conversations = await listProjectThreads(
-    env,
-    scope,
-    project.id,
-    project.threadId,
-  );
-  return { project, conversations };
+  const [conversations, artifacts] = await Promise.all([
+    listProjectThreads(env, scope, project.id, project.threadId),
+    listOwnedProjectArtifacts(env, user.id, project.id),
+  ]);
+  return { project, conversations, artifacts };
 }
 
 export async function action({ request, context, params }: Route.ActionArgs) {
@@ -72,8 +72,15 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const intent = form.get("intent");
 
   if (intent === "delete") {
-    await deleteProject(env, scope, params.id);
-    return redirect(clubPath(club.club.slug, "garden"));
+    try {
+      await deleteProject(env, scope, params.id);
+      return redirect(clubPath(club.club.slug, "garden"));
+    } catch (error) {
+      if (error instanceof ProjectDeleteConflictError) {
+        return { saved: false, deleteError: error.message };
+      }
+      throw error;
+    }
   }
 
   if (intent === "save") {
@@ -95,7 +102,7 @@ export default function ProjectDetail({
   loaderData,
   actionData,
 }: Route.ComponentProps) {
-  const { project, conversations } = loaderData;
+  const { project, conversations, artifacts } = loaderData;
   const { clubSlug } = useParams();
   const navigation = useNavigation();
   const { plantProject, addContext } = useGardener();
@@ -281,6 +288,11 @@ export default function ProjectDetail({
         </section>
       )}
 
+      <section className="mt-8" aria-labelledby="project-artifacts-heading">
+        <div className="flex items-center justify-between gap-3"><h2 id="project-artifacts-heading" className="flex items-center gap-2 text-lg"><PackageOpen className="size-4 text-primary" /> Artifacts</h2><Button asChild variant="outline" size="sm"><Link to={clubPath(clubSlug ?? "", `artifacts?project=${encodeURIComponent(project.id)}&upload=1`)}>Upload artifact</Link></Button></div>
+        {artifacts.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">No live artifacts yet. Upload one to keep it with this project.</p> : <ul className="mt-3 divide-y rounded-lg border">{artifacts.map((artifact) => <li key={artifact.id}><Link to={clubPath(clubSlug ?? "", `artifacts/${encodeURIComponent(artifact.id)}`)} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-accent/40"><span className="min-w-0 truncate text-sm">{artifact.title}{artifact.deletedAt && <span className="ml-2 text-xs text-muted-foreground">Recoverable for 30 days</span>}</span><span className="shrink-0 text-xs text-muted-foreground">{artifact.deletedAt ? "Open to recover" : artifact.currentVersion ? `Version ${artifact.currentVersion.number}` : "Draft"}</span></Link></li>)}</ul>}
+      </section>
+
       <div className="mt-10 border-t pt-6">
         <Dialog>
           <DialogTrigger asChild>
@@ -297,12 +309,25 @@ export default function ProjectDetail({
               <DialogDescription>
                 This removes "{project.title}" for good. Any linked
                 conversation stays in your garden.
+                {artifacts.length > 0 && (
+                  <span className="mt-2 block">
+                    Remove every artifact first. Deleted artifacts remain recoverable
+                    for 30 days, so restore one if needed, then remove it or wait for
+                    scheduled cleanup to permanently remove it.
+                  </span>
+                )}
+                {actionData?.deleteError && (
+                  <span className="mt-2 block text-destructive">
+                    {actionData.deleteError} Restore or remove the retained artifact,
+                    or wait for cleanup after its recovery window.
+                  </span>
+                )}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Form method="post">
                 <input type="hidden" name="intent" value="delete" />
-                <Button type="submit" variant="destructive" disabled={busy}>
+                <Button type="submit" variant="destructive" disabled={busy || artifacts.length > 0}>
                   Remove it
                 </Button>
               </Form>

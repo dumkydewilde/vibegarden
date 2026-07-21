@@ -1,0 +1,30 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "vibe-garden-renderer",
+	"compatibility_date": "2026-07-14",
+	"main": "./workers/renderer.ts",
+	"vars": {
+		"PARENT_ORIGIN": "https://vibegarden.club"
+	},
+	"r2_buckets": [
+		{
+			"binding": "ARTIFACTS",
+			"bucket_name": "vibe-garden-artifacts"
+		}
+	],
+	"analytics_engine_datasets": [
+		{
+			"binding": "ARTIFACT_METRICS",
+			"dataset": "vibe_garden_artifacts"
+		}
+	],
+	"routes": [
+		{
+			"pattern": "usercontent.vibegarden.club",
+			"custom_domain": true
+		}
+	],
+	"observability": {
+		"enabled": false
+	}
+}

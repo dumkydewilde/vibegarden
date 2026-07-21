@@ -62,7 +62,7 @@ function cookieValue(request: Request, name: string) {
   return match?.[1] ?? null;
 }
 
-function isSecure(request: Request) {
+export function secureCookieAttribute(request: Request) {
   return new URL(request.url).protocol === "https:";
 }
 
@@ -77,7 +77,7 @@ export async function createSessionCookie(env: Env, request: Request, userId: st
     expiresAt: now + SESSION_TTL_MS,
   });
   const signed = await signValue(id, env.SESSION_SECRET);
-  const secure = isSecure(request) ? "; Secure" : "";
+  const secure = secureCookieAttribute(request) ? "; Secure" : "";
   return `${COOKIE_NAME}=${signed}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_MS / 1000}${secure}`;
 }
 
@@ -89,7 +89,8 @@ export async function destroySessionCookie(env: Env, request: Request) {
       await getDb(env).delete(sessions).where(eq(sessions.id, id));
     }
   }
-  return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  const secure = secureCookieAttribute(request) ? "; Secure" : "";
+  return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
 }
 
 export async function getUser(env: Env, request: Request): Promise<User | null> {
