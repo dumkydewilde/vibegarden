@@ -1,5 +1,5 @@
 PRAGMA foreign_keys=OFF;--> statement-breakpoint
-DROP TRIGGER `projects_owner_matches_artifacts_and_uploads_on_update`;--> statement-breakpoint
+DROP TRIGGER IF EXISTS `projects_owner_matches_artifacts_and_uploads_on_update`;--> statement-breakpoint
 CREATE TABLE `__old_artifact_upload_files` AS SELECT * FROM `artifact_upload_files`;--> statement-breakpoint
 DROP TABLE `artifact_upload_files`;--> statement-breakpoint
 CREATE TABLE `__new_artifact_uploads` (
