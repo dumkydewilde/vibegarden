@@ -1,7 +1,5 @@
 # Gardener MCP Server Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add an authenticated, read-only Streamable HTTP MCP server to the existing Vibe Garden Worker so Claude and ChatGPT can continue owned projects and read Vibe Garden learning content.
 
 **Architecture:** Wrap the existing React Router Worker with Cloudflare's OAuth provider, route authenticated `/mcp` requests to a fresh stateless `McpServer` per request, and pass all other requests to the existing React Router handler. Keep D1 and build-time content modules authoritative, add MCP-specific pagination and presenters, and reserve an inactive analysis interface without shipping a server-side DuckDB runtime.

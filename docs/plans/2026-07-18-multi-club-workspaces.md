@@ -1,7 +1,5 @@
 # Multi-Club Workspaces Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Turn Vibe Garden into a multi-tenant application where a person can belong to multiple isolated clubs, with WOTF migrated in place and each club using a platform-managed OpenRouter credential.
 
 **Architecture:** Keep one D1 database and make `club_id` the explicit tenant boundary at every storage and route boundary. Resolve a canonical `ClubContext` once per club request, pass it into club-owned services, and separate global account and platform administration from `/clubs/:clubSlug` routes. Provision and reconcile one encrypted OpenRouter credential per club outside the club-creation transaction so non-AI features remain available during provider failures.
