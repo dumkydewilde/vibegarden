@@ -815,6 +815,9 @@ async function textMutation(
     project: { projectId }, type, title, ...(description === undefined ? {} : { description }),
     ...(allowedDataOrigins === undefined ? {} : { allowedDataOrigins }), idempotencyKey: idempotencyKey(rawInput.idempotencyKey), ...(artifactId === undefined ? {} : { artifactId }),
   }, "mcp", files.map(({ body: _body, ...file }) => file));
+  if (session.completed.length === files.length) {
+    return { artifactId: session.artifactId, versionId: session.versionId };
+  }
   for (const file of files) {
     const { body, ...metadata } = file;
     await putUploadFile(env, scope.userId, session.uploadId, metadata, body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength));
