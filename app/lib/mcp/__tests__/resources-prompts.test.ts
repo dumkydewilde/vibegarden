@@ -252,4 +252,20 @@ describe("Gardener MCP resources and prompts", () => {
     expect(JSON.stringify(prompt)).toContain("smallest useful next step");
     expect(JSON.stringify(prompt)).not.toContain("system prompt");
   });
+
+  it("publishes artifact-package guidance through the Gardener guide resource", async () => {
+    const guide = await readResource(serverFor("user-a"), "vibegarden://guide/gardener");
+    const text = JSON.stringify(guide);
+
+    for (const requiredRule of [
+      "create_artifact",
+      "create_artifact_version",
+      "index.html",
+      "relative",
+      "allowed_data_origins",
+      "idempotency",
+      "private",
+      "share_artifact",
+    ]) expect(text).toContain(requiredRule);
+  });
 });

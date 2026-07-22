@@ -140,8 +140,10 @@ Core landed 2026-07-14, see `docs/plans/2026-07-14-gardener-tools.md`.
       can be marked complete.
 - [ ] Renderer release — local two-host browser security gate passes; blocked
       pending a decision for the 34.3 MiB pinned DuckDB-Wasm file versus the
-      25 MiB Workers static-asset deployment limit. Task 15 MCP E2E, remote
-      provisioning, and deploy are deferred.
+      25 MiB Workers static-asset deployment limit. Local MCP
+      create/version/retry/share and insufficient-scope proof is complete only
+      after `npm run test:mcp` passes; remote provisioning and deployment
+      remain separate release gates.
 - [x] Inspiration: first real curated set (2026-07-14): datasets incl.
       Goodreads export + TalkData, data stories (Pudding, football analysis),
       tools people built (Dot Collector, Clay-replacement post, FlickFlock,

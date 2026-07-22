@@ -11,6 +11,11 @@ describe("MCP public documentation", () => {
     expect(page).toContain("ChatGPT");
     expect(page).toContain("projects:read");
     expect(page).toContain("content:read");
+    expect(page).toContain("artifacts:write");
+    expect(page).toContain("artifacts:publish");
+    expect(page).toContain("100 files");
+    expect(page).toContain("2 MB");
+    expect(page).toContain("reauthorize");
     expect(page).toContain("/settings");
   });
 
@@ -23,6 +28,9 @@ describe("MCP public documentation", () => {
     expect(page).toContain("Fresh reads return title, summary, content_type, source_url, and optional key_insight");
     expect(page).toContain("tool name, outcome, latency");
     expect(page).toContain("does not receive your surrounding Claude or ChatGPT conversation");
+    expect(page).toContain("explicit tool arguments");
+    expect(page).toContain("private R2");
+    expect(page).toContain("not included in operational logs");
     expect(page).toContain("Revoke access");
     expect(page).toContain("Cloudflare");
     expect(page).toContain("MotherDuck");

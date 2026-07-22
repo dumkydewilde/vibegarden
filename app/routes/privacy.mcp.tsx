@@ -17,23 +17,25 @@ export default function McpPrivacy() {
           Fresh reads return title, summary, content_type, source_url, and optional key_insight.
         </p>
         <p>
-          Tool arguments are explicit. Vibe Garden does not receive your surrounding Claude or ChatGPT conversation.
+          File text for artifact creation is intentionally sent as explicit tool arguments. Vibe Garden does not receive
+          your surrounding Claude or ChatGPT conversation.
         </p>
       </section>
       <section className="mt-8 space-y-3">
         <h2 className="text-xl font-medium">Operational logs and retention</h2>
         <p>
           We log only content-free operational fields: tool name, outcome, latency, request ID, and a short HMAC hash
-          of your user ID. Cloudflare Workers Logs retains these logs for 3 days on the Free plan or 7 days on the Paid
-          plan. Vibe Garden does not export them, and platform retention never exceeds 7 days in this design.
+          of your user ID. Artifact file text is not included in operational logs. Cloudflare Workers Logs retains these
+          logs for 3 days on the Free plan or 7 days on the Paid plan. Vibe Garden does not export them, and platform
+          retention never exceeds 7 days in this design.
         </p>
       </section>
       <section className="mt-8 space-y-3">
         <h2 className="text-xl font-medium">Storage and subprocessors</h2>
         <p>
           OAuth tokens and grants live in OAuth KV, app data remains in D1, and learning content ships with the Worker.
-          Cloudflare processes the Worker, D1, KV, and operational logs. MotherDuck is used only by the optional
-          <code> fresh_reads </code> feature.
+          Artifact packages and their retained versions are stored in private R2. Cloudflare processes the Worker, D1,
+          KV, private R2, and operational logs. MotherDuck is used only by the optional <code> fresh_reads </code> feature.
         </p>
       </section>
       <section className="mt-8 space-y-3">
