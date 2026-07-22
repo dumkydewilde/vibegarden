@@ -284,9 +284,9 @@ const fetchPageSpec: ToolSpec = {
 const visualizeFlowSpec: ToolSpec = {
   name: "visualize_flow",
   description:
-    "Render a Mermaid diagram directly in the chat. Use it when a flow, sequence, decision path, or relationship is materially clearer as a visual. Keep the diagram small, readable, and useful to someone who may not program.",
+    "Render a Mermaid diagram directly in the chat. Always call this tool whenever you create or receive Mermaid source. Never return the Mermaid source as chat text or a code block. Use it when a flow, sequence, decision path, or relationship is materially clearer as a visual. Keep the diagram small, readable, and useful to someone who may not program.",
   promptGuidance:
-    "visualize_flow(title, diagram): render a Mermaid flow, sequence, decision path, or relationship directly in the chat. Use it only when the visual is clearer than prose, keep it small, and follow it with a short explanation. Never use it to chart data: numeric results get the chart option of query_data instead.\n\n" +
+    "visualize_flow(title, diagram): render a Mermaid flow, sequence, decision path, or relationship directly in the chat. Always call this tool when you create or receive Mermaid source, including when the person asks for a Mermaid diagram or shares Mermaid for you to improve. Never return Mermaid source or a Mermaid code fence in your chat response. Use it only when the visual is clearer than prose, keep it small, and follow the tool result with a short explanation. Never use it to chart data: numeric results get the chart option of query_data instead.\n\n" +
     mermaidFlowchartNotes.trim(),
   parameters: {
     type: "object",

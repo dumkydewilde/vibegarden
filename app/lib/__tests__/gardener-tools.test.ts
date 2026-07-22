@@ -48,6 +48,9 @@ describe("gardener tool execution", () => {
         },
       },
     });
+    expect(definition?.function.description).toContain(
+      "Never return the Mermaid source as chat text or a code block",
+    );
   });
 
   it("gates fresh_reads on the token and always offers query_data", () => {
