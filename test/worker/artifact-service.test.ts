@@ -16,6 +16,73 @@ import { artifactObjectKey, putLeasedObject } from "../../app/lib/artifacts/obje
 const now = 1_784_880_000_000;
 const text = new TextEncoder();
 
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+
+function finalizationRaceEnv(
+  role: "winner" | "loser",
+  barriers: { loserReadPending: ReturnType<typeof deferred>; winnerTransitioned: ReturnType<typeof deferred>; releaseLoser: ReturnType<typeof deferred>; releaseWinner: ReturnType<typeof deferred> },
+): Env {
+  let delayedInitialLoad = false;
+  let winnerTransitioned = false;
+  const db = new Proxy(env.DB, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (property !== "prepare" || typeof value !== "function") return value;
+      return (query: string) => {
+        const isOwnedUpload = query === "SELECT * FROM artifact_uploads WHERE id = ? AND user_id = ? LIMIT 1";
+        const isTransition = query.startsWith("UPDATE artifact_uploads SET status = 'finalizing'");
+        const isFileLoad = query.startsWith("SELECT path, mime_type AS mimeType");
+        const wrap = (statement: D1PreparedStatement): D1PreparedStatement => new Proxy(statement, {
+          get(statementTarget, statementProperty, statementReceiver) {
+            const statementValue = Reflect.get(statementTarget, statementProperty, statementReceiver);
+            if (statementProperty === "bind") {
+              return (...args: unknown[]) => wrap(
+                (statementValue as (...values: unknown[]) => D1PreparedStatement).apply(statementTarget, args),
+              );
+            }
+            if (role === "loser" && isOwnedUpload && statementProperty === "first" && !delayedInitialLoad) {
+              delayedInitialLoad = true;
+              return async (...args: unknown[]) => {
+                const result = await (statementValue as (...values: unknown[]) => Promise<unknown>).apply(statementTarget, args);
+                barriers.loserReadPending.resolve();
+                await barriers.winnerTransitioned.promise;
+                return result;
+              };
+            }
+            if (role === "winner" && isTransition && statementProperty === "run") {
+              return async (...args: unknown[]) => {
+                const result = await (statementValue as (...values: unknown[]) => Promise<unknown>).apply(statementTarget, args);
+                winnerTransitioned = true;
+                barriers.winnerTransitioned.resolve();
+                return result;
+              };
+            }
+            if (role === "winner" && winnerTransitioned && isFileLoad && statementProperty === "all") {
+              return async (...args: unknown[]) => {
+                await barriers.releaseWinner.promise;
+                return (statementValue as (...values: unknown[]) => Promise<unknown>).apply(statementTarget, args);
+              };
+            }
+            if (role === "loser" && isTransition && statementProperty === "run") {
+              return async (...args: unknown[]) => {
+                await barriers.releaseLoser.promise;
+                return (statementValue as (...values: unknown[]) => Promise<unknown>).apply(statementTarget, args);
+              };
+            }
+            return statementValue;
+          },
+        }) as D1PreparedStatement;
+        return wrap(target.prepare(query));
+      };
+    },
+  });
+  return { ...env, DB: db } as Env;
+}
+
 async function seed(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)").bind("user-a", "a@example.com", now),
@@ -169,6 +236,35 @@ describe("artifact upload service", () => {
 
     await expect(createTextArtifact(env, { userId: "user-a", clubId: "club-a" }, input)).resolves.toEqual(created);
     await expect(env.DB.prepare("SELECT current_version_id FROM artifacts WHERE id = ?").bind(created.artifactId).first()).resolves.toEqual({ current_version_id: created.versionId });
+  });
+
+  it("completes both callers when a loser observes the winner's finalizing transition", async () => {
+    const body = text.encode("<h1>Concurrent</h1>");
+    const session = await createUploadSession(env, "user-a", {
+      project: { projectId: "project-a" }, type: "html", title: "Concurrent", idempotencyKey: "concurrent-transition",
+    });
+    await putUploadFile(env, "user-a", session.uploadId, {
+      path: "index.html", mimeType: "text/html", byteSize: body.byteLength, sha256: await sha256(body),
+    }, body.buffer);
+    const barriers = {
+      loserReadPending: deferred(), winnerTransitioned: deferred(), releaseLoser: deferred(), releaseWinner: deferred(),
+    };
+    const loser = finalizeUpload(finalizationRaceEnv("loser", barriers), "user-a", session.uploadId);
+    await barriers.loserReadPending.promise;
+    const winner = finalizeUpload(finalizationRaceEnv("winner", barriers), "user-a", session.uploadId);
+    await barriers.winnerTransitioned.promise;
+    barriers.releaseLoser.resolve();
+
+    try {
+      const loserResult = await loser;
+      barriers.releaseWinner.resolve();
+      const winnerResult = await winner;
+      expect(loserResult).toEqual({ artifactId: session.artifactId, versionId: session.versionId });
+      expect(winnerResult).toEqual(loserResult);
+    } finally {
+      barriers.releaseWinner.resolve();
+      await winner.catch(() => undefined);
+    }
   });
 
   it("rejects same-user MCP text writes outside the selected club", async () => {

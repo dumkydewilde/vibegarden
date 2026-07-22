@@ -613,7 +613,7 @@ async function completedUploadResult(
 
 /** Finalizes from upload rows only. Failed validation never creates a partial artifact. */
 export async function finalizeUpload(env: Env, userId: string, uploadId: string): Promise<ArtifactMutationResult> {
-  const upload = await findOwnedUpload(env, userId, uploadId) as StoredUpload | null;
+  let upload = await findOwnedUpload(env, userId, uploadId) as StoredUpload | null;
   if (!upload) artifactError("not_found");
   if (upload.status === "complete") return { artifactId: upload.artifact_id, versionId: upload.version_id };
   if (upload.status !== "pending" && upload.status !== "finalizing") artifactError("state_conflict");
@@ -626,9 +626,10 @@ export async function finalizeUpload(env: Env, userId: string, uploadId: string)
       "UPDATE artifact_uploads SET status = 'finalizing', updated_at = ? WHERE id = ? AND user_id = ? AND status = 'pending' AND expires_at > ?",
     ).bind(now(), uploadId, userId, now()).run();
     if (transition.meta.changes !== 1) {
-      const completed = await completedUploadResult(env, userId, uploadId);
-      if (completed) return completed;
-      artifactError("state_conflict");
+      const replay = await findOwnedUpload(env, userId, uploadId) as StoredUpload | null;
+      if (replay?.status === "complete") return { artifactId: replay.artifact_id, versionId: replay.version_id };
+      if (replay?.status !== "finalizing") artifactError("state_conflict");
+      upload = replay;
     }
   }
   const files = await env.DB.prepare(
@@ -638,6 +639,8 @@ export async function finalizeUpload(env: Env, userId: string, uploadId: string)
     validateArtifactPackage({ type: upload.type, source: upload.source === "mcp" ? "mcp" : "browser", files: artifactFiles(files.results) });
     await assertRecordedFilesLeased(env, userId, upload, files.results);
   } catch (error) {
+    const completed = await completedUploadResult(env, userId, uploadId);
+    if (completed) return completed;
     await markFailed(env, userId, uploadId);
     if (error instanceof ArtifactError) throw error;
     throw new ArtifactError("invalid_manifest");
