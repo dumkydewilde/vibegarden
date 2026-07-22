@@ -86,6 +86,35 @@ function toolActivityLabel(
   return segment.value.charAt(0).toUpperCase() + segment.value.slice(1);
 }
 
+function ArticleRecommendationCards({
+  slugs,
+  clubSlug,
+}: {
+  slugs: string[];
+  clubSlug: string;
+}) {
+  const articles = slugs
+    .map((slug) => ({ slug, article: getArticle(slug) }))
+    .filter((item) => item.article !== undefined);
+  if (articles.length === 0) return null;
+
+  return (
+    <div className="w-full rounded-lg bg-muted/60 px-2.5 py-2">
+      <p className="mb-1.5 text-xs italic text-muted-foreground">Worth reading</p>
+      <div className="flex flex-wrap gap-1.5">
+        {articles.map(({ slug, article }) => (
+          <ContentCard
+            key={slug}
+            to={clubPath(clubSlug, `learning/${slug}`)}
+            icon={BookOpen}
+            title={article.meta.title}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** A tool activity aside: its own small bubble between the text bubbles. */
 function ToolNoteBubble({
   segment,
@@ -219,6 +248,15 @@ export function ChatMessageBubble({
                     key={i}
                     text={clean}
                     error={message.error}
+                  />
+                );
+              }
+              if (segment.type === "articles") {
+                return (
+                  <ArticleRecommendationCards
+                    key={i}
+                    slugs={segment.slugs}
+                    clubSlug={clubSlug ?? ""}
                   />
                 );
               }

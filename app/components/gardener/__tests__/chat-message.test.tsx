@@ -6,9 +6,15 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { ChatMessageBubble } from "../chat-message";
-import { diagramNote, toolNote } from "@vibegarden/agent-web";
+import {
+  capResult,
+  diagramNote,
+  queryNote,
+  queryResultNote,
+  toolNote,
+} from "@vibegarden/agent-web";
 
 vi.mock("~/components/mermaid-block", () => ({
   MermaidDiagram: ({
@@ -33,6 +39,15 @@ const gardener = (text: string, error = false) => ({
 
 const renderMessage = (ui: React.ReactNode) =>
   render(<MemoryRouter>{ui}</MemoryRouter>);
+
+const renderClubMessage = (ui: React.ReactNode) =>
+  render(
+    <MemoryRouter initialEntries={["/clubs/wotf"]}>
+      <Routes>
+        <Route path="/clubs/:clubSlug" element={ui} />
+      </Routes>
+    </MemoryRouter>,
+  );
 
 afterEach(cleanup);
 
@@ -133,5 +148,50 @@ describe("ChatMessageBubble activity", () => {
     expect(
       within(dialog).getByRole("img", { name: title }),
     ).toHaveAttribute("data-code", diagram);
+  });
+
+  it("renders recommended learning articles as club-scoped cards", () => {
+    const marker = `[[tool:articles:${encodeURIComponent(
+      JSON.stringify({
+        version: 1,
+        slugs: ["what-is-an-llm", "what-is-an-agent"],
+      }),
+    )}]]`;
+
+    renderClubMessage(<ChatMessageBubble message={gardener(marker)} />);
+
+    expect(
+      screen.getByRole("link", { name: "What is an LLM, really?" }),
+    ).toHaveAttribute("href", "/clubs/wotf/learning/what-is-an-llm");
+    expect(
+      screen.getByRole("link", { name: "What is an agent?" }),
+    ).toHaveAttribute("href", "/clubs/wotf/learning/what-is-an-agent");
+  });
+
+  it("renders a query chart as an accessible SVG instead of naked SQL", () => {
+    const text = [
+      queryNote({
+        sql: "SELECT * FROM (VALUES ('Espresso', 12), ('Latte', 18)) sales(drink, sales)",
+        chart: { type: "bar", x: "drink", y: "sales", title: "Coffee sales" },
+      }),
+      queryResultNote(
+        capResult(
+          ["drink", "sales"],
+          [
+            ["Espresso", 12],
+            ["Latte", 18],
+          ],
+        ),
+      ),
+      "Latte leads this small example.",
+    ].join("\n\n");
+
+    renderMessage(<ChatMessageBubble message={gardener(text)} />);
+
+    expect(screen.getByRole("img", { name: "Coffee sales" })).toBeTruthy();
+    expect(screen.getByText("Show SQL")).toBeTruthy();
+    expect(screen.getByText(/^SELECT \*/).closest("details")).not.toHaveAttribute(
+      "open",
+    );
   });
 });

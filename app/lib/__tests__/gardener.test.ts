@@ -45,6 +45,8 @@ describe("buildSystemPrompt", () => {
     expect(withTools).toContain("attach_data(url)");
     expect(withTools).toContain("visualize_flow(title, diagram)");
     expect(withTools).toContain("directly in the chat");
+    expect(withTools).toContain("query_data(sql, chart?)");
+    expect(withTools).toContain("mock or example data");
     expect(withTools).toContain("google-sheet");
 
     const withoutTools = buildSystemPrompt([], undefined, { tools: [] });
@@ -57,15 +59,28 @@ describe("buildSystemPrompt", () => {
       tools: offeredGardenerTools({ freshReads: { token: "token" } }),
     });
     expect(withFreshReads).toContain("fresh_reads(topic?, content_type?)");
-    expect(withFreshReads).not.toContain("query_data(sql, chart?)");
+    expect(withFreshReads).toContain("query_data(sql, chart?)");
 
     const datasets = [{ name: "scores", summary: "scores(id INTEGER)" }];
     const withQueryData = buildSystemPrompt([], undefined, {
-      tools: offeredGardenerTools({}, { queryData: true }),
+      tools: offeredGardenerTools({}),
       datasets,
     });
     expect(withQueryData).toContain("query_data(sql, chart?)");
     expect(withQueryData).not.toContain("fresh_reads(topic?, content_type?)");
+  });
+
+  it("routes learning recommendations before fresh or external reads", () => {
+    const prompt = buildSystemPrompt([], undefined, {
+      tools: offeredGardenerTools({ freshReads: { token: "token" } }),
+    });
+
+    expect(prompt).toContain(
+      "Generic requests for articles, reading, or something to learn",
+    );
+    expect(prompt).toContain("recommend_articles");
+    expect(prompt).toContain("recent, current, latest, or news");
+    expect(prompt).toContain("explicitly turns on web search");
   });
 
   it("does not advertise tools on a narration-only dataset turn", () => {

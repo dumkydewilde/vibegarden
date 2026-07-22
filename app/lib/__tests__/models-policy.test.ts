@@ -11,6 +11,7 @@ describe("club model policy", () => {
   it("limits free-only clubs to curated free models", () => {
     expect(freeModels).not.toHaveLength(0);
     expect(freeModels.every((model) => model.id.endsWith(":free"))).toBe(true);
+    expect(freeModels.every((model) => model.tools)).toBe(true);
     expect(modelsForPolicy("free_only")).toEqual(freeModels);
   });
 

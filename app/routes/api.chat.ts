@@ -177,10 +177,9 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const narrateOnly =
     continuation && (envelope?.status === "ok" || attachEnvelope?.status === "ok");
   const toolsAllowed = model.tools && !narrateOnly;
-  const offerQueryData = datasets.length > 0 && !narrateOnly;
   const toolConfig = gardenerToolsConfig(env);
   const offeredTools = toolsAllowed
-    ? offeredGardenerTools(toolConfig, { queryData: offerQueryData })
+    ? offeredGardenerTools(toolConfig)
     : [];
 
   // The model sees the re-capped envelope, not the client's raw payload.
@@ -249,7 +248,8 @@ export async function action({ request, context, params }: Route.ActionArgs) {
             emit(event.delta);
             break;
           case "note":
-          case "diagram": {
+          case "diagram":
+          case "articles": {
             const marker = markerForEvent(event);
             if (marker) emitMarker(marker, true);
             break;

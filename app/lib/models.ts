@@ -53,7 +53,7 @@ export const models: Model[] = [
     id: "google/gemma-4-26b-a4b-it:free",
     label: "Gemma 4 26B",
     note: "free",
-    tools: false,
+    tools: true,
   },
 ];
 

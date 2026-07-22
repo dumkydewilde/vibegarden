@@ -197,10 +197,10 @@ describe("GardenerProvider askFresh", () => {
 });
 
 describe("GardenerProvider panel preference", () => {
-  it("enables web search for a new conversation", () => {
+  it("keeps web search off for a new conversation", () => {
     renderProvider();
 
-    expect(screen.getByText("web search on")).toBeTruthy();
+    expect(screen.getByText("web search off")).toBeTruthy();
   });
 
   it("restores the open preference and persists later changes", () => {

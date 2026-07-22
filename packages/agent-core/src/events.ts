@@ -11,6 +11,8 @@ export type AgentEvent =
   | { type: "note"; kind: string; value: string }
   /** A diagram the model produced; the surface chooses how to render it. */
   | { type: "diagram"; title: string; diagram: string }
+  /** Known learning articles the surface should present as recommendations. */
+  | { type: "articles"; slugs: string[] }
   /**
    * A tool call the surface must fulfill itself (e.g. run SQL in the
    * browser). The turn ends here; the surface resumes the conversation

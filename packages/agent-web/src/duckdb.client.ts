@@ -2,8 +2,9 @@
  * DuckDB-WASM, browser-side only. The person's data files never leave the
  * machine: files and fetched links are registered as in-memory DuckDB
  * views, the Gardener writes SQL, and only a capped result envelope goes
- * back to the model. Everything is lazy-loaded on first attach, like the
- * Mermaid chunk.
+ * back to the model. It can also run standalone in-memory SQL for explicit
+ * mock/example data. Everything is lazy-loaded on the first query or attach,
+ * like the Mermaid chunk.
  */
 
 import {
@@ -246,13 +247,6 @@ export async function dropDataset(name: string) {
  * become error envelopes so the model can correct itself.
  */
 export async function runQuery(sql: string): Promise<QueryResultEnvelope> {
-  if (registered.size === 0) {
-    return {
-      status: "error",
-      error:
-        "No datasets are loaded in this browser session. Ask the person to re-attach their file or link.",
-    };
-  }
   try {
     const { conn } = await getInstance();
     const { columns, rows, rowCount } = await collectRows(
