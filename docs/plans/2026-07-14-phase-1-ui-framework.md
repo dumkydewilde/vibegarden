@@ -1,7 +1,5 @@
 # Vibe Garden Phase 1: UI Framework Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** A deployable Cloudflare Workers app with the full Vibe Garden shell: design system, navigation, all section routes with quality placeholder content, MDX learning pipeline with sample articles, and a static agent-sidebar UI.
 
 **Architecture:** React Router v7 framework mode (SSR on Workers via `@cloudflare/vite-plugin`). MDX articles compiled at build time via `@mdx-js/rollup`, discovered with `import.meta.glob`, raw text bundled for later agent use. shadcn/ui on Tailwind v4 with a custom Tufte-garden theme layer.

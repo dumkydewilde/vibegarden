@@ -1,7 +1,5 @@
 # Gardener Mermaid Visualization Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add an explicit `visualize_flow` Gardener tool that renders a durable inline Mermaid preview in chat and opens the same diagram in a large accessible dialog.
 
 **Architecture:** Keep the current plain-text stream and D1 message schema. Encode validated diagram data in a versioned one-line tool marker, decode it into a typed chat segment, and reuse the client-only Mermaid renderer in a focused preview/dialog component.

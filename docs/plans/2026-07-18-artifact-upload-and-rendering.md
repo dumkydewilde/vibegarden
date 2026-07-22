@@ -1,7 +1,5 @@
 # Artifact Upload and Rendering Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add project-owned, immutable artifact versions with browser upload, authenticated gallery sharing, safe file and link handling, and sandboxed HTML rendering from a private R2 bucket.
 
 **Architecture:** The existing Vibe Garden Worker owns authentication, artifact metadata, upload orchestration, publication state, and capability issuance. A separate renderer Worker at `usercontent.vibegarden.club` has only a private R2 binding and a dedicated signing secret; it validates short-lived capabilities and serves immutable files with renderer-owned security policy. Website routes and the later OAuth-authenticated MCP write tools call the same artifact service and never implement ownership, versioning, or storage rules themselves.

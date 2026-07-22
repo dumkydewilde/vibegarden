@@ -1,7 +1,5 @@
 # Agent package split implementation plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Move the reusable agent harness and web wire/data adapter into npm workspace packages while keeping Vibe Garden behavior and its public `[[tool:...]]` stream unchanged.
 
 **Architecture:** `@vibegarden/agent-core` owns runtime-neutral events, OpenAI-compatible SSE parsing, ToolSpecs, prompt composition, and the multi-round turn loop. `@vibegarden/agent-web` owns the web marker protocol, delegated query envelopes, and browser-only DuckDB execution; Vibe Garden's React provider and visual components stay in the app because they currently depend on site routes, models, notifications, content cards, and endpoints. The host converts Cloudflare bindings to plain tool configuration at the route boundary.
