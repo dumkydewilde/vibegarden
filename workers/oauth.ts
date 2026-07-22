@@ -4,6 +4,7 @@ import {
   type OAuthProviderOptions,
 } from "@cloudflare/workers-oauth-provider";
 import { hashMcpUser } from "../app/lib/mcp/auth.server";
+import { MCP_SCOPES } from "../app/lib/mcp/contracts";
 import { mcpHandler } from "./mcp";
 
 const redirectError = {
@@ -61,7 +62,7 @@ export function createOAuthProvider(
     authorizeEndpoint: "/authorize",
     tokenEndpoint: "/token",
     clientRegistrationEndpoint: "/register",
-    scopesSupported: ["projects:read", "content:read"],
+    scopesSupported: MCP_SCOPES,
     allowImplicitFlow: false,
     allowPlainPKCE: false,
     disallowPublicClientRegistration: false,
@@ -72,7 +73,7 @@ export function createOAuthProvider(
     resourceMetadata: {
       resource: env.MCP_RESOURCE_URL,
       authorization_servers: [new URL(env.MCP_RESOURCE_URL).origin],
-      scopes_supported: ["projects:read", "content:read"],
+      scopes_supported: MCP_SCOPES,
       bearer_methods_supported: ["header"],
       resource_name: "Vibe Garden",
     },

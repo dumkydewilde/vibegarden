@@ -21,7 +21,7 @@ async function registerClient(redirectUri = REDIRECT_URI) {
 
 async function authorizeWithPkce(
   clientId: string,
-  scopes = "projects:read content:read",
+  scopes = "projects:read content:read artifacts:write artifacts:publish",
   resource = `${ORIGIN}/mcp`,
   userId = "oauth-user",
   clubId = "test-club",
@@ -72,7 +72,7 @@ async function exchangeCode(
 
 async function accessTokenFor(
   userId: string,
-  scopes = "projects:read content:read",
+  scopes = "projects:read content:read artifacts:write artifacts:publish",
   clubId = "test-club",
 ) {
   const client = await registerClient();
@@ -235,7 +235,9 @@ describe("Gardener MCP Worker", () => {
       resource: "https://vibegarden.test/mcp",
       authorization_servers: ["https://vibegarden.test"],
     });
-    expect(resourceMetadata.scopes_supported).toEqual(["projects:read", "content:read"]);
+    expect(resourceMetadata.scopes_supported).toEqual([
+      "projects:read", "content:read", "artifacts:write", "artifacts:publish",
+    ]);
     const authorization = await SELF.fetch("https://vibegarden.test/.well-known/oauth-authorization-server");
     await expect(authorization.json()).resolves.toMatchObject({
       registration_endpoint: "https://vibegarden.test/register",
@@ -522,6 +524,60 @@ describe("Gardener MCP Worker", () => {
       id: 7,
       result: { _meta: { "mcp/www_authenticate": expect.any(Array) } },
     });
+  });
+
+  it("preflights artifact input and artifact scopes before dispatch", async () => {
+    const userId = `artifact-preflight-${crypto.randomUUID()}`;
+    const projectId = await seedOwnedProject(userId);
+    const writeToken = await accessTokenFor(userId, "artifacts:write");
+    const createInput = {
+      project_id: projectId,
+      title: "Artifact preflight",
+      files: [{ path: "index.html", content: "<h1>Artifact</h1>" }],
+      idempotency_key: `artifact-${crypto.randomUUID()}`,
+    };
+
+    const extraUserId = await mcpRpc(writeToken, "tools/call", {
+      name: "create_artifact",
+      arguments: { ...createInput, user_id: "attacker" },
+    });
+    expect(extraUserId.status).toBe(200);
+    await expect(mcpJson(extraUserId)).resolves.toMatchObject({
+      result: { isError: true, content: [expect.objectContaining({ text: expect.stringContaining("invalid_input") })] },
+    });
+
+    const missingRoot = await mcpRpc(writeToken, "tools/call", {
+      name: "create_artifact",
+      arguments: { ...createInput, files: [{ path: "app.js", content: "export {}" }] },
+    });
+    expect(missingRoot.status).toBe(200);
+    await expect(mcpJson(missingRoot)).resolves.toMatchObject({
+      result: { isError: true, content: [expect.objectContaining({ text: expect.stringContaining("invalid_input") })] },
+    });
+
+    const unconfirmedShare = await mcpRpc(writeToken, "tools/call", {
+      name: "share_artifact",
+      arguments: { artifact_id: "artifact", version_id: "version", confirm: false },
+    });
+    expect(unconfirmedShare.status).toBe(200);
+    await expect(mcpJson(unconfirmedShare)).resolves.toMatchObject({
+      result: { isError: true, content: [expect.objectContaining({ text: expect.stringContaining("invalid_input") })] },
+    });
+
+    const readOnlyToken = await accessTokenFor(`artifact-read-${crypto.randomUUID()}`, "projects:read");
+    const writeChallenge = await mcpRpc(readOnlyToken, "tools/call", {
+      name: "create_artifact",
+      arguments: createInput,
+    });
+    expect(writeChallenge.status).toBe(403);
+    expect(writeChallenge.headers.get("WWW-Authenticate")).toContain("artifacts:write");
+
+    const publishChallenge = await mcpRpc(writeToken, "tools/call", {
+      name: "share_artifact",
+      arguments: { artifact_id: "artifact", version_id: "version", confirm: true },
+    });
+    expect(publishChallenge.status).toBe(403);
+    expect(publishChallenge.headers.get("WWW-Authenticate")).toContain("artifacts:publish");
   });
 
   it("rejects unsupported DCR redirects and an authorization request for another resource", async () => {

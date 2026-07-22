@@ -25,7 +25,12 @@ static Workers asset exceeds its size limit.
 `vibegarden.test` and `usercontent.vibegarden.test` to `127.0.0.1`; the fixture
 Worker dispatches by hostname and calls the real renderer handler against local
 R2. It uses separate explicit local parent/renderer origins and a dedicated
-test signing secret. It does not exercise Task 15 MCP flows.
+test signing secret. Artifact MCP create/version/retry/share and
+insufficient-scope coverage runs separately with:
+
+```sh
+npm run test:mcp
+```
 
 Before a CSP, CORS, sandbox, capability, cookie, or renderer-host change run:
 
@@ -74,11 +79,11 @@ OTP delivery, upload/share/refresh/download, cleanup telemetry, and cross-user
 isolation. Keep the email-sender caveat: Resend's onboarding sender delivers
 only to the account owner until a sending domain is verified.
 
-Task 15 MCP create/version/retry/share and insufficient-scope E2E coverage is
-separately gated on the approved MCP integration. It is intentionally not run
-by this release gate. When that integration lands, its connector consent must
-request only `artifacts:write` for create/version and `artifacts:publish` for
-gallery sharing; the token user identity remains authoritative.
+MCP create/version/retry/share and insufficient-scope coverage is complete
+locally only when `npm run test:mcp` passes. Remote provisioning and deployment
+remain separate release gates. Connector consent requests only
+`artifacts:write` for create/version and `artifacts:publish` for gallery
+sharing; the token user identity remains authoritative.
 
 ## Rollback and incident response
 

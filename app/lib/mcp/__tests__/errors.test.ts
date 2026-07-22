@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { ArtifactError } from "~/lib/artifacts/contracts";
+import { toMcpArtifactError } from "~/lib/mcp/artifact-errors.server";
 import { McpPublicError, toMcpErrorResult } from "~/lib/mcp/errors.server";
 
 function errorBody(error: unknown) {
@@ -7,6 +9,34 @@ function errorBody(error: unknown) {
 }
 
 describe("MCP public errors", () => {
+  it("maps artifact failures to explicit safe MCP errors", () => {
+    expect(toMcpArtifactError(new ArtifactError("not_found"))).toMatchObject({
+      code: "not_found",
+      message: "Artifact was not found.",
+      retryable: false,
+    });
+    for (const code of [
+      "invalid_input", "invalid_path", "invalid_type", "invalid_origin", "invalid_checksum",
+      "invalid_manifest", "limit_exceeded", "idempotency_conflict",
+    ] as const) {
+      expect(toMcpArtifactError(new ArtifactError(code))).toMatchObject({
+        code: "invalid_input",
+        message: new ArtifactError(code).message,
+        retryable: false,
+      });
+    }
+    expect(toMcpArtifactError(new ArtifactError("storage_unavailable"))).toMatchObject({
+      code: "temporarily_unavailable",
+      message: "Artifact storage is temporarily unavailable.",
+      retryable: true,
+    });
+    expect(toMcpArtifactError(new Error("database password: do-not-expose"))).toMatchObject({
+      code: "internal_error",
+      message: "The request could not be completed.",
+      retryable: false,
+    });
+  });
+
   it("allows missing and foreign records to share not_found", () => {
     const missing = errorBody(new McpPublicError("not_found", "Not found."));
     const foreign = errorBody(new McpPublicError("not_found", "Not found."));

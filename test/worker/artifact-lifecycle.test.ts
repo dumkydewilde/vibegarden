@@ -14,6 +14,7 @@ import {
   restoreArtifactVersion,
   setArtifactVisibility,
   shareArtifactVersion,
+  shareArtifactVersionForScope,
   unshareArtifact,
   updateArtifactMetadata,
 } from "../../app/lib/artifacts/service.server";
@@ -25,7 +26,9 @@ async function seed(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("INSERT INTO users (id, email, name, created_at) VALUES (?, ?, ?, ?)").bind("owner", "owner@example.com", "Owner Name", timestamp),
     env.DB.prepare("INSERT INTO users (id, email, name, created_at) VALUES (?, ?, ?, ?)").bind("other", "other@example.com", "Other Name", timestamp),
-    env.DB.prepare("INSERT INTO projects (id, user_id, title, status, created_at, updated_at) VALUES (?, ?, ?, 'seed', ?, ?)").bind("project", "owner", "Garden project", timestamp, timestamp),
+    env.DB.prepare("INSERT INTO clubs (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").bind("club-a", "Club A", "club-a", timestamp, timestamp),
+    env.DB.prepare("INSERT INTO clubs (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").bind("club-other", "Other Club", "club-other", timestamp, timestamp),
+    env.DB.prepare("INSERT INTO projects (id, user_id, club_id, title, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'seed', ?, ?)").bind("project", "owner", "club-other", "Garden project", timestamp, timestamp),
     env.DB.prepare("INSERT INTO artifacts (id, user_id, project_id, type, title, description, visibility, created_at, updated_at) VALUES (?, ?, ?, 'html', ?, ?, 'private', ?, ?)").bind("artifact", "owner", "project", "Private artifact", "First description", timestamp, timestamp),
     env.DB.prepare("INSERT INTO artifact_versions (id, artifact_id, version_number, source, entry_path, allowed_data_origins, file_count, total_bytes, created_by, created_at) VALUES (?, ?, 1, 'web', 'index.html', ?, 1, 5, ?, ?)").bind("version-1", "artifact", JSON.stringify(["https://api.example.com"]), "owner", timestamp),
     env.DB.prepare("INSERT INTO artifact_versions (id, artifact_id, version_number, source, entry_path, allowed_data_origins, file_count, total_bytes, created_by, created_at) VALUES (?, ?, 2, 'mcp', 'index.html', '[]', 1, 7, ?, ?)").bind("version-2", "artifact", "owner", timestamp + 1),
@@ -45,6 +48,7 @@ beforeEach(async () => {
     env.DB.prepare("DELETE FROM artifact_versions"),
     env.DB.prepare("DELETE FROM artifacts"),
     env.DB.prepare("DELETE FROM projects"),
+    env.DB.prepare("DELETE FROM clubs"),
     env.DB.prepare("DELETE FROM users"),
   ]);
   await seed();
@@ -66,9 +70,8 @@ describe("artifact lifecycle visibility state table", () => {
       version: { id: "version-1" },
     });
 
-    const uploaded = await createTextArtifactVersion(env, "owner", {
+    const uploaded = await createTextArtifactVersion(env, { userId: "owner", clubId: "club-other" }, {
       artifactId: "artifact",
-      title: "Current-only upload",
       idempotencyKey: "current-only-upload",
       files: [{ path: "index.html", content: "<h1>Current only</h1>" }],
     });
@@ -95,6 +98,16 @@ describe("artifact lifecycle visibility state table", () => {
     await expect(env.DB.prepare("SELECT title, description FROM artifacts WHERE id = ?").bind("artifact").first()).resolves.toEqual({ title: "Renamed", description: "Changed" });
     await expect(env.DB.prepare("SELECT COUNT(*) AS count FROM artifact_versions WHERE artifact_id = ?").bind("artifact").first()).resolves.toEqual({ count: 2 });
     await expect(shareArtifactVersion(env, "other", "artifact", "version-1")).rejects.toMatchObject({ code: "not_found" } satisfies Partial<ArtifactError>);
+  });
+
+  it("rejects scoped sharing for a same-user artifact in another club without changing visibility", async () => {
+    await expect(shareArtifactVersionForScope(env, { userId: "owner", clubId: "club-a" }, "artifact", "version-1")).rejects.toMatchObject({
+      code: "not_found",
+    } satisfies Partial<ArtifactError>);
+    await expect(env.DB.prepare("SELECT visibility, gallery_version_id FROM artifacts WHERE id = ?").bind("artifact").first()).resolves.toEqual({
+      visibility: "private",
+      gallery_version_id: null,
+    });
   });
 
   it("caps arbitrarily long metadata after trimming instead of rejecting it", async () => {

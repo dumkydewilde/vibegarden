@@ -30,7 +30,7 @@ const oauthRequest = {
   responseType: "code",
   clientId: "test-client",
   redirectUri: "https://client.example/callback",
-  scope: ["projects:read", "content:read", "admin:write"],
+  scope: ["projects:read", "content:read", "artifacts:write", "artifacts:publish", "admin:write"],
   state: "client-state",
   resource: "https://vibegarden.test/mcp",
 };
@@ -72,7 +72,7 @@ describe("OAuth authorization consent", () => {
     expect(data).toEqual({
       clientName: "Garden Reader",
       redirectUri: "https://client.example/callback",
-      requestedScopes: ["projects:read", "content:read"],
+      requestedScopes: ["projects:read", "content:read", "artifacts:write", "artifacts:publish"],
       clubs: [club],
       selectedClubId: "club-1",
     });
@@ -91,6 +91,8 @@ describe("OAuth authorization consent", () => {
     expect(screen.getByText("client.example")).toBeInTheDocument();
     expect(screen.getByText(/view your garden projects/i)).toBeInTheDocument();
     expect(screen.getByText(/read your learning content/i)).toBeInTheDocument();
+    expect(screen.getByText(/create private project artifacts/i)).toBeInTheDocument();
+    expect(screen.getByText(/share project artifacts/i)).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "WOTF Club" })).toBeInTheDocument();
   });
 
@@ -101,6 +103,9 @@ describe("OAuth authorization consent", () => {
     hashMcpUser.mockResolvedValue("safe-user-hash");
     const form = new FormData();
     form.append("scope", "projects:read");
+    form.append("scope", "content:read");
+    form.append("scope", "artifacts:write");
+    form.append("scope", "artifacts:publish");
     form.append("scope", "admin:write");
     form.set("club_id", "club-1");
 
@@ -123,13 +128,17 @@ describe("OAuth authorization consent", () => {
       userId: "user-1",
       metadata: {
         clientName: "Garden Reader",
-        grantedScopes: ["projects:read"],
+        grantedScopes: ["projects:read", "content:read", "artifacts:write", "artifacts:publish"],
         clubId: "club-1",
         clubName: "WOTF Club",
         clubSlug: "wotf",
       },
-      scope: ["projects:read"],
-      props: { userId: "user-1", clubId: "club-1", scopes: ["projects:read"] },
+      scope: ["projects:read", "content:read", "artifacts:write", "artifacts:publish"],
+      props: {
+        userId: "user-1",
+        clubId: "club-1",
+        scopes: ["projects:read", "content:read", "artifacts:write", "artifacts:publish"],
+      },
     });
     expect(response).toBeInstanceOf(Response);
     expect((response as Response).headers.get("Location")).toBe(

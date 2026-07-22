@@ -1,6 +1,7 @@
 import {
   ARTIFACT_LIMITS,
   ArtifactError,
+  type ArtifactOwnerScope,
   type ArtifactManifestFile,
   type ArtifactPackageSource,
   type ArtifactType,
@@ -10,11 +11,14 @@ import {
   finalizeExistingArtifactVersion,
   finalizeNewArtifact,
   findOwnedArtifact,
+  findOwnedArtifactInClub,
   findOwnedRecoverableArtifact,
   findOwnedIdempotency,
   findOwnedProject,
+  findOwnedProjectInClub,
   findOwnedUpload,
   findOwnedVersion,
+  findOwnedVersionInClub,
   findGalleryArtifact,
   markOwnedUploadAborted,
 } from "./repository.server";
@@ -596,9 +600,20 @@ async function finalizeDraftArtifact(env: Env, userId: string, upload: StoredUpl
   }
 }
 
+async function completedUploadResult(
+  env: Env,
+  userId: string,
+  uploadId: string,
+): Promise<ArtifactMutationResult | null> {
+  const upload = await findOwnedUpload(env, userId, uploadId) as StoredUpload | null;
+  return upload?.status === "complete"
+    ? { artifactId: upload.artifact_id, versionId: upload.version_id }
+    : null;
+}
+
 /** Finalizes from upload rows only. Failed validation never creates a partial artifact. */
 export async function finalizeUpload(env: Env, userId: string, uploadId: string): Promise<ArtifactMutationResult> {
-  const upload = await findOwnedUpload(env, userId, uploadId) as StoredUpload | null;
+  let upload = await findOwnedUpload(env, userId, uploadId) as StoredUpload | null;
   if (!upload) artifactError("not_found");
   if (upload.status === "complete") return { artifactId: upload.artifact_id, versionId: upload.version_id };
   if (upload.status !== "pending" && upload.status !== "finalizing") artifactError("state_conflict");
@@ -610,7 +625,12 @@ export async function finalizeUpload(env: Env, userId: string, uploadId: string)
     const transition = await env.DB.prepare(
       "UPDATE artifact_uploads SET status = 'finalizing', updated_at = ? WHERE id = ? AND user_id = ? AND status = 'pending' AND expires_at > ?",
     ).bind(now(), uploadId, userId, now()).run();
-    if (transition.meta.changes !== 1) artifactError("state_conflict");
+    if (transition.meta.changes !== 1) {
+      const replay = await findOwnedUpload(env, userId, uploadId) as StoredUpload | null;
+      if (replay?.status === "complete") return { artifactId: replay.artifact_id, versionId: replay.version_id };
+      if (replay?.status !== "finalizing") artifactError("state_conflict");
+      upload = replay;
+    }
   }
   const files = await env.DB.prepare(
     "SELECT path, mime_type AS mimeType, byte_size AS byteSize, sha256, r2_key FROM artifact_upload_files WHERE upload_id = ? ORDER BY path",
@@ -619,6 +639,8 @@ export async function finalizeUpload(env: Env, userId: string, uploadId: string)
     validateArtifactPackage({ type: upload.type, source: upload.source === "mcp" ? "mcp" : "browser", files: artifactFiles(files.results) });
     await assertRecordedFilesLeased(env, userId, upload, files.results);
   } catch (error) {
+    const completed = await completedUploadResult(env, userId, uploadId);
+    if (completed) return completed;
     await markFailed(env, userId, uploadId);
     if (error instanceof ArtifactError) throw error;
     throw new ArtifactError("invalid_manifest");
@@ -634,7 +656,13 @@ export async function finalizeUpload(env: Env, userId: string, uploadId: string)
       artifactError("state_conflict");
     }
   } catch (error) {
-    if (error instanceof ArtifactError) throw error;
+    if (error instanceof ArtifactError) {
+      if (error.code === "state_conflict") {
+        const completed = await completedUploadResult(env, userId, uploadId);
+        if (completed) return completed;
+      }
+      throw error;
+    }
     throw new ArtifactError("internal");
   }
   return { artifactId: upload.artifact_id, versionId: upload.version_id };
@@ -776,52 +804,57 @@ async function checksum(bytes: Uint8Array): Promise<string> {
 
 async function textMutation(
   env: Env,
-  userId: string,
+  scope: ArtifactOwnerScope,
   rawInput: unknown,
   version: boolean,
 ): Promise<ArtifactMutationResult> {
   const allowed = version
-    ? ["artifactId", "title", "description", "allowedDataOrigins", "idempotencyKey", "files"]
+    ? ["artifactId", "allowedDataOrigins", "idempotencyKey", "files"]
     : ["projectId", "type", "title", "description", "allowedDataOrigins", "idempotencyKey", "files"];
   assertFields(rawInput, allowed);
   let type: Exclude<ArtifactType, "link">;
   let projectId: string;
   let artifactId: string | undefined;
+  let title: string;
+  let description: string | undefined;
   if (version) {
     artifactId = stringField(rawInput.artifactId, 200)!;
-    const artifact = await findOwnedArtifact(env, userId, artifactId);
+    const artifact = await findOwnedArtifactInClub(env, scope, artifactId);
     if (!artifact || artifact.type === "link") artifactError("not_found");
     type = artifact.type;
     projectId = artifact.project_id;
+    title = artifact.title;
   } else {
     type = rawInput.type === "html" || rawInput.type === "file" ? rawInput.type : artifactError("invalid_input");
     projectId = stringField(rawInput.projectId, 200)!;
-    if (!await findOwnedProject(env, userId, projectId)) artifactError("not_found");
+    if (!await findOwnedProjectInClub(env, scope, projectId)) artifactError("not_found");
+    title = stringField(rawInput.title, ARTIFACT_LIMITS.titleChars)!;
+    if (!title) artifactError("invalid_input");
+    description = stringField(rawInput.description, ARTIFACT_LIMITS.descriptionChars, false);
   }
-  const title = stringField(rawInput.title, ARTIFACT_LIMITS.titleChars)!;
-  if (!title) artifactError("invalid_input");
-  const description = stringField(rawInput.description, ARTIFACT_LIMITS.descriptionChars, false);
   const allowedDataOrigins = rawInput.allowedDataOrigins === undefined ? undefined : normalizeArtifactOrigins(rawInput.allowedDataOrigins as string[]);
   const files = parseTextFiles(rawInput.files, type);
   for (const file of files) file.sha256 = await checksum(file.body);
-  const session = await createUploadSessionInternal(env, userId, {
+  const session = await createUploadSessionInternal(env, scope.userId, {
     project: { projectId }, type, title, ...(description === undefined ? {} : { description }),
     ...(allowedDataOrigins === undefined ? {} : { allowedDataOrigins }), idempotencyKey: idempotencyKey(rawInput.idempotencyKey), ...(artifactId === undefined ? {} : { artifactId }),
   }, "mcp", files.map(({ body: _body, ...file }) => file));
-  for (const file of files) {
-    const { body, ...metadata } = file;
-    await putUploadFile(env, userId, session.uploadId, metadata, body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength));
+  if (session.completed.length !== files.length) {
+    for (const file of files) {
+      const { body, ...metadata } = file;
+      await putUploadFile(env, scope.userId, session.uploadId, metadata, body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength));
+    }
   }
-  return finalizeUpload(env, userId, session.uploadId);
+  return finalizeUpload(env, scope.userId, session.uploadId);
 }
 
 /** MCP text packages are UTF-8 encoded and use the same leased upload pipeline as browser files. */
-export async function createTextArtifact(env: Env, userId: string, input: unknown): Promise<ArtifactMutationResult> {
-  return textMutation(env, userId, input, false);
+export async function createTextArtifact(env: Env, scope: ArtifactOwnerScope, input: unknown): Promise<ArtifactMutationResult> {
+  return textMutation(env, scope, input, false);
 }
 
-export async function createTextArtifactVersion(env: Env, userId: string, input: unknown): Promise<ArtifactMutationResult> {
-  return textMutation(env, userId, input, true);
+export async function createTextArtifactVersion(env: Env, scope: ArtifactOwnerScope, input: unknown): Promise<ArtifactMutationResult> {
+  return textMutation(env, scope, input, true);
 }
 
 type VersionRow = {
@@ -1127,6 +1160,16 @@ export async function shareArtifactVersion(env: Env, userId: string, artifactId:
        AND EXISTS (SELECT 1 FROM artifact_versions WHERE id = ? AND artifact_id = artifacts.id)`,
   ).bind(versionId, now(), artifactId, userId, versionId).run();
   if (result.meta.changes !== 1) artifactError("not_found");
+}
+
+export async function shareArtifactVersionForScope(
+  env: Env,
+  scope: ArtifactOwnerScope,
+  artifactId: string,
+  versionId: string,
+): Promise<void> {
+  if (!await findOwnedVersionInClub(env, scope, artifactId, versionId)) artifactError("not_found");
+  await shareArtifactVersion(env, scope.userId, artifactId, versionId);
 }
 
 export async function unshareArtifact(env: Env, userId: string, artifactId: string): Promise<void> {

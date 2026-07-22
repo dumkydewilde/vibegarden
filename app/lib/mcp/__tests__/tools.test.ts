@@ -87,11 +87,41 @@ describe("Gardener MCP tool registration", () => {
       expect(item.title).toEqual(expect.any(String));
       expect(item.inputSchema).toMatchObject({ type: "object" });
       expect(item.outputSchema).toMatchObject({ type: "object" });
-      expect(item.annotations).toMatchObject({ readOnlyHint: true });
       expect(item._meta).toMatchObject({
         securitySchemes: [expect.objectContaining({ type: "oauth2" })],
       });
     }
+    for (const name of MCP_TOOL_ORDER.filter((name) => (
+      name !== "fresh_reads"
+      && name !== "create_artifact"
+      && name !== "create_artifact_version"
+      && name !== "share_artifact"
+    ))) {
+      expect(tool(tools, name).annotations).toMatchObject({ readOnlyHint: true });
+    }
+  });
+
+  it("marks artifact mutations accurately and gives safe package guidance", async () => {
+    const tools = await listTools(createGardenerMcpServer(env()));
+    const create = tool(tools, "create_artifact");
+    const version = tool(tools, "create_artifact_version");
+    const share = tool(tools, "share_artifact");
+
+    expect(create.annotations).toEqual({
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    });
+    expect(version.annotations).toEqual(create.annotations);
+    expect(share.annotations).toEqual({ ...create.annotations, openWorldHint: true });
+    for (const description of [create.description, version.description]) {
+      expect(description).toMatch(/index\.html/i);
+      expect(description).toMatch(/private/i);
+      expect(description).toMatch(/relative/i);
+      expect(description).toMatch(/idempotency/i);
+    }
+    expect(share.description).toMatch(/explicitly asks to share/i);
   });
 
   it("registers fresh_reads only with its backend", async () => {

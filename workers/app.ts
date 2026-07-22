@@ -1,17 +1,29 @@
 import { reconcileClubAi } from "../app/lib/club-ai.server";
 import { cleanupArtifacts } from "../app/lib/artifacts/cleanup.server";
 import { recordArtifactEvent, writeArtifactMetric } from "../app/lib/artifacts/observability.server";
+import { MCP_SCOPES } from "../app/lib/mcp/contracts";
 import { createOAuthProvider, isOAuthProviderPath } from "./oauth";
 import { mcpOriginAllowed, mcpOriginRejectedResponse } from "./mcp";
 import { reactRouterHandler } from "./react-router";
 
-function unauthenticatedMcpChallenge(env: Env) {
+export function unauthenticatedMcpChallenge(env: Env) {
   return new Response("Authentication required", {
     status: 401,
     headers: {
-      "WWW-Authenticate": `Bearer resource_metadata="${new URL("/.well-known/oauth-protected-resource", env.APP_ORIGIN)}", scope="projects:read content:read"`,
+      "WWW-Authenticate": `Bearer resource_metadata="${new URL("/.well-known/oauth-protected-resource", env.APP_ORIGIN)}", scope="${MCP_SCOPES.join(" ")}"`,
     },
   });
+}
+
+export function createMcpDefaultHandler(mcpPath: string): ExportedHandler<Env> {
+  return {
+    fetch(defaultRequest: Request, defaultEnv: Env, defaultCtx: ExecutionContext) {
+      if (new URL(defaultRequest.url).pathname === mcpPath) {
+        return unauthenticatedMcpChallenge(defaultEnv);
+      }
+      return reactRouterHandler.fetch(defaultRequest, defaultEnv, defaultCtx);
+    },
+  };
 }
 
 async function purgeExpiredOauthData(env: Env) {
@@ -68,14 +80,7 @@ export default {
     if (!isOAuthProviderPath(pathname, env)) {
       return reactRouterHandler.fetch(request, env, ctx);
     }
-    const defaultHandler = {
-      fetch(defaultRequest: Request, defaultEnv: Env, defaultCtx: ExecutionContext) {
-        if (new URL(defaultRequest.url).pathname === mcpPath) {
-          return unauthenticatedMcpChallenge(defaultEnv);
-        }
-        return reactRouterHandler.fetch(defaultRequest, defaultEnv, defaultCtx);
-      },
-    } satisfies ExportedHandler<Env>;
+    const defaultHandler = createMcpDefaultHandler(mcpPath);
     return createOAuthProvider(env, defaultHandler).fetch(request, env, ctx);
   },
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {

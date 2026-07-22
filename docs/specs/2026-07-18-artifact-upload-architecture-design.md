@@ -327,21 +327,33 @@ The MCP server design remains authoritative for OAuth 2.1, DCR, PKCE, token
 properties, and per-user authorization. MCP tools import the artifact service
 directly; they do not call website routes over HTTP.
 
+Every MCP artifact mutation is scoped by both trusted OAuth token properties:
+`userId` and the selected `clubId`. Artifact ownership is resolved through the
+artifact's project, and repository predicates join through `projects.club_id`.
+An owned artifact in another club is therefore indistinguishable from a
+missing artifact. The existing artifact tables do not need a duplicated
+`club_id` column or a migration for this integration.
+
 ### `create_artifact`
 
 Input:
 
 - Required existing `project_id`
 - Artifact title and optional description
-- Bounded text files as `{ path, content, mime_type? }`
+- One to 100 text files, at most 2 MB aggregate UTF-8 content, as
+  `{ path, content, mime_type? }`
 - Optional permitted data origins
 - Required caller-generated idempotency key
 
-The first release accepts model-generated text files only. HTML artifacts must
-contain `index.html`. The tool validates the owned project, writes immutable R2
+The first release creates HTML artifacts only and therefore exposes no caller
+controlled artifact-type field. Its model-generated text package must contain
+root `index.html`. The tool validates the owned project, writes immutable R2
 objects, creates the artifact/version/file rows, and returns the stable
 authenticated detail URL. It requires `artifacts:write` and is annotated as a
-bounded, non-destructive write.
+bounded, non-destructive, idempotent write without open-world impact. Its safe
+result contains artifact and version identifiers, version state, and the
+canonical `/clubs/:clubSlug/artifacts/:id` URL. It never returns source text,
+R2 keys, renderer capabilities, account identity, or internal object paths.
 
 ### `create_artifact_version`
 
@@ -354,7 +366,9 @@ Input:
 
 It creates a retained version and moves `current_version_id`; it does not
 change gallery visibility or `gallery_version_id`. It requires
-`artifacts:write`.
+`artifacts:write`. The tool does not accept title or description fields because
+version creation cannot change artifact metadata; the domain service reuses
+the stored title internally while finalizing the upload.
 
 ### `share_artifact`
 
@@ -365,8 +379,47 @@ Input:
 - Explicit confirmation
 
 It shares that version with authenticated participants. It requires
-`artifacts:publish` and carries open-world impact metadata. Removing or
-changing gallery visibility uses the same separate publication capability.
+`artifacts:publish`, carries open-world impact metadata, and is rejected unless
+`confirm` is exactly `true`. The model must not infer publication consent from
+artifact creation or from a request to revise an artifact. Removing or changing
+gallery visibility uses the website in this first MCP milestone; a future MCP
+removal tool would require the same separate publication capability.
+
+### Model-facing artifact guidance
+
+The essential artifact rules appear in both the server instructions and the
+create/version tool descriptions so a model can act correctly without first
+reading another resource. The Gardener guide provides the fuller workflow and
+examples. This intentional duplication keeps the safety-critical constraints
+close to every write while leaving longer educational material discoverable.
+
+The guidance tells the model to:
+
+- Resolve an existing project before creating an artifact; MCP creation never
+  creates an inline draft project.
+- Assemble the complete package before calling the tool, with root
+  `index.html` and relative paths for every packaged CSS, JavaScript, image, or
+  data dependency.
+- Prefer self-contained CSS and JavaScript. Renderer-supported CDN dependencies
+  remain constrained by the server-owned CSP and are not widened by artifact
+  input.
+- Use `allowed_data_origins` only for the exact HTTPS origins the artifact
+  contacts through browser fetch/connect APIs. It does not grant arbitrary
+  script, style, frame, form, or navigation access.
+- Stay within 100 files and 2 MB of aggregate UTF-8 text, and supply only
+  extension/MIME combinations supported by the HTML package validator.
+- Generate a stable caller idempotency key, reuse it only for an identical
+  retry, and use `create_artifact_version` for revisions rather than creating
+  duplicate artifacts.
+- Treat the authenticated detail URL as the canonical result. Never expose or
+  invent renderer, R2, capability, or direct object URLs.
+- Describe create and version results as private. Call `share_artifact` only
+  after an explicit user request and confirmation.
+
+Create/version tool results say "private artifact created" or "private version
+created"; the sharing result says "version shared." Stable artifact failures
+are mapped to public MCP error codes without uploaded source, provider detail,
+SQL errors, stack traces, tokens, or storage identifiers.
 
 ### Deferred MCP file import
 
@@ -639,12 +692,15 @@ MCP routes use the approved OAuth 2.1 authorization-code-plus-PKCE design:
 
 - `artifacts:write` creates private artifacts and versions.
 - `artifacts:publish` changes gallery visibility or shared version.
-- Token `userId` is authoritative; caller-supplied email and user IDs never
-  establish identity.
-- Project, artifact, and version queries include the authenticated owner in
-  their predicate.
+- Token `userId` and selected `clubId` are authoritative; caller-supplied
+  identity or club fields never establish scope.
+- Project, artifact, and version queries include the authenticated owner and
+  club in their predicate. Artifact and version queries derive club ownership
+  by joining through their project.
 - OAuth bearer routes use MCP resource, audience, issuer, expiry, signature,
   origin, and scope validation rather than website cookie-CSRF handling.
+- Existing grants do not silently gain the additive artifact scopes. Clients
+  must reauthorize before an artifact tool can be called.
 
 ## Observability
 
@@ -676,13 +732,19 @@ where observable, and gallery actions.
 - Idempotency-key behavior and conflicting retries.
 - Version numbering, restore, current/gallery pointer separation, and
   visibility transitions.
-- OAuth scope and token-property parsing.
+- OAuth scope and token-property parsing, exact artifact tool schemas, stable
+  discovery order, mutation annotations, and safe output shapes.
+- Model guidance covers package completeness, root `index.html`, relative
+  assets, exact data origins, idempotency, versioning, privacy, and explicit
+  sharing consent.
 
 ### Service and integration tests
 
 - Owned project requirement and inline `seed` project creation.
 - Cross-user project, artifact, version, upload, restore, deletion, and share
   attempts.
+- Same-user cross-club create, version, and share attempts using an OAuth token
+  bound to another selected club.
 - D1/R2 success and each partial-failure ordering.
 - Pending uploads never becoming readable versions.
 - Failed/abandoned upload and soft-delete cleanup.
@@ -691,6 +753,12 @@ where observable, and gallery actions.
 - Cookie-authenticated unsafe requests rejected from the renderer, `null`,
   missing, and unrelated origins.
 - OAuth artifact write and publish scopes tested independently.
+- Existing read-only grants receive an insufficient-scope challenge and must
+  reauthorize for the new additive scopes.
+- Exact idempotent MCP replay succeeds while reuse with changed files or
+  metadata returns an idempotency conflict.
+- MCP results, error responses, and structured logs omit source content,
+  identities, tokens, R2 keys, capabilities, provider errors, and stack traces.
 
 ### Browser security tests
 

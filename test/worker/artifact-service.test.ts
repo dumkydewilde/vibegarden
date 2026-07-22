@@ -16,11 +16,81 @@ import { artifactObjectKey, putLeasedObject } from "../../app/lib/artifacts/obje
 const now = 1_784_880_000_000;
 const text = new TextEncoder();
 
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+
+function finalizationRaceEnv(
+  role: "winner" | "loser",
+  barriers: { loserReadPending: ReturnType<typeof deferred>; winnerTransitioned: ReturnType<typeof deferred>; releaseLoser: ReturnType<typeof deferred>; releaseWinner: ReturnType<typeof deferred> },
+): Env {
+  let delayedInitialLoad = false;
+  let winnerTransitioned = false;
+  const db = new Proxy(env.DB, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (property !== "prepare" || typeof value !== "function") return value;
+      return (query: string) => {
+        const isOwnedUpload = query === "SELECT * FROM artifact_uploads WHERE id = ? AND user_id = ? LIMIT 1";
+        const isTransition = query.startsWith("UPDATE artifact_uploads SET status = 'finalizing'");
+        const isFileLoad = query.startsWith("SELECT path, mime_type AS mimeType");
+        const wrap = (statement: D1PreparedStatement): D1PreparedStatement => new Proxy(statement, {
+          get(statementTarget, statementProperty, statementReceiver) {
+            const statementValue = Reflect.get(statementTarget, statementProperty, statementReceiver);
+            if (statementProperty === "bind") {
+              return (...args: unknown[]) => wrap(
+                (statementValue as (...values: unknown[]) => D1PreparedStatement).apply(statementTarget, args),
+              );
+            }
+            if (role === "loser" && isOwnedUpload && statementProperty === "first" && !delayedInitialLoad) {
+              delayedInitialLoad = true;
+              return async (...args: unknown[]) => {
+                const result = await (statementValue as (...values: unknown[]) => Promise<unknown>).apply(statementTarget, args);
+                barriers.loserReadPending.resolve();
+                await barriers.winnerTransitioned.promise;
+                return result;
+              };
+            }
+            if (role === "winner" && isTransition && statementProperty === "run") {
+              return async (...args: unknown[]) => {
+                const result = await (statementValue as (...values: unknown[]) => Promise<unknown>).apply(statementTarget, args);
+                winnerTransitioned = true;
+                barriers.winnerTransitioned.resolve();
+                return result;
+              };
+            }
+            if (role === "winner" && winnerTransitioned && isFileLoad && statementProperty === "all") {
+              return async (...args: unknown[]) => {
+                await barriers.releaseWinner.promise;
+                return (statementValue as (...values: unknown[]) => Promise<unknown>).apply(statementTarget, args);
+              };
+            }
+            if (role === "loser" && isTransition && statementProperty === "run") {
+              return async (...args: unknown[]) => {
+                await barriers.releaseLoser.promise;
+                return (statementValue as (...values: unknown[]) => Promise<unknown>).apply(statementTarget, args);
+              };
+            }
+            return statementValue;
+          },
+        }) as D1PreparedStatement;
+        return wrap(target.prepare(query));
+      };
+    },
+  });
+  return { ...env, DB: db } as Env;
+}
+
 async function seed(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)").bind("user-a", "a@example.com", now),
     env.DB.prepare("INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)").bind("user-b", "b@example.com", now),
-    env.DB.prepare("INSERT INTO projects (id, user_id, title, status, created_at, updated_at) VALUES (?, ?, ?, 'seed', ?, ?)").bind("project-a", "user-a", "Project A", now, now),
+    env.DB.prepare("INSERT INTO clubs (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").bind("club-a", "Club A", "club-a", now, now),
+    env.DB.prepare("INSERT INTO clubs (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").bind("club-other", "Other Club", "club-other", now, now),
+    env.DB.prepare("INSERT INTO projects (id, user_id, club_id, title, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'seed', ?, ?)").bind("project-a", "user-a", "club-a", "Project A", now, now),
+    env.DB.prepare("INSERT INTO projects (id, user_id, club_id, title, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'seed', ?, ?)").bind("project-other-club", "user-a", "club-other", "Other Club Project", now, now),
     env.DB.prepare("INSERT INTO projects (id, user_id, title, status, created_at, updated_at) VALUES (?, ?, ?, 'seed', ?, ?)").bind("project-b", "user-b", "Project B", now, now),
   ]);
 }
@@ -40,6 +110,7 @@ beforeEach(async () => {
     env.DB.prepare("DELETE FROM artifact_versions"),
     env.DB.prepare("DELETE FROM artifacts"),
     env.DB.prepare("DELETE FROM projects"),
+    env.DB.prepare("DELETE FROM clubs"),
     env.DB.prepare("DELETE FROM users"),
   ]);
   await seed();
@@ -120,22 +191,112 @@ describe("artifact upload service", () => {
   });
 
   it("keeps project and type immutable while MCP text versions move only current", async () => {
-    const created = await createTextArtifact(env, "user-a", {
+    const created = await createTextArtifact(env, { userId: "user-a", clubId: "club-a" }, {
       projectId: "project-a",
       type: "file",
       title: "Notes",
       idempotencyKey: "notes-create",
       files: [{ path: "notes.txt", content: "first" }],
     });
-    const next = await createTextArtifactVersion(env, "user-a", {
+    const next = await createTextArtifactVersion(env, { userId: "user-a", clubId: "club-a" }, {
       artifactId: created.artifactId,
-      title: "Ignored by immutable artifact metadata",
       idempotencyKey: "notes-version-2",
       files: [{ path: "notes.txt", content: "second" }],
     });
 
     const artifact = await env.DB.prepare("SELECT project_id, type, current_version_id, gallery_version_id FROM artifacts WHERE id = ?").bind(created.artifactId).first();
     expect(artifact).toEqual({ project_id: "project-a", type: "file", current_version_id: next.versionId, gallery_version_id: null });
+  });
+
+  it("finalizes a pending MCP replay after all of its files were recorded", async () => {
+    const input = {
+      projectId: "project-a",
+      type: "html" as const,
+      title: "Pending replay",
+      idempotencyKey: "pending-mcp-replay",
+      files: [{ path: "index.html", content: "<h1>Pending replay</h1>" }],
+    };
+    const created = await createTextArtifact(env, { userId: "user-a", clubId: "club-a" }, input);
+    const upload = await env.DB.prepare(
+      "SELECT id FROM artifact_uploads WHERE artifact_id = ? AND version_id = ?",
+    ).bind(created.artifactId, created.versionId).first<{ id: string }>();
+    const files = await env.DB.prepare(
+      "SELECT r2_key, byte_size, sha256 FROM artifact_upload_files WHERE upload_id = ?",
+    ).bind(upload!.id).all<{ r2_key: string; byte_size: number; sha256: string }>();
+
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM artifact_files WHERE version_id = ?").bind(created.versionId),
+      env.DB.prepare("DELETE FROM artifact_versions WHERE id = ?").bind(created.versionId),
+      env.DB.prepare("DELETE FROM artifacts WHERE id = ?").bind(created.artifactId),
+      env.DB.prepare("UPDATE artifact_uploads SET status = 'pending' WHERE id = ?").bind(upload!.id),
+      ...files.results.map((file) => env.DB.prepare(
+        "INSERT INTO artifact_object_leases (r2_key, upload_id, user_id, byte_size, sha256, expires_at, created_at) VALUES (?, ?, 'user-a', ?, ?, ?, ?)",
+      ).bind(file.r2_key, upload!.id, file.byte_size, file.sha256, Date.now() + 60_000, Date.now())),
+    ]);
+
+    await expect(createTextArtifact(env, { userId: "user-a", clubId: "club-a" }, input)).resolves.toEqual(created);
+    await expect(env.DB.prepare("SELECT current_version_id FROM artifacts WHERE id = ?").bind(created.artifactId).first()).resolves.toEqual({ current_version_id: created.versionId });
+  });
+
+  it("completes both callers when a loser observes the winner's finalizing transition", async () => {
+    const body = text.encode("<h1>Concurrent</h1>");
+    const session = await createUploadSession(env, "user-a", {
+      project: { projectId: "project-a" }, type: "html", title: "Concurrent", idempotencyKey: "concurrent-transition",
+    });
+    await putUploadFile(env, "user-a", session.uploadId, {
+      path: "index.html", mimeType: "text/html", byteSize: body.byteLength, sha256: await sha256(body),
+    }, body.buffer);
+    const barriers = {
+      loserReadPending: deferred(), winnerTransitioned: deferred(), releaseLoser: deferred(), releaseWinner: deferred(),
+    };
+    const loser = finalizeUpload(finalizationRaceEnv("loser", barriers), "user-a", session.uploadId);
+    await barriers.loserReadPending.promise;
+    const winner = finalizeUpload(finalizationRaceEnv("winner", barriers), "user-a", session.uploadId);
+    await barriers.winnerTransitioned.promise;
+    barriers.releaseLoser.resolve();
+
+    try {
+      const loserResult = await loser;
+      barriers.releaseWinner.resolve();
+      const winnerResult = await winner;
+      expect(loserResult).toEqual({ artifactId: session.artifactId, versionId: session.versionId });
+      expect(winnerResult).toEqual(loserResult);
+    } finally {
+      barriers.releaseWinner.resolve();
+      await winner.catch(() => undefined);
+    }
+  });
+
+  it("rejects same-user MCP text writes outside the selected club", async () => {
+    await expect(createTextArtifact(env, { userId: "user-a", clubId: "club-a" }, {
+      projectId: "project-other-club",
+      type: "html",
+      title: "Wrong club",
+      idempotencyKey: "wrong-club-create",
+      files: [{ path: "index.html", content: "<h1>Wrong club</h1>" }],
+    })).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("creates a scoped version without accepting mutable metadata", async () => {
+    const created = await createTextArtifact(env, { userId: "user-a", clubId: "club-a" }, {
+      projectId: "project-a",
+      type: "html",
+      title: "Original title",
+      description: "Original description",
+      idempotencyKey: "scoped-create",
+      files: [{ path: "index.html", content: "<h1>One</h1>" }],
+    });
+    await expect(createTextArtifactVersion(env, { userId: "user-a", clubId: "club-a" }, {
+      artifactId: created.artifactId,
+      idempotencyKey: "scoped-version",
+      files: [{ path: "index.html", content: "<h1>Two</h1>" }],
+    })).resolves.toEqual({ artifactId: created.artifactId, versionId: expect.any(String) });
+    await expect(createTextArtifactVersion(env, { userId: "user-a", clubId: "club-a" }, {
+      artifactId: created.artifactId,
+      title: "Injected title",
+      idempotencyKey: "scoped-version-with-title",
+      files: [{ path: "index.html", content: "<h1>Three</h1>" }],
+    } as never)).rejects.toMatchObject({ code: "invalid_input" });
   });
 
   it("uses the normalized link URL in the idempotency fingerprint", async () => {

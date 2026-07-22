@@ -1,6 +1,9 @@
 import { z } from "zod";
+import { ARTIFACT_LIMITS } from "~/lib/artifacts/contracts";
 
-export const MCP_SCOPES = ["projects:read", "content:read"] as const;
+export const MCP_SCOPES = [
+  "projects:read", "content:read", "artifacts:write", "artifacts:publish",
+] as const;
 export type McpScope = (typeof MCP_SCOPES)[number];
 export type McpPrincipal = {
   userId: string;
@@ -28,6 +31,9 @@ export const MCP_TOOL_ORDER = [
   "fresh_reads",
   "search",
   "fetch",
+  "create_artifact",
+  "create_artifact_version",
+  "share_artifact",
 ] as const;
 
 export const listProjectsInput = z.object({
@@ -69,6 +75,34 @@ export const freshReadsInput = z.object({
 
 export const searchInput = z.object({ query: z.string().min(1).max(200) }).strict();
 export const fetchInput = z.object({ id: z.string().min(1).max(300) }).strict();
+
+const artifactTextFileInput = z.object({
+  path: z.string().min(1).max(ARTIFACT_LIMITS.pathBytes),
+  content: z.string().max(ARTIFACT_LIMITS.mcpBytes),
+  mime_type: z.string().min(1).max(128).optional(),
+}).strict();
+
+export const createArtifactInput = z.object({
+  project_id: z.string().min(1).max(200),
+  title: z.string().min(1).max(ARTIFACT_LIMITS.titleChars),
+  description: z.string().max(ARTIFACT_LIMITS.descriptionChars).optional(),
+  files: z.array(artifactTextFileInput).min(1).max(ARTIFACT_LIMITS.mcpFiles),
+  allowed_data_origins: z.array(z.string().max(2_048)).max(ARTIFACT_LIMITS.origins).optional(),
+  idempotency_key: z.string().min(1).max(256),
+}).strict();
+
+export const createArtifactVersionInput = z.object({
+  artifact_id: z.string().min(1).max(200),
+  files: z.array(artifactTextFileInput).min(1).max(ARTIFACT_LIMITS.mcpFiles),
+  allowed_data_origins: z.array(z.string().max(2_048)).max(ARTIFACT_LIMITS.origins).optional(),
+  idempotency_key: z.string().min(1).max(256),
+}).strict();
+
+export const shareArtifactInput = z.object({
+  artifact_id: z.string().min(1).max(200),
+  version_id: z.string().min(1).max(200),
+  confirm: z.literal(true),
+}).strict();
 
 const conversationSummaryOutput = z.object({
   id: z.string(),
@@ -173,6 +207,13 @@ export const fetchOutput = z.object({
   text: z.string(),
   url: z.string().url(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+}).strict();
+
+export const artifactMutationOutput = z.object({
+  artifact_id: z.string(),
+  version_id: z.string(),
+  visibility: z.enum(["private", "gallery"]),
+  url: z.string().url(),
 }).strict();
 
 export function clampPageSize(

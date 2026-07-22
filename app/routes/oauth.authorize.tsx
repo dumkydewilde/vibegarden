@@ -17,6 +17,8 @@ import { MCP_SCOPES, type McpScope } from "~/lib/mcp/contracts";
 const scopeDescriptions: Record<McpScope, string> = {
   "projects:read": "View your garden projects",
   "content:read": "Read your learning content",
+  "artifacts:write": "Create private project artifacts",
+  "artifacts:publish": "Share project artifacts",
 };
 
 function isMcpScope(scope: string): scope is McpScope {
