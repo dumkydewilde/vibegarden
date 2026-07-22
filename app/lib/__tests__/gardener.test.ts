@@ -67,9 +67,18 @@ describe("buildSystemPrompt", () => {
     expect(withTools).toContain("subgraph ide1 [one]");
     expect(withTools).toContain("A-->|This is the text|B");
     expect(withTools).toContain("Mermaid v11.3.0+");
+    expect(withTools).toContain(
+      "Always call this tool when you create or receive Mermaid source",
+    );
+    expect(withTools).toContain(
+      "Never return Mermaid source or a Mermaid code fence in your chat response",
+    );
 
     const withoutTools = buildSystemPrompt([], undefined, { tools: [] });
     expect(withoutTools).not.toContain("Mermaid flowchart notes");
+    expect(withoutTools).not.toContain(
+      "Always call this tool when you create or receive Mermaid source",
+    );
   });
 
   it("derives optional tool guidance from the exact offered specs", () => {
