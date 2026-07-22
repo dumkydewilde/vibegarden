@@ -1,11 +1,12 @@
 import { createOAuthProvider, isOAuthProviderPath } from "../../workers/oauth";
 import { mcpOriginAllowed, mcpOriginRejectedResponse } from "../../workers/mcp";
+import { MCP_SCOPES, type McpScope } from "../../app/lib/mcp/contracts";
 
 function unauthenticatedMcpChallenge(env: Env) {
   return new Response("Authentication required", {
     status: 401,
     headers: {
-      "WWW-Authenticate": `Bearer resource_metadata="${new URL("/.well-known/oauth-protected-resource", env.APP_ORIGIN)}", scope="projects:read content:read"`,
+      "WWW-Authenticate": `Bearer resource_metadata="${new URL("/.well-known/oauth-protected-resource", env.APP_ORIGIN)}", scope="${MCP_SCOPES.join(" ")}"`,
     },
   });
 }
@@ -21,7 +22,9 @@ const defaultHandler = {
       }
       const userId = request.headers.get("x-test-user-id") || "test-user";
       const clubId = request.headers.get("x-test-club-id") || "test-club";
-      const scope = grant.scope.filter((value) => value === "projects:read" || value === "content:read");
+      const scope = grant.scope.filter(
+        (value): value is McpScope => MCP_SCOPES.includes(value as McpScope),
+      );
       const now = Date.now();
       await env.DB.batch([
         env.DB.prepare(

@@ -1,6 +1,8 @@
 import { WorkerTransport } from "agents/mcp";
 import { z } from "zod";
 import {
+  createArtifactInput,
+  createArtifactVersionInput,
   fetchInput,
   freshReadsInput,
   getConversationInput,
@@ -8,7 +10,9 @@ import {
   listLearningContentInput,
   listProjectConversationsInput,
   listProjectsInput,
+  MCP_SCOPES,
   searchInput,
+  shareArtifactInput,
   slugInput,
   type McpScope,
 } from "../app/lib/mcp/contracts";
@@ -36,6 +40,9 @@ const toolRequirements = {
   fresh_reads: { schema: freshReadsInput, scope: "content:read" },
   search: { schema: searchInput, scope: ["projects:read", "content:read"] },
   fetch: { schema: fetchInput, scope: ["projects:read", "content:read"] },
+  create_artifact: { schema: createArtifactInput, scope: "artifacts:write" },
+  create_artifact_version: { schema: createArtifactVersionInput, scope: "artifacts:write" },
+  share_artifact: { schema: shareArtifactInput, scope: "artifacts:publish" },
 } as const;
 
 export function mcpOriginAllowed(request: Request, env: Env) {
@@ -53,7 +60,7 @@ function principalScopes(ctx: ExecutionContext): McpScope[] {
   const props = ctx.props as { scopes?: unknown } | undefined;
   if (!Array.isArray(props?.scopes)) return [];
   return props.scopes.filter((scope): scope is McpScope => (
-    scope === "projects:read" || scope === "content:read"
+    MCP_SCOPES.includes(scope as McpScope)
   ));
 }
 
