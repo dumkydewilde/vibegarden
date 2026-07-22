@@ -61,6 +61,9 @@ describe("buildSystemPrompt", () => {
     expect(withTools).toContain("Mermaid flowchart notes");
     expect(withTools).toContain('A@{ shape: cloud, label: "Cache" }');
     expect(withTools).toContain("e1@{ animate: slow }");
+    expect(withTools).toContain(
+      "Define shaped nodes on their own lines before connecting an identified or animated edge.",
+    );
     expect(withTools).toContain("subgraph ide1 [one]");
     expect(withTools).toContain("A-->|This is the text|B");
     expect(withTools).toContain("Mermaid v11.3.0+");
