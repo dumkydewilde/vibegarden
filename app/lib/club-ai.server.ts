@@ -180,6 +180,25 @@ async function resolveFinding(env: Env, clubId: string, kind: ReconciliationFind
   ).bind(now, clubId, kind).run();
 }
 
+function matchesConfiguredModel(actual: string, configured: string) {
+  if (actual === configured) return true;
+  const canonical = /^([^:]+)-\d{8}(:[^:]+)?$/.exec(actual);
+  return canonical ? `${canonical[1]}${canonical[2] ?? ""}` === configured : false;
+}
+
+function hasEquivalentModels(actual: string[], desired: string[]) {
+  if (actual.length !== desired.length) return false;
+  const unmatched = [...desired];
+  for (const model of actual) {
+    const match = unmatched.findIndex((desiredModel) =>
+      matchesConfiguredModel(model, desiredModel)
+    );
+    if (match === -1) return false;
+    unmatched.splice(match, 1);
+  }
+  return unmatched.length === 0;
+}
+
 function hasGuardrailPolicy(
   guardrail: OpenRouterGuardrail,
   desired: OpenRouterGuardrailInput,
@@ -189,8 +208,7 @@ function hasGuardrailPolicy(
   return guardrail.name === desired.name
     && guardrail.limitUsd === desired.limitUsd
     && guardrail.resetInterval === desired.resetInterval
-    && actualModels.length === desiredModels.length
-    && actualModels.every((model) => desiredModels.includes(model));
+    && hasEquivalentModels(actualModels, desiredModels);
 }
 
 async function markReconciliationPending(env: Env, clubId: string) {
