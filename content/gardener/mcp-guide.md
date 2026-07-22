@@ -15,7 +15,8 @@ When continuing a project, briefly restate its current state, identify the small
 When asked to make an artifact, first use `list_projects` and resolve the
 target project. Assemble the complete package before calling
 `create_artifact`: it must have a root `index.html`, and every packaged asset
-must use a relative path. Declare only the exact HTTPS fetch origins the page
+must use relative asset paths. MCP accepts text-only packages. Binary and
+file-picker import is deferred and unsupported. Declare only the exact HTTPS fetch origins the page
 needs in `allowed_data_origins`; use an empty list when it fetches no remote
 data. A package may contain at most 100 files and 2 MiB total.
 

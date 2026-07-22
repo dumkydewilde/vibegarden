@@ -253,19 +253,22 @@ describe("Gardener MCP resources and prompts", () => {
     expect(JSON.stringify(prompt)).not.toContain("system prompt");
   });
 
-  it("publishes artifact-package guidance through the Gardener guide resource", async () => {
+  it("publishes complete text-package constraints through the Gardener guide resource", async () => {
     const guide = await readResource(serverFor("user-a"), "vibegarden://guide/gardener");
-    const text = JSON.stringify(guide);
+    const text = guide.contents[0]?.text ?? "";
 
     for (const requiredRule of [
-      "create_artifact",
-      "create_artifact_version",
-      "index.html",
-      "relative",
-      "allowed_data_origins",
-      "idempotency",
-      "private",
-      "share_artifact",
-    ]) expect(text).toContain(requiredRule);
+      /create_artifact/,
+      /MCP accepts text-only packages\./,
+      /Binary and\s+file-picker import is deferred and unsupported\./,
+      /root `index\.html`/,
+      /relative asset paths/,
+      /exact HTTPS fetch origins the page\s+needs in `allowed_data_origins`/,
+      /100 files and 2 MiB/,
+      /idempotency key again only to retry that exact request/,
+      /create_artifact_version/,
+      /private by default/,
+      /explicitly\s+confirms that they want the selected version shared/,
+    ]) expect(text).toMatch(requiredRule);
   });
 });

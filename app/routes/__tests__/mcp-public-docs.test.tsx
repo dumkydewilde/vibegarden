@@ -14,7 +14,9 @@ describe("MCP public documentation", () => {
     expect(page).toContain("artifacts:write");
     expect(page).toContain("artifacts:publish");
     expect(page).toContain("100 files");
-    expect(page).toContain("2 MB");
+    expect(page).toContain("2 MiB (2,097,152 bytes)");
+    expect(page).toContain("text-only packages");
+    expect(page).toContain("Binary and file-picker import is deferred and unsupported.");
     expect(page).toContain("reauthorize");
     expect(page).toContain("/settings");
   });
