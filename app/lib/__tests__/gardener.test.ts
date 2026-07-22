@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readSseRound } from "@vibegarden/agent-core";
+import { queryNote } from "@vibegarden/agent-web";
 import { offeredGardenerTools } from "~/lib/gardener-tools.server";
 import {
   buildAudienceSection,
@@ -208,6 +209,33 @@ describe("trimHistory", () => {
     expect(attach[0].role).toBe("user");
     expect(attach[0].content).toContain("<attach_result>");
     expect(attach[0].content).toContain("attach_data");
+  });
+
+  it("tells the model to retry a failed query with the same chart intent", () => {
+    const chart = {
+      type: "line" as const,
+      x: "day",
+      y: "revenue_eur",
+      title: "Daily revenue",
+    };
+    const trimmed = trimHistory([
+      {
+        role: "assistant",
+        content: queryNote({ sql: "SELECT broken", chart }),
+      },
+      {
+        role: "data",
+        content: JSON.stringify({
+          status: "error",
+          error: "Binder Error: bad date arithmetic",
+        }),
+      },
+    ]);
+
+    expect(trimmed[0].content).toContain(JSON.stringify(chart));
+    expect(trimmed[1].content).toContain("call query_data again");
+    expect(trimmed[1].content).toContain("same chart");
+    expect(trimmed[1].content).not.toContain("ALREADY displayed");
   });
 });
 

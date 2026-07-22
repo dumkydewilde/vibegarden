@@ -34,6 +34,7 @@ vi.mock("~/lib/gardener.server", () => ({
 }));
 import { action } from "../api.chat";
 import { resolveClubModel } from "~/lib/models";
+import { queryNote, splitToolNotes } from "@vibegarden/agent-web";
 
 function sseResponse(deltas: object[]) {
   return new Response(
@@ -127,5 +128,72 @@ describe("chat upstream failures", () => {
     const text = await response.text();
     expect(text).toContain("[[tool:articles:");
     expect(text).toContain("These are two useful starting points.");
+  });
+
+  it("inherits the failed query's chart when corrected SQL omits it", async () => {
+    vi.mocked(resolveClubModel).mockReturnValueOnce({
+      id: "model:free",
+      label: "Tool model",
+      note: "free",
+      tools: true,
+    });
+    mocks.fetch.mockResolvedValueOnce(
+      sseResponse([
+        {
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                id: "call_retry",
+                function: {
+                  name: "query_data",
+                  arguments: JSON.stringify({
+                    sql:
+                      "SELECT CAST(current_date AS TIMESTAMP) AS day, 500 AS revenue_eur",
+                  }),
+                },
+              },
+            ],
+          },
+        },
+        { delta: {}, finish_reason: "tool_calls" },
+      ]),
+    );
+    const chart = {
+      type: "line" as const,
+      x: "day",
+      y: "revenue_eur",
+      title: "Daily revenue",
+    };
+
+    const response = await action({
+      request: new Request("https://example.com/clubs/club-1/api/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          continuation: true,
+          messages: [
+            { role: "user", content: "Draw daily revenue." },
+            {
+              role: "assistant",
+              content: queryNote({ sql: "SELECT broken", chart }),
+            },
+            {
+              role: "data",
+              content: JSON.stringify({
+                status: "error",
+                error: "Binder Error: bad date arithmetic",
+              }),
+            },
+          ],
+        }),
+      }),
+      context: { get: () => ({ env: {} as Env }) },
+      params: { clubSlug: "club-1" },
+    } as never);
+
+    const query = splitToolNotes(await response.text()).find(
+      (segment) => segment.type === "query",
+    );
+    expect(query).toMatchObject({ type: "query", chart });
   });
 });

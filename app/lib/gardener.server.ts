@@ -5,6 +5,7 @@ import {
   DATASET_SUMMARY_MAX_CHARS,
   MAX_DATASETS,
   parseAttachEnvelope,
+  parseEnvelope,
   toModelText,
 } from "@vibegarden/agent-web";
 import {
@@ -171,9 +172,16 @@ export function trimHistory(messages: WireMessage[]): AgentHistoryMessage[] {
           content: `<attach_result>\n${content}\n</attach_result>\nThis is the result of your attach_data call, run in the person's browser. If the status is ok, the dataset is attached: a confirmation chip is already shown on their screen, the schema summary above is what you know about the table, and query_data can now read it. Briefly say in plain language what arrived (what one row is, which columns look interesting), then either run one obvious first query_data call or ask what they want to explore; do not restate the whole schema. If the status is an error, say so simply, do NOT claim the data is attached, and suggest they download the file and attach it with the tools button instead.`,
         };
       }
+      const queryEnvelope = parseEnvelope(m.content);
+      if (queryEnvelope?.status === "error") {
+        return {
+          role: "user" as const,
+          content: `<query_results>\n${content}\n</query_results>\nThe query_data call failed in the person's browser. No result table or chart was displayed. Briefly acknowledge the failure, correct the SQL, and call query_data again. If the failed query requested a chart, retry with the same chart specification so the successful result renders the visual the person asked for. Do not claim success until query_data returns an ok result.`,
+        };
+      }
       return {
         role: "user" as const,
-        content: `<query_results>\n${content}\n</query_results>\nThese are the results of your query_data call, run in the person's browser. The result table, and the chart if you asked for one, are ALREADY displayed on their screen, so your job now is only to talk about them. Reply in plain conversational prose, quoting the actual values (real numbers, names, dates). Do NOT re-run or restate the query, do NOT output SQL, "chart=", brackets, "query result", or any tool syntax, and do NOT offer to draw a chart that is already shown. If the result is an error, briefly say so and call query_data again with corrected SQL; otherwise do not query again.`,
+        content: `<query_results>\n${content}\n</query_results>\nThese are the successful results of your query_data call, run in the person's browser. The result table, and the chart if you asked for one, are ALREADY displayed on their screen, so your job now is only to talk about them. Reply in plain conversational prose, quoting the actual values (real numbers, names, dates). Do NOT re-run or restate the query, do NOT output SQL, "chart=", brackets, "query result", or any tool syntax, and do NOT offer to draw a chart that is already shown.`,
       };
     }
     return {

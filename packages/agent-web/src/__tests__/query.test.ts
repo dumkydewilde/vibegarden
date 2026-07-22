@@ -165,6 +165,22 @@ describe("toModelText", () => {
     );
   });
 
+  it("preserves chart intent in compacted query history", () => {
+    const text = queryNote({
+      sql: "SELECT day, revenue_eur FROM revenue",
+      chart: {
+        type: "line",
+        x: "day",
+        y: "revenue_eur",
+        title: "Daily revenue",
+      },
+    });
+
+    expect(toModelText(text)).toContain(
+      'chart {"type":"line","x":"day","y":"revenue_eur","title":"Daily revenue"}',
+    );
+  });
+
   it("strips parroted tool echoes from narration but keeps real markers", () => {
     expect(
       stripToolEcho(

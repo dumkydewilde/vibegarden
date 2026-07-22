@@ -33,7 +33,10 @@ const NOTE_KINDS: readonly string[] = ["article", "module", "web", "note"];
  * event has no marker (text, done, error). This is the web surface's
  * rendering of the surface-agnostic event stream.
  */
-export function markerForEvent(event: AgentEvent): string | null {
+export function markerForEvent(
+  event: AgentEvent,
+  fallbackQueryChart?: ChartSpec,
+): string | null {
   switch (event.type) {
     case "note":
       return toolNote(
@@ -52,7 +55,7 @@ export function markerForEvent(event: AgentEvent): string | null {
         if (typeof payload?.sql !== "string" || !payload.sql) return null;
         return queryNote({
           sql: payload.sql,
-          chart: parseChartSpec(payload.chart),
+          chart: parseChartSpec(payload.chart) ?? fallbackQueryChart,
         });
       }
       if (event.tool === "attach_data") {
@@ -387,7 +390,9 @@ export function toModelText(text: string): string {
         return clean || null;
       }
       if (s.type === "query") {
-        return `[ran query_data: ${s.sql.replace(/\s+/g, " ").slice(0, 300)}]`;
+        const chart = s.chart ? `; chart ${JSON.stringify(s.chart)}` : "";
+        const sql = s.sql.replace(/\s+/g, " ").slice(0, 300);
+        return `[ran query_data: ${sql}${chart}]`;
       }
       if (s.type === "queryresult") return envelopeSummaryLine(s.result);
       if (s.type === "attach") {
