@@ -251,6 +251,8 @@ describe("MCP artifact writes", () => {
     await expect(env.DB.prepare("SELECT COUNT(*) AS count FROM artifact_versions WHERE created_by = ?").bind(seeded.userId).first()).resolves.toEqual({ count: 0 });
 
     const created = await mcpCall(token, "create_artifact", artifactInput(seeded.firstClub.projectId, "redacted-success"));
+    expect(created.response.status).toBe(200);
+    expect(mutation(created.body)).toMatchObject({ visibility: "private" });
     const output = serialized(created.body);
     for (const forbidden of [...forbiddenSecrets, "mcp", "/versions/", "r2_key", "r2Key", "object_key", "objectKey", "bucket", "capability", "SQLITE_", "D1_ERROR", "provider error", "OAuthProvider", "Error:", "at "]) {
       expect(output).not.toContain(forbidden);
