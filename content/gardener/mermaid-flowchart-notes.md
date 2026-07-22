@@ -53,6 +53,16 @@ flowchart LR
   e1@{ animate: slow }
 ```
 
+Define shaped nodes on their own lines before connecting an identified or animated edge. Do not combine `@{ ... }` node definitions and `e1@...` edge syntax in one statement:
+
+```mermaid
+flowchart LR
+  A@{ shape: stadium, label: "Start" }
+  B@{ shape: stadium, label: "Finish" }
+  A e1@==>|go| B
+  e1@{ animate: slow }
+```
+
 ## Subgraphs
 
 Use subgraphs to group a few related steps. They can have an explicit id and label, and flowcharts can connect into or out of a subgraph:
