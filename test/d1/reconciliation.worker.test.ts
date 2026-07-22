@@ -9,6 +9,7 @@ import type {
   OpenRouterKeyInput,
   OpenRouterKeyPatch,
 } from "~/lib/openrouter-management.server";
+import { modelsForPolicy } from "~/lib/models";
 
 class FakeManagementClient implements ClubAiManagementClient {
   keys: OpenRouterKey[] = [];
@@ -179,6 +180,69 @@ describe("club AI reconciliation", () => {
       limitReset: "monthly",
     });
     expect(client.guardrails[0]).toMatchObject({ name: "vibegarden:club:reconcile-drift", limitUsd: null });
+  });
+
+  it("accepts dated canonical model ids returned for configured aliases", async () => {
+    const id = "reconcile-canonical-models";
+    const canonicalize = (model: string) => {
+      const [name, variant] = model.split(":");
+      return `${name}-20260722${variant ? `:${variant}` : ""}`;
+    };
+    const canonicalModels = modelsForPolicy("all_models").map((model) => canonicalize(model.id));
+    await club(id);
+    const client = new FakeManagementClient();
+    client.keys.push(managedKey(id));
+    client.guardrails.push(guardrail(id, { allowedModels: canonicalModels }));
+    client.assignments.set(`guardrail-${id}`, new Set([`hash-${id}`]));
+    let updates = 0;
+    client.updateGuardrail = async (guardrailId, patch) => {
+      updates += 1;
+      const current = client.guardrails.find((item) => item.id === guardrailId)!;
+      Object.assign(current, patch, {
+        allowedModels: patch.allowedModels?.map(canonicalize) ?? current.allowedModels,
+      });
+      return current;
+    };
+
+    await reconcileClubAi(testEnv, client);
+
+    expect(await credentialAvailability(id)).toEqual({
+      state: "ready",
+      syncedPolicy: "all_models",
+    });
+    expect(updates).toBe(0);
+  });
+
+  it("repairs a date suffix placed after a model variant", async () => {
+    const id = "reconcile-date-after-variant";
+    const desiredModels = modelsForPolicy("all_models").map((model) => model.id);
+    const actualModels = desiredModels.map((model) =>
+      model.endsWith(":free") ? `${model}-20260722` : model
+    );
+    await club(id);
+    const client = new FakeManagementClient();
+    client.keys.push(managedKey(id));
+    client.guardrails.push(guardrail(id, { allowedModels: actualModels }));
+    client.assignments.set(`guardrail-${id}`, new Set([`hash-${id}`]));
+
+    await reconcileClubAi(testEnv, client);
+
+    expect(client.guardrails[0].allowedModels).toEqual(desiredModels);
+  });
+
+  it("repairs a same-length allowlist with a duplicate and missing model", async () => {
+    const id = "reconcile-duplicate-model";
+    const desiredModels = modelsForPolicy("all_models").map((model) => model.id);
+    const actualModels = [desiredModels[0], desiredModels[0], ...desiredModels.slice(2)];
+    await club(id);
+    const client = new FakeManagementClient();
+    client.keys.push(managedKey(id));
+    client.guardrails.push(guardrail(id, { allowedModels: actualModels }));
+    client.assignments.set(`guardrail-${id}`, new Set([`hash-${id}`]));
+
+    await reconcileClubAi(testEnv, client);
+
+    expect(client.guardrails[0].allowedModels).toEqual(desiredModels);
   });
 
   it("records an open orphan finding without substituting a remote key", async () => {
