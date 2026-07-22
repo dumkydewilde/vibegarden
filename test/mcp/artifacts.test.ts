@@ -185,6 +185,22 @@ describe("MCP artifact writes", () => {
     await expect(env.DB.prepare("SELECT visibility, gallery_version_id FROM artifacts WHERE id = ?").bind(first.artifact_id).first()).resolves.toEqual({ visibility: "gallery", gallery_version_id: first.version_id });
   });
 
+  it("returns the same completed artifact for concurrent identical MCP creates", async () => {
+    const seeded = await seedTwoClubProjects();
+    const token = await accessTokenFor(seeded.userId, seeded.firstClub.id);
+    const input = artifactInput(seeded.firstClub.projectId, "concurrent-dashboard-create");
+
+    const calls = await Promise.all([
+      mcpCall(token, "create_artifact", input),
+      mcpCall(token, "create_artifact", input),
+    ]);
+    expect(calls.map(({ response }) => response.status)).toEqual([200, 200]);
+    const [first, retry] = calls.map(({ body }) => mutation(body));
+    expect(retry).toMatchObject({ artifact_id: first.artifact_id, version_id: first.version_id });
+    await expect(env.DB.prepare("SELECT COUNT(*) AS count FROM artifacts WHERE id = ?").bind(first.artifact_id).first()).resolves.toEqual({ count: 1 });
+    await expect(env.DB.prepare("SELECT COUNT(*) AS count FROM artifact_versions WHERE artifact_id = ?").bind(first.artifact_id).first()).resolves.toEqual({ count: 1 });
+  });
+
   it("enforces OAuth artifact scopes and the club selected by the grant", async () => {
     const seeded = await seedTwoClubProjects();
     const readToken = await accessTokenFor(seeded.userId, seeded.firstClub.id, "projects:read");

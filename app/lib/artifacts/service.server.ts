@@ -600,6 +600,17 @@ async function finalizeDraftArtifact(env: Env, userId: string, upload: StoredUpl
   }
 }
 
+async function completedUploadResult(
+  env: Env,
+  userId: string,
+  uploadId: string,
+): Promise<ArtifactMutationResult | null> {
+  const upload = await findOwnedUpload(env, userId, uploadId) as StoredUpload | null;
+  return upload?.status === "complete"
+    ? { artifactId: upload.artifact_id, versionId: upload.version_id }
+    : null;
+}
+
 /** Finalizes from upload rows only. Failed validation never creates a partial artifact. */
 export async function finalizeUpload(env: Env, userId: string, uploadId: string): Promise<ArtifactMutationResult> {
   const upload = await findOwnedUpload(env, userId, uploadId) as StoredUpload | null;
@@ -614,7 +625,11 @@ export async function finalizeUpload(env: Env, userId: string, uploadId: string)
     const transition = await env.DB.prepare(
       "UPDATE artifact_uploads SET status = 'finalizing', updated_at = ? WHERE id = ? AND user_id = ? AND status = 'pending' AND expires_at > ?",
     ).bind(now(), uploadId, userId, now()).run();
-    if (transition.meta.changes !== 1) artifactError("state_conflict");
+    if (transition.meta.changes !== 1) {
+      const completed = await completedUploadResult(env, userId, uploadId);
+      if (completed) return completed;
+      artifactError("state_conflict");
+    }
   }
   const files = await env.DB.prepare(
     "SELECT path, mime_type AS mimeType, byte_size AS byteSize, sha256, r2_key FROM artifact_upload_files WHERE upload_id = ? ORDER BY path",
@@ -638,7 +653,13 @@ export async function finalizeUpload(env: Env, userId: string, uploadId: string)
       artifactError("state_conflict");
     }
   } catch (error) {
-    if (error instanceof ArtifactError) throw error;
+    if (error instanceof ArtifactError) {
+      if (error.code === "state_conflict") {
+        const completed = await completedUploadResult(env, userId, uploadId);
+        if (completed) return completed;
+      }
+      throw error;
+    }
     throw new ArtifactError("internal");
   }
   return { artifactId: upload.artifact_id, versionId: upload.version_id };
