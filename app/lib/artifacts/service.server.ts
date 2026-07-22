@@ -1,6 +1,7 @@
 import {
   ARTIFACT_LIMITS,
   ArtifactError,
+  type ArtifactOwnerScope,
   type ArtifactManifestFile,
   type ArtifactPackageSource,
   type ArtifactType,
@@ -10,11 +11,14 @@ import {
   finalizeExistingArtifactVersion,
   finalizeNewArtifact,
   findOwnedArtifact,
+  findOwnedArtifactInClub,
   findOwnedRecoverableArtifact,
   findOwnedIdempotency,
   findOwnedProject,
+  findOwnedProjectInClub,
   findOwnedUpload,
   findOwnedVersion,
+  findOwnedVersionInClub,
   findGalleryArtifact,
   markOwnedUploadAborted,
 } from "./repository.server";
@@ -776,52 +780,55 @@ async function checksum(bytes: Uint8Array): Promise<string> {
 
 async function textMutation(
   env: Env,
-  userId: string,
+  scope: ArtifactOwnerScope,
   rawInput: unknown,
   version: boolean,
 ): Promise<ArtifactMutationResult> {
   const allowed = version
-    ? ["artifactId", "title", "description", "allowedDataOrigins", "idempotencyKey", "files"]
+    ? ["artifactId", "allowedDataOrigins", "idempotencyKey", "files"]
     : ["projectId", "type", "title", "description", "allowedDataOrigins", "idempotencyKey", "files"];
   assertFields(rawInput, allowed);
   let type: Exclude<ArtifactType, "link">;
   let projectId: string;
   let artifactId: string | undefined;
+  let title: string;
+  let description: string | undefined;
   if (version) {
     artifactId = stringField(rawInput.artifactId, 200)!;
-    const artifact = await findOwnedArtifact(env, userId, artifactId);
+    const artifact = await findOwnedArtifactInClub(env, scope, artifactId);
     if (!artifact || artifact.type === "link") artifactError("not_found");
     type = artifact.type;
     projectId = artifact.project_id;
+    title = artifact.title;
   } else {
     type = rawInput.type === "html" || rawInput.type === "file" ? rawInput.type : artifactError("invalid_input");
     projectId = stringField(rawInput.projectId, 200)!;
-    if (!await findOwnedProject(env, userId, projectId)) artifactError("not_found");
+    if (!await findOwnedProjectInClub(env, scope, projectId)) artifactError("not_found");
+    title = stringField(rawInput.title, ARTIFACT_LIMITS.titleChars)!;
+    if (!title) artifactError("invalid_input");
+    description = stringField(rawInput.description, ARTIFACT_LIMITS.descriptionChars, false);
   }
-  const title = stringField(rawInput.title, ARTIFACT_LIMITS.titleChars)!;
-  if (!title) artifactError("invalid_input");
-  const description = stringField(rawInput.description, ARTIFACT_LIMITS.descriptionChars, false);
   const allowedDataOrigins = rawInput.allowedDataOrigins === undefined ? undefined : normalizeArtifactOrigins(rawInput.allowedDataOrigins as string[]);
   const files = parseTextFiles(rawInput.files, type);
   for (const file of files) file.sha256 = await checksum(file.body);
-  const session = await createUploadSessionInternal(env, userId, {
+  const session = await createUploadSessionInternal(env, scope.userId, {
     project: { projectId }, type, title, ...(description === undefined ? {} : { description }),
     ...(allowedDataOrigins === undefined ? {} : { allowedDataOrigins }), idempotencyKey: idempotencyKey(rawInput.idempotencyKey), ...(artifactId === undefined ? {} : { artifactId }),
   }, "mcp", files.map(({ body: _body, ...file }) => file));
   for (const file of files) {
     const { body, ...metadata } = file;
-    await putUploadFile(env, userId, session.uploadId, metadata, body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength));
+    await putUploadFile(env, scope.userId, session.uploadId, metadata, body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength));
   }
-  return finalizeUpload(env, userId, session.uploadId);
+  return finalizeUpload(env, scope.userId, session.uploadId);
 }
 
 /** MCP text packages are UTF-8 encoded and use the same leased upload pipeline as browser files. */
-export async function createTextArtifact(env: Env, userId: string, input: unknown): Promise<ArtifactMutationResult> {
-  return textMutation(env, userId, input, false);
+export async function createTextArtifact(env: Env, scope: ArtifactOwnerScope, input: unknown): Promise<ArtifactMutationResult> {
+  return textMutation(env, scope, input, false);
 }
 
-export async function createTextArtifactVersion(env: Env, userId: string, input: unknown): Promise<ArtifactMutationResult> {
-  return textMutation(env, userId, input, true);
+export async function createTextArtifactVersion(env: Env, scope: ArtifactOwnerScope, input: unknown): Promise<ArtifactMutationResult> {
+  return textMutation(env, scope, input, true);
 }
 
 type VersionRow = {
@@ -1127,6 +1134,16 @@ export async function shareArtifactVersion(env: Env, userId: string, artifactId:
        AND EXISTS (SELECT 1 FROM artifact_versions WHERE id = ? AND artifact_id = artifacts.id)`,
   ).bind(versionId, now(), artifactId, userId, versionId).run();
   if (result.meta.changes !== 1) artifactError("not_found");
+}
+
+export async function shareArtifactVersionForScope(
+  env: Env,
+  scope: ArtifactOwnerScope,
+  artifactId: string,
+  versionId: string,
+): Promise<void> {
+  if (!await findOwnedVersionInClub(env, scope, artifactId, versionId)) artifactError("not_found");
+  await shareArtifactVersion(env, scope.userId, artifactId, versionId);
 }
 
 export async function unshareArtifact(env: Env, userId: string, artifactId: string): Promise<void> {

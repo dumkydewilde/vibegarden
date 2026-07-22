@@ -16,6 +16,7 @@ export const ARTIFACT_LIMITS = {
 
 export type ArtifactType = "html" | "file" | "link";
 export type ArtifactPackageSource = "browser" | "mcp";
+export type ArtifactOwnerScope = { userId: string; clubId: string };
 
 export type ArtifactErrorCode =
   | "invalid_input"

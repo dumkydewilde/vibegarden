@@ -20,7 +20,10 @@ async function seed(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)").bind("user-a", "a@example.com", now),
     env.DB.prepare("INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)").bind("user-b", "b@example.com", now),
-    env.DB.prepare("INSERT INTO projects (id, user_id, title, status, created_at, updated_at) VALUES (?, ?, ?, 'seed', ?, ?)").bind("project-a", "user-a", "Project A", now, now),
+    env.DB.prepare("INSERT INTO clubs (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").bind("club-a", "Club A", "club-a", now, now),
+    env.DB.prepare("INSERT INTO clubs (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").bind("club-other", "Other Club", "club-other", now, now),
+    env.DB.prepare("INSERT INTO projects (id, user_id, club_id, title, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'seed', ?, ?)").bind("project-a", "user-a", "club-a", "Project A", now, now),
+    env.DB.prepare("INSERT INTO projects (id, user_id, club_id, title, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'seed', ?, ?)").bind("project-other-club", "user-a", "club-other", "Other Club Project", now, now),
     env.DB.prepare("INSERT INTO projects (id, user_id, title, status, created_at, updated_at) VALUES (?, ?, ?, 'seed', ?, ?)").bind("project-b", "user-b", "Project B", now, now),
   ]);
 }
@@ -40,6 +43,7 @@ beforeEach(async () => {
     env.DB.prepare("DELETE FROM artifact_versions"),
     env.DB.prepare("DELETE FROM artifacts"),
     env.DB.prepare("DELETE FROM projects"),
+    env.DB.prepare("DELETE FROM clubs"),
     env.DB.prepare("DELETE FROM users"),
   ]);
   await seed();
@@ -120,22 +124,53 @@ describe("artifact upload service", () => {
   });
 
   it("keeps project and type immutable while MCP text versions move only current", async () => {
-    const created = await createTextArtifact(env, "user-a", {
+    const created = await createTextArtifact(env, { userId: "user-a", clubId: "club-a" }, {
       projectId: "project-a",
       type: "file",
       title: "Notes",
       idempotencyKey: "notes-create",
       files: [{ path: "notes.txt", content: "first" }],
     });
-    const next = await createTextArtifactVersion(env, "user-a", {
+    const next = await createTextArtifactVersion(env, { userId: "user-a", clubId: "club-a" }, {
       artifactId: created.artifactId,
-      title: "Ignored by immutable artifact metadata",
       idempotencyKey: "notes-version-2",
       files: [{ path: "notes.txt", content: "second" }],
     });
 
     const artifact = await env.DB.prepare("SELECT project_id, type, current_version_id, gallery_version_id FROM artifacts WHERE id = ?").bind(created.artifactId).first();
     expect(artifact).toEqual({ project_id: "project-a", type: "file", current_version_id: next.versionId, gallery_version_id: null });
+  });
+
+  it("rejects same-user MCP text writes outside the selected club", async () => {
+    await expect(createTextArtifact(env, { userId: "user-a", clubId: "club-a" }, {
+      projectId: "project-other-club",
+      type: "html",
+      title: "Wrong club",
+      idempotencyKey: "wrong-club-create",
+      files: [{ path: "index.html", content: "<h1>Wrong club</h1>" }],
+    })).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("creates a scoped version without accepting mutable metadata", async () => {
+    const created = await createTextArtifact(env, { userId: "user-a", clubId: "club-a" }, {
+      projectId: "project-a",
+      type: "html",
+      title: "Original title",
+      description: "Original description",
+      idempotencyKey: "scoped-create",
+      files: [{ path: "index.html", content: "<h1>One</h1>" }],
+    });
+    await expect(createTextArtifactVersion(env, { userId: "user-a", clubId: "club-a" }, {
+      artifactId: created.artifactId,
+      idempotencyKey: "scoped-version",
+      files: [{ path: "index.html", content: "<h1>Two</h1>" }],
+    })).resolves.toEqual({ artifactId: created.artifactId, versionId: expect.any(String) });
+    await expect(createTextArtifactVersion(env, { userId: "user-a", clubId: "club-a" }, {
+      artifactId: created.artifactId,
+      title: "Injected title",
+      idempotencyKey: "scoped-version-with-title",
+      files: [{ path: "index.html", content: "<h1>Three</h1>" }],
+    } as never)).rejects.toMatchObject({ code: "invalid_input" });
   });
 
   it("uses the normalized link URL in the idempotency fingerprint", async () => {

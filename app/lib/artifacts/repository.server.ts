@@ -1,4 +1,4 @@
-import { ArtifactError, type ArtifactPackageSource, type ArtifactType } from "./contracts";
+import { ArtifactError, type ArtifactOwnerScope, type ArtifactPackageSource, type ArtifactType } from "./contracts";
 import { artifactObjectKey } from "./object-store.server";
 
 type StoredArtifact = {
@@ -63,6 +63,12 @@ export async function findOwnedProject(env: Env, userId: string, projectId: stri
   ).bind(projectId, userId).first();
 }
 
+export async function findOwnedProjectInClub(env: Env, scope: ArtifactOwnerScope, projectId: string) {
+  return env.DB.prepare(
+    "SELECT * FROM projects WHERE id = ? AND user_id = ? AND club_id = ? LIMIT 1",
+  ).bind(projectId, scope.userId, scope.clubId).first();
+}
+
 export async function findOwnedUpload(env: Env, userId: string, uploadId: string) {
   return env.DB.prepare(
     "SELECT * FROM artifact_uploads WHERE id = ? AND user_id = ? LIMIT 1",
@@ -73,6 +79,15 @@ export async function findOwnedArtifact(env: Env, userId: string, artifactId: st
   return env.DB.prepare(
     "SELECT * FROM artifacts WHERE id = ? AND user_id = ? AND deleted_at IS NULL LIMIT 1",
   ).bind(artifactId, userId).first<StoredArtifact>();
+}
+
+export async function findOwnedArtifactInClub(env: Env, scope: ArtifactOwnerScope, artifactId: string) {
+  return env.DB.prepare(
+    `SELECT a.* FROM artifacts a
+     INNER JOIN projects p ON p.id = a.project_id AND p.user_id = a.user_id
+     WHERE a.id = ? AND a.user_id = ? AND p.club_id = ? AND a.deleted_at IS NULL
+     LIMIT 1`,
+  ).bind(artifactId, scope.userId, scope.clubId).first<StoredArtifact>();
 }
 
 /** A deleted artifact remains owner-readable only for the exact recovery window. */
@@ -101,6 +116,16 @@ export async function findOwnedVersion(
      WHERE v.id = ? AND v.artifact_id = ? AND a.id = ? AND a.user_id = ? AND a.deleted_at IS NULL
      LIMIT 1`,
   ).bind(versionId, artifactId, artifactId, userId).first<StoredVersion>();
+}
+
+export async function findOwnedVersionInClub(env: Env, scope: ArtifactOwnerScope, artifactId: string, versionId: string) {
+  return env.DB.prepare(
+    `SELECT v.* FROM artifact_versions v
+     INNER JOIN artifacts a ON a.id = v.artifact_id
+     INNER JOIN projects p ON p.id = a.project_id AND p.user_id = a.user_id
+     WHERE v.id = ? AND v.artifact_id = ? AND a.user_id = ? AND p.club_id = ?
+       AND a.deleted_at IS NULL LIMIT 1`,
+  ).bind(versionId, artifactId, scope.userId, scope.clubId).first<StoredVersion>();
 }
 
 export async function findOwnedLease(env: Env, userId: string, r2Key: string) {

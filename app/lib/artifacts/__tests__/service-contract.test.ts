@@ -35,7 +35,7 @@ describe("artifact service contract", () => {
 
   it("rejects MCP text creation without an existing project before it can write", async () => {
     await expectCode(
-      () => createTextArtifact(unavailableEnv, userId, {
+      () => createTextArtifact(unavailableEnv, { userId, clubId: "club-a" }, {
         type: "file",
         title: "Notes",
         idempotencyKey: "text-notes",
