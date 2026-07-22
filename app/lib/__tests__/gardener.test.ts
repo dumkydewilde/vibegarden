@@ -54,6 +54,21 @@ describe("buildSystemPrompt", () => {
     expect(withoutTools).toContain("does not support tools");
   });
 
+  it("includes Mermaid flowchart guidance with the diagram tool", () => {
+    const withTools = buildSystemPrompt([], undefined, {
+      tools: offeredGardenerTools({}),
+    });
+    expect(withTools).toContain("Mermaid flowchart notes");
+    expect(withTools).toContain('A@{ shape: cloud, label: "Cache" }');
+    expect(withTools).toContain("e1@{ animate: slow }");
+    expect(withTools).toContain("subgraph ide1 [one]");
+    expect(withTools).toContain("A-->|This is the text|B");
+    expect(withTools).toContain("Mermaid v11.3.0+");
+
+    const withoutTools = buildSystemPrompt([], undefined, { tools: [] });
+    expect(withoutTools).not.toContain("Mermaid flowchart notes");
+  });
+
   it("derives optional tool guidance from the exact offered specs", () => {
     const withFreshReads = buildSystemPrompt([], undefined, {
       tools: offeredGardenerTools({ freshReads: { token: "token" } }),

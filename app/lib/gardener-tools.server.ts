@@ -14,6 +14,7 @@ import {
   QUERY_SQL_MAX_CHARS,
   RESULT_MAX_ROWS,
 } from "@vibegarden/agent-web";
+import mermaidFlowchartNotes from "../../content/gardener/mermaid-flowchart-notes.md?raw";
 
 /**
  * The Gardener's tools as agent-core ToolSpecs. gardenerToolSpecs(config) is
@@ -285,7 +286,8 @@ const visualizeFlowSpec: ToolSpec = {
   description:
     "Render a Mermaid diagram directly in the chat. Use it when a flow, sequence, decision path, or relationship is materially clearer as a visual. Keep the diagram small, readable, and useful to someone who may not program.",
   promptGuidance:
-    "visualize_flow(title, diagram): render a Mermaid flow, sequence, decision path, or relationship directly in the chat. Use it only when the visual is clearer than prose, keep it small, and follow it with a short explanation. Never use it to chart data: numeric results get the chart option of query_data instead.",
+    "visualize_flow(title, diagram): render a Mermaid flow, sequence, decision path, or relationship directly in the chat. Use it only when the visual is clearer than prose, keep it small, and follow it with a short explanation. Never use it to chart data: numeric results get the chart option of query_data instead.\n\n" +
+    mermaidFlowchartNotes.trim(),
   parameters: {
     type: "object",
     properties: {
