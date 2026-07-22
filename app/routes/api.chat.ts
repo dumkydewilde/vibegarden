@@ -22,8 +22,10 @@ import {
   MAX_DATASETS,
   parseAttachEnvelope,
   parseEnvelope,
+  splitToolNotes,
   attachResultNote,
   queryResultNote,
+  type ChartSpec,
 } from "@vibegarden/agent-web";
 import { resolveClubModel } from "~/lib/models";
 import {
@@ -59,6 +61,27 @@ type ChatRequest = {
 
 /** Tool-execution rounds per answer; after the last, tools are withheld. */
 const MAX_TOOL_ROUNDS = 3;
+
+function latestQueryChart(messages: WireMessage[]): ChartSpec | undefined {
+  for (
+    let messageIndex = messages.length - 1;
+    messageIndex >= 0;
+    messageIndex--
+  ) {
+    const message = messages[messageIndex];
+    if (message.role !== "assistant") continue;
+    const segments = splitToolNotes(message.content);
+    for (
+      let segmentIndex = segments.length - 1;
+      segmentIndex >= 0;
+      segmentIndex--
+    ) {
+      const segment = segments[segmentIndex];
+      if (segment.type === "query") return segment.chart;
+    }
+  }
+  return undefined;
+}
 
 export async function action({ request, context, params }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
@@ -190,6 +213,10 @@ export async function action({ request, context, params }: Route.ActionArgs) {
         { role: "data" as const, content: JSON.stringify(recappedEnvelope) },
       ]
     : body.messages;
+  const retryChart =
+    envelope?.status === "error"
+      ? latestQueryChart(historyMessages)
+      : undefined;
 
   // The turn starts before the Response exists, so upstream config errors
   // still surface as a JSON 502 instead of a broken stream.
@@ -255,7 +282,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
             break;
           }
           case "delegated-call": {
-            const marker = markerForEvent(event);
+            const marker = markerForEvent(event, retryChart);
             if (marker) emitMarker(marker, false);
             break;
           }
