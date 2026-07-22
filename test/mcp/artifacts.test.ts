@@ -10,7 +10,7 @@ function base64Url(bytes: ArrayBuffer) {
     .replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
 
-async function accessTokenFor(userId: string, clubId: string, scopes = "artifacts:write artifacts:publish") {
+async function oauthGrantFor(userId: string, clubId: string, scopes = "artifacts:write artifacts:publish") {
   const registration = await SELF.fetch(`${ORIGIN}/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -51,7 +51,11 @@ async function accessTokenFor(userId: string, clubId: string, scopes = "artifact
     }),
   });
   expect(token.status).toBe(200);
-  return (await token.json() as { access_token: string }).access_token;
+  return { accessToken: (await token.json() as { access_token: string }).access_token, clientId, code: code! };
+}
+
+async function accessTokenFor(userId: string, clubId: string, scopes = "artifacts:write artifacts:publish") {
+  return (await oauthGrantFor(userId, clubId, scopes)).accessToken;
 }
 
 async function mcpCall(token: string, name: string, args: Record<string, unknown>) {
@@ -163,6 +167,15 @@ describe("MCP artifact writes", () => {
     expect(version.version_id).not.toBe(first.version_id);
     await expect(env.DB.prepare("SELECT current_version_id, gallery_version_id FROM artifacts WHERE id = ?").bind(first.artifact_id).first()).resolves.toEqual({ current_version_id: version.version_id, gallery_version_id: null });
 
+    const unconfirmed = await mcpCall(token, "share_artifact", {
+      artifact_id: first.artifact_id,
+      version_id: first.version_id,
+      confirm: false,
+    });
+    expect(unconfirmed.response.status).toBe(200);
+    expect(serialized(unconfirmed.body)).toContain("invalid_input");
+    await expect(env.DB.prepare("SELECT visibility, gallery_version_id FROM artifacts WHERE id = ?").bind(first.artifact_id).first()).resolves.toEqual({ visibility: "private", gallery_version_id: null });
+
     const shared = mutation((await mcpCall(token, "share_artifact", {
       artifact_id: first.artifact_id,
       version_id: first.version_id,
@@ -204,7 +217,16 @@ describe("MCP artifact writes", () => {
 
   it("rejects invalid artifact packages without artifact rows and redacts mutation results", async () => {
     const seeded = await seedTwoClubProjects();
-    const token = await accessTokenFor(seeded.userId, seeded.firstClub.id);
+    const grant = await oauthGrantFor(seeded.userId, seeded.firstClub.id);
+    const token = grant.accessToken;
+    const forbiddenSecrets = [
+      seeded.userId,
+      `${seeded.userId}@example.test`,
+      grant.accessToken,
+      `Bearer ${grant.accessToken}`,
+      grant.clientId,
+      grant.code,
+    ];
     const invalidCalls = [
       artifactInput(seeded.firstClub.projectId, "missing-root", [{ path: "app.css", content: "main {}" }]),
       artifactInput(seeded.firstClub.projectId, "traversal", [{ path: "../index.html", content: "<!doctype html>" }]),
@@ -221,7 +243,7 @@ describe("MCP artifact writes", () => {
       expect(failed.response.status).toBe(200);
       const output = serialized(failed.body);
       expect(output).toContain("invalid_input");
-      for (const forbidden of [seeded.userId, `${seeded.userId}@example.test`, "mcp", "artifacts/", "r2_key", "capability", "Error:", "at "]) {
+      for (const forbidden of [...forbiddenSecrets, "mcp", "artifacts/", "r2_key", "r2Key", "object_key", "objectKey", "bucket", "capability", "SQLITE_", "D1_ERROR", "provider error", "OAuthProvider", "Error:", "at "]) {
         expect(output).not.toContain(forbidden);
       }
     }
@@ -230,7 +252,7 @@ describe("MCP artifact writes", () => {
 
     const created = await mcpCall(token, "create_artifact", artifactInput(seeded.firstClub.projectId, "redacted-success"));
     const output = serialized(created.body);
-    for (const forbidden of [seeded.userId, `${seeded.userId}@example.test`, "mcp", "/versions/", "r2_key", "capability", "Error:", "at "]) {
+    for (const forbidden of [...forbiddenSecrets, "mcp", "/versions/", "r2_key", "r2Key", "object_key", "objectKey", "bucket", "capability", "SQLITE_", "D1_ERROR", "provider error", "OAuthProvider", "Error:", "at "]) {
       expect(output).not.toContain(forbidden);
     }
   });

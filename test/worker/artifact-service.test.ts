@@ -141,6 +141,36 @@ describe("artifact upload service", () => {
     expect(artifact).toEqual({ project_id: "project-a", type: "file", current_version_id: next.versionId, gallery_version_id: null });
   });
 
+  it("finalizes a pending MCP replay after all of its files were recorded", async () => {
+    const input = {
+      projectId: "project-a",
+      type: "html" as const,
+      title: "Pending replay",
+      idempotencyKey: "pending-mcp-replay",
+      files: [{ path: "index.html", content: "<h1>Pending replay</h1>" }],
+    };
+    const created = await createTextArtifact(env, { userId: "user-a", clubId: "club-a" }, input);
+    const upload = await env.DB.prepare(
+      "SELECT id FROM artifact_uploads WHERE artifact_id = ? AND version_id = ?",
+    ).bind(created.artifactId, created.versionId).first<{ id: string }>();
+    const files = await env.DB.prepare(
+      "SELECT r2_key, byte_size, sha256 FROM artifact_upload_files WHERE upload_id = ?",
+    ).bind(upload!.id).all<{ r2_key: string; byte_size: number; sha256: string }>();
+
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM artifact_files WHERE version_id = ?").bind(created.versionId),
+      env.DB.prepare("DELETE FROM artifact_versions WHERE id = ?").bind(created.versionId),
+      env.DB.prepare("DELETE FROM artifacts WHERE id = ?").bind(created.artifactId),
+      env.DB.prepare("UPDATE artifact_uploads SET status = 'pending' WHERE id = ?").bind(upload!.id),
+      ...files.results.map((file) => env.DB.prepare(
+        "INSERT INTO artifact_object_leases (r2_key, upload_id, user_id, byte_size, sha256, expires_at, created_at) VALUES (?, ?, 'user-a', ?, ?, ?, ?)",
+      ).bind(file.r2_key, upload!.id, file.byte_size, file.sha256, Date.now() + 60_000, Date.now())),
+    ]);
+
+    await expect(createTextArtifact(env, { userId: "user-a", clubId: "club-a" }, input)).resolves.toEqual(created);
+    await expect(env.DB.prepare("SELECT current_version_id FROM artifacts WHERE id = ?").bind(created.artifactId).first()).resolves.toEqual({ current_version_id: created.versionId });
+  });
+
   it("rejects same-user MCP text writes outside the selected club", async () => {
     await expect(createTextArtifact(env, { userId: "user-a", clubId: "club-a" }, {
       projectId: "project-other-club",
