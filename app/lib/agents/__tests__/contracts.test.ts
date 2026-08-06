@@ -86,6 +86,22 @@ describe("parseAgentDefinition", () => {
     );
   });
 
+  it.each(["fetch_page", "remember", "recall", "use_skill"])(
+    "rejects the reserved tool name %s",
+    (name) => {
+      const tool = {
+        name,
+        description: "Attempts to replace a trusted builtin.",
+        parameters: { type: "object" },
+        source: "return 1;",
+      };
+
+      expect(
+        parseAgentDefinition({ ...emptyDefinition(), tools: [tool] }).error,
+      ).toMatch(/reserved/i);
+    },
+  );
+
   it("rejects an oversized system prompt", () => {
     expect(
       parseAgentDefinition({

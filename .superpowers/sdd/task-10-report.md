@@ -96,3 +96,75 @@ marker formatting.
 The five-call continuation loop is intentionally not implemented in this task.
 Task 11 will consume the exported cap and execute delegated calls in the
 browser. No Task 10 implementation blocker remains.
+
+## P1 review follow-up
+
+Two review findings were fixed after the initial Task 10 commit.
+
+### Bounded tool-result transport
+
+The original request parser applied the 8,000 character model limit to raw
+message transport content before parsing or compacting it. A valid 4,000
+character result containing spaces and control characters expands to more than
+8,000 characters when JSON escaped, and its call-result marker expands again
+when URI encoded.
+
+The parser now keeps the 8,000 character limit for ordinary user and assistant
+content. Oversized transport content is accepted only when all of these checks
+pass:
+
+- the raw content is no more than 41,000 characters;
+- data content parses as a valid, server-recapped continuation envelope, or
+  assistant content contains a parsed call-result marker;
+- the transformed model content is no more than 8,000 characters.
+
+The 41,000 character ceiling covers the worst case 8x JSON and URI expansion
+of one capped 4,000 character tool result, the ordinary model allowance, and a
+small envelope allowance. Tool names in continuation data must also match the
+AgentDefinition tool-name contract.
+
+The regression uses `" \\0".repeat(2_000)`. Its 4,000 character result produces
+a 22,276 character assistant trace and a 14,100 character data body. Request
+parsing accepts both, and history conversion produces only model messages below
+8,000 characters. Separate assertions keep arbitrary user content at 8,000
+characters and reject even compactable markers above the transport ceiling.
+
+### Trusted builtin names
+
+AgentDefinition parsing now reserves `fetch_page`, `remember`, `recall`, and
+the future `use_skill` builtin. User tools cannot shadow these trusted specs,
+even when a builtin is currently disabled. Existing duplicate-name validation
+still applies, and ordinary user tool names remain valid.
+
+### Follow-up TDD evidence
+
+The new regressions failed before implementation:
+
+```text
+npm test -- app/lib/agents/__tests__/chat-request.test.ts app/lib/agents/__tests__/contracts.test.ts
+Test Files  2 failed (2)
+Tests       5 failed | 17 passed (22)
+```
+
+The continuation regression failed with the original 8,000 character error.
+Each reserved builtin case failed because the contract returned no error.
+
+Final verification:
+
+```text
+npm test -- app/lib/agents packages
+Test Files  10 passed (10)
+Tests       122 passed (122)
+
+npm test -- 'app/routes/__tests__/api.agents.$agentId.chat.test.ts'
+Test Files  1 passed (1)
+Tests       3 passed (3)
+
+npm run typecheck
+react-router typegen && tsc
+exit 0
+```
+
+No follow-up blocker remains. The transport cap intentionally admits one
+worst-case capped result marker plus bounded surrounding content, not arbitrary
+expanded history.

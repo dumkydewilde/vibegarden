@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
+import {
+  callNote,
+  callResultNote,
+  capCallResult,
+} from "@vibegarden/agent-web";
 
 import {
   AGENT_HISTORY_LIMIT,
   AGENT_MESSAGE_MAX_CHARS,
+  AGENT_TOOL_TRANSPORT_MAX_CHARS,
   WORKBENCH_MAX_CONTINUATIONS,
+  historyForModel,
   parseAgentChatRequest,
 } from "../chat-request";
 
@@ -38,8 +45,7 @@ describe("parseAgentChatRequest", () => {
     const result = parseAgentChatRequest({
       versionId: "agentv_1",
       messages: [
-        { role: "assistant", content: "x".repeat(AGENT_MESSAGE_MAX_CHARS + 1) },
-        { role: "user", content: "Hello" },
+        { role: "user", content: "x".repeat(AGENT_MESSAGE_MAX_CHARS + 1) },
       ],
     });
 
@@ -100,6 +106,74 @@ describe("parseAgentChatRequest", () => {
         ],
       }),
     ).toEqual({ error: "A continuation needs a valid tool result envelope." });
+  });
+
+  it("accepts capped tool transport content that compacts below the model cap", () => {
+    const resultText = " \0".repeat(2_000);
+    const envelope = capCallResult(resultText);
+    const assistantContent = `${callNote({
+      tool: "fetch_page",
+      args: { url: "https://example.com" },
+    })}\n\n${callResultNote(envelope)}`;
+    const dataContent = JSON.stringify({ tool: "fetch_page", envelope });
+    const raw = {
+      versionId: "agentv_1",
+      continuation: true,
+      messages: [
+        { role: "assistant", content: assistantContent },
+        { role: "data", content: dataContent },
+      ],
+    } as const;
+
+    expect(resultText).toHaveLength(4_000);
+    expect(assistantContent.length).toBeGreaterThan(AGENT_MESSAGE_MAX_CHARS);
+    expect(dataContent.length).toBeGreaterThan(AGENT_MESSAGE_MAX_CHARS);
+
+    const parsed = parseAgentChatRequest(raw);
+    expect(parsed).toEqual({ value: raw });
+    if ("error" in parsed) throw new Error(parsed.error);
+
+    const history = historyForModel(parsed.value.messages);
+    expect(history).toEqual([
+      {
+        role: "assistant",
+        content:
+          '[ran fetch_page: {"url":"https://example.com"}]\n\n[fetch_page result: ok, 4000 chars]',
+      },
+      {
+        role: "user",
+        content: `Tool result for fetch_page:\n${resultText}`,
+      },
+    ]);
+    expect(
+      history.every(
+        (message) => message.content.length <= AGENT_MESSAGE_MAX_CHARS,
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects compactable tool markers beyond the transport cap", () => {
+    const oversizedMarker = callResultNote({
+      status: "ok",
+      resultText: "\0".repeat(6_000),
+      totalChars: 6_000,
+      truncated: false,
+    });
+    expect(oversizedMarker.length).toBeGreaterThan(
+      AGENT_TOOL_TRANSPORT_MAX_CHARS,
+    );
+
+    expect(
+      parseAgentChatRequest({
+        versionId: "agentv_1",
+        messages: [
+          { role: "assistant", content: oversizedMarker },
+          { role: "user", content: "Continue" },
+        ],
+      }),
+    ).toEqual({
+      error: `Message content must be ${AGENT_MESSAGE_MAX_CHARS} characters or fewer.`,
+    });
   });
 
   it("trims a valid history to the newest messages", () => {

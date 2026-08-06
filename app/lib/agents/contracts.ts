@@ -9,6 +9,12 @@ export const TOOL_DESCRIPTION_MAX_CHARS = 400;
 export const TOOL_SOURCE_MAX_CHARS = 16_000;
 export const SKILL_CONTENT_MAX_CHARS = 4_000;
 export const TOOL_NAME_RE = /^[a-z][a-z0-9_]{1,39}$/;
+export const RESERVED_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "fetch_page",
+  "remember",
+  "recall",
+  "use_skill",
+]);
 
 const toolSchema = z.object({
   name: z.string().regex(TOOL_NAME_RE, "tool name must be snake_case, 1-40 chars"),
@@ -59,6 +65,11 @@ export function parseAgentDefinition(
     for (const item of [...parsed.data.tools, ...parsed.data.skills]) {
       if (names.has(item.name)) return { error: `duplicate name "${item.name}"` };
       names.add(item.name);
+    }
+    for (const tool of parsed.data.tools) {
+      if (RESERVED_TOOL_NAMES.has(tool.name)) {
+        return { error: `tool name "${tool.name}" is reserved` };
+      }
     }
 
     let serialized: string;

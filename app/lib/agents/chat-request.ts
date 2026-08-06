@@ -1,11 +1,18 @@
 import type { AgentHistoryMessage } from "@vibegarden/agent-core";
 import {
+  CALL_RESULT_MAX_CHARS,
   parseCallResultEnvelope,
+  splitToolNotes,
   toModelText,
   type CallResultEnvelope,
 } from "@vibegarden/agent-web";
 
+import { TOOL_NAME_RE } from "./contracts";
+
 export const AGENT_MESSAGE_MAX_CHARS = 8_000;
+// JSON escaping plus URI encoding can expand one result character to 8 chars.
+export const AGENT_TOOL_TRANSPORT_MAX_CHARS =
+  AGENT_MESSAGE_MAX_CHARS + CALL_RESULT_MAX_CHARS * 8 + 1_000;
 export const AGENT_HISTORY_LIMIT = 30;
 export const WORKBENCH_MAX_CONTINUATIONS = 5;
 
@@ -39,7 +46,7 @@ function parseContinuationResult(raw: string): ContinuationResult | null {
       parsed === null ||
       Array.isArray(parsed) ||
       typeof parsed.tool !== "string" ||
-      !parsed.tool.trim()
+      !TOOL_NAME_RE.test(parsed.tool)
     ) {
       return null;
     }
@@ -50,31 +57,46 @@ function parseContinuationResult(raw: string): ContinuationResult | null {
   }
 }
 
+function contentForModel(message: AgentChatMessage): string | null {
+  if (message.role === "data") {
+    const result = parseContinuationResult(message.content);
+    if (!result) return null;
+    const text =
+      result.envelope.status === "ok"
+        ? result.envelope.resultText
+        : `Error: ${result.envelope.error}`;
+    return `Tool result for ${result.tool}:\n${text}`;
+  }
+  return message.role === "assistant"
+    ? toModelText(message.content)
+    : message.content;
+}
+
+function isBoundedToolTransport(message: AgentChatMessage): boolean {
+  if (message.content.length > AGENT_TOOL_TRANSPORT_MAX_CHARS) return false;
+  if (message.role === "user") return false;
+  if (
+    message.role === "assistant" &&
+    !splitToolNotes(message.content).some(
+      (segment) => segment.type === "callresult",
+    )
+  ) {
+    return false;
+  }
+  const modelContent = contentForModel(message);
+  return modelContent !== null && modelContent.length <= AGENT_MESSAGE_MAX_CHARS;
+}
+
 export function historyForModel(
   messages: AgentChatMessage[],
 ): AgentHistoryMessage[] {
   return messages.flatMap((message) => {
-    if (message.role === "data") {
-      const result = parseContinuationResult(message.content);
-      if (!result) return [];
-      const text =
-        result.envelope.status === "ok"
-          ? result.envelope.resultText
-          : `Error: ${result.envelope.error}`;
-      return [
-        {
-          role: "user" as const,
-          content: `Tool result for ${result.tool}:\n${text}`,
-        },
-      ];
-    }
+    const content = contentForModel(message);
+    if (content === null) return [];
     return [
       {
-        role: message.role,
-        content:
-          message.role === "assistant"
-            ? toModelText(message.content)
-            : message.content,
+        role: message.role === "data" ? "user" as const : message.role,
+        content,
       },
     ];
   });
@@ -121,15 +143,19 @@ export function parseAgentChatRequest(
       if (typeof item.content !== "string") {
         return { error: "Each message needs string content." };
       }
-      if (item.content.length > AGENT_MESSAGE_MAX_CHARS) {
+      const normalizedMessage = {
+        role: item.role as AgentChatMessage["role"],
+        content: item.content,
+      };
+      if (
+        item.content.length > AGENT_MESSAGE_MAX_CHARS &&
+        !isBoundedToolTransport(normalizedMessage)
+      ) {
         return {
           error: `Message content must be ${AGENT_MESSAGE_MAX_CHARS} characters or fewer.`,
         };
       }
-      messages.push({
-        role: item.role as AgentChatMessage["role"],
-        content: item.content,
-      });
+      messages.push(normalizedMessage);
     }
 
     const continuation = candidate.continuation === true;
