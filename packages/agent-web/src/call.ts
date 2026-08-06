@@ -39,30 +39,57 @@ export function callErrorEnvelope(
   };
 }
 
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+): boolean {
+  const keys = Object.keys(value);
+  return (
+    keys.length === expected.length &&
+    keys.every((key) => expected.includes(key))
+  );
+}
+
 /** Parse an untrusted client envelope and enforce the caps again. */
 export function parseCallResultEnvelope(
   raw: string,
 ): CallResultEnvelope | null {
   try {
-    const parsed = JSON.parse(raw) as Partial<CallResultEnvelope>;
-    if (parsed.status === "error") {
-      return typeof parsed.error === "string"
-        ? callErrorEnvelope(parsed.error)
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      return null;
+    }
+    const envelope = parsed as Record<string, unknown>;
+    if (envelope.status === "error") {
+      return hasExactKeys(envelope, ["status", "error"]) &&
+        typeof envelope.error === "string"
+        ? callErrorEnvelope(envelope.error)
         : null;
     }
     if (
-      parsed.status === "ok" &&
-      typeof parsed.resultText === "string" &&
-      typeof parsed.totalChars === "number" &&
-      Number.isSafeInteger(parsed.totalChars) &&
-      parsed.totalChars >= parsed.resultText.length
+      envelope.status === "ok" &&
+      hasExactKeys(envelope, [
+        "status",
+        "resultText",
+        "totalChars",
+        "truncated",
+      ]) &&
+      typeof envelope.resultText === "string" &&
+      typeof envelope.totalChars === "number" &&
+      Number.isSafeInteger(envelope.totalChars) &&
+      envelope.totalChars >= envelope.resultText.length &&
+      typeof envelope.truncated === "boolean"
     ) {
-      const resultText = parsed.resultText.slice(0, CALL_RESULT_MAX_CHARS);
+      const resultText = envelope.resultText.slice(0, CALL_RESULT_MAX_CHARS);
       return {
         status: "ok",
         resultText,
-        totalChars: parsed.totalChars,
-        truncated: parsed.totalChars > resultText.length,
+        totalChars: envelope.totalChars,
+        truncated: envelope.totalChars > resultText.length,
       };
     }
     return null;

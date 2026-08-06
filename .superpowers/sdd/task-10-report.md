@@ -223,3 +223,51 @@ exit 0
 The focused regressions cover assistant marker padding, outer and envelope
 data padding, bounded input arrays, unknown tools, preceding call mismatches,
 and the valid 4,000 character encoded result path.
+
+## Third review follow-up
+
+The remaining marker admission and legacy transport name findings are fixed.
+
+### Exact call marker payloads
+
+- Generic `call` markers now require exactly `version`, `tool`, and `args`.
+- `callresult` envelopes now require exactly the keys for their status.
+  Successful results require `status`, `resultText`, `totalChars`, and
+  `truncated`. Error results require `status` and `error`.
+- Large padding properties make both marker kinds plain text, so they cannot
+  enter the expanded assistant transport path through lossy decoding.
+- Existing valid call and callresult markers still parse and compact.
+- Query and attach marker decoders were not changed, preserving the legacy
+  marker transport behavior for valid built-in calls.
+
+### Reserved legacy transport names
+
+AgentDefinition user tools can no longer use `query_data` or `attach_data`.
+These names join the existing built-in reserved names so user tools cannot be
+routed into legacy marker formats that workbench continuation cannot verify.
+
+### TDD evidence
+
+The package and agent regressions failed before implementation:
+
+```text
+npm test -- packages/agent-web/src/__tests__/call.test.ts app/lib/agents/__tests__/chat-request.test.ts app/lib/agents/__tests__/contracts.test.ts 'app/routes/__tests__/api.agents.$agentId.chat.test.ts'
+Test Files  3 failed | 1 passed (4)
+Tests       7 failed | 42 passed (49)
+```
+
+The failures covered padded call and callresult marker parsing, oversized
+assistant admission, strict ok and error envelopes, and both legacy reserved
+names.
+
+Final verification:
+
+```text
+npm test -- app/lib/agents packages 'app/routes/__tests__/api.agents.$agentId.chat.test.ts'
+Test Files  11 passed (11)
+Tests       137 passed (137)
+
+npm run typecheck
+react-router typegen && tsc
+exit 0
+```

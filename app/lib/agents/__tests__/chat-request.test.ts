@@ -170,6 +170,41 @@ describe("parseAgentChatRequest", () => {
     });
   });
 
+  it.each([
+    [
+      "call",
+      {
+        version: 1,
+        tool: "fetch_page",
+        args: {},
+        padding: "x".repeat(AGENT_MESSAGE_MAX_CHARS),
+      },
+    ],
+    [
+      "callresult",
+      {
+        ...capCallResult("page text"),
+        padding: "x".repeat(AGENT_MESSAGE_MAX_CHARS),
+      },
+    ],
+  ])("rejects oversized padded %s markers", (kind, payload) => {
+    const content = `[[tool:${kind}:${encodeURIComponent(JSON.stringify(payload))}]]`;
+    expect(content.length).toBeGreaterThan(AGENT_MESSAGE_MAX_CHARS);
+    expect(content.length).toBeLessThan(AGENT_TOOL_TRANSPORT_MAX_CHARS);
+
+    expect(
+      parseAgentChatRequest({
+        versionId: "agentv_1",
+        messages: [
+          { role: "assistant", content },
+          { role: "user", content: "Continue" },
+        ],
+      }),
+    ).toEqual({
+      error: `Message content must be ${AGENT_MESSAGE_MAX_CHARS} characters or fewer.`,
+    });
+  });
+
   it("rejects oversized continuation data with padding properties", () => {
     const envelope = capCallResult(" \0".repeat(2_000));
     const paddedContents = [

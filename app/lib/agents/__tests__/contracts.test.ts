@@ -86,7 +86,14 @@ describe("parseAgentDefinition", () => {
     );
   });
 
-  it.each(["fetch_page", "remember", "recall", "use_skill"])(
+  it.each([
+    "fetch_page",
+    "remember",
+    "recall",
+    "use_skill",
+    "query_data",
+    "attach_data",
+  ])(
     "rejects the reserved tool name %s",
     (name) => {
       const tool = {

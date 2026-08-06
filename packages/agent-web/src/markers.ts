@@ -269,10 +269,26 @@ function decodeQueryResult(value: string): QueryResultEnvelope | null {
   }
 }
 
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+): boolean {
+  const keys = Object.keys(value);
+  return (
+    keys.length === expected.length &&
+    keys.every((key) => expected.includes(key))
+  );
+}
+
 function decodeCall(value: string): CallPayload | null {
   try {
     const parsed = JSON.parse(decodeURIComponent(value)) as Partial<CallPayload>;
     if (
+      !hasExactKeys(parsed as Record<string, unknown>, [
+        "version",
+        "tool",
+        "args",
+      ]) ||
       parsed.version !== 1 ||
       typeof parsed.tool !== "string" ||
       !parsed.tool ||

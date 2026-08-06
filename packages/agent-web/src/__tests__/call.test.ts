@@ -77,6 +77,19 @@ describe("call result envelopes", () => {
       parseCallResultEnvelope(JSON.stringify({ status: "error" })),
     ).toBeNull();
   });
+
+  it("rejects envelopes with unknown top-level keys", () => {
+    expect(
+      parseCallResultEnvelope(
+        JSON.stringify({ ...capCallResult("page text"), padding: "ignored" }),
+      ),
+    ).toBeNull();
+    expect(
+      parseCallResultEnvelope(
+        JSON.stringify({ ...callErrorEnvelope("denied"), padding: "ignored" }),
+      ),
+    ).toBeNull();
+  });
 });
 
 describe("call markers", () => {
@@ -108,6 +121,29 @@ describe("call markers", () => {
     expect(splitToolNotes("[[tool:callresult:not-json]]")).toEqual([
       { type: "text", text: "[[tool:callresult:not-json]]" },
     ]);
+  });
+
+  it.each([
+    [
+      "call",
+      {
+        version: 1,
+        tool: "extract_text",
+        args: {},
+        padding: "x".repeat(8_000),
+      },
+    ],
+    [
+      "callresult",
+      {
+        ...capCallResult("page text"),
+        padding: "x".repeat(8_000),
+      },
+    ],
+  ])("keeps padded %s markers as text", (kind, payload) => {
+    const marker = `[[tool:${kind}:${encodeURIComponent(JSON.stringify(payload))}]]`;
+
+    expect(splitToolNotes(marker)).toEqual([{ type: "text", text: marker }]);
   });
 
   it("compacts a call and result to one line each", () => {

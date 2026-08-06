@@ -14,6 +14,8 @@ export const RESERVED_TOOL_NAMES: ReadonlySet<string> = new Set([
   "remember",
   "recall",
   "use_skill",
+  "query_data",
+  "attach_data",
 ]);
 
 const toolSchema = z.object({
