@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  callErrorEnvelope,
   callNote,
   callResultNote,
   capCallResult,
@@ -111,10 +112,14 @@ describe("parseAgentChatRequest", () => {
   it("accepts capped tool transport content that compacts below the model cap", () => {
     const resultText = " \0".repeat(2_000);
     const envelope = capCallResult(resultText);
-    const assistantContent = `${callNote({
-      tool: "fetch_page",
-      args: { url: "https://example.com" },
-    })}\n\n${callResultNote(envelope)}`;
+    const assistantContent = [
+      "I will fetch that now.",
+      callNote({
+        tool: "fetch_page",
+        args: { url: "https://example.com" },
+      }),
+      callResultNote(envelope),
+    ].join("\n\n");
     const dataContent = JSON.stringify({ tool: "fetch_page", envelope });
     const raw = {
       versionId: "agentv_1",
@@ -138,7 +143,7 @@ describe("parseAgentChatRequest", () => {
       {
         role: "assistant",
         content:
-          '[ran fetch_page: {"url":"https://example.com"}]\n\n[fetch_page result: ok, 4000 chars]',
+          'I will fetch that now.\n\n[ran fetch_page: {"url":"https://example.com"}]\n\n[fetch_page result: ok, 4000 chars]',
       },
       {
         role: "user",
@@ -152,9 +157,99 @@ describe("parseAgentChatRequest", () => {
     ).toBe(true);
   });
 
-  it("rejects oversized assistant prose padded with a valid call result marker", () => {
-    const marker = callResultNote(capCallResult(" \0".repeat(2_000)));
-    const content = `This prose is not part of the workbench trace.\n${marker}`;
+  it("rejects oversized call markers padded through duplicate args keys", () => {
+    const duplicateArgs = `{"version":1,"tool":"fetch_page","args":{"padding":"${"x".repeat(9_000)}"},"args":{"url":"https://example.com"}}`;
+    const content = `[[tool:call:${encodeURIComponent(duplicateArgs)}]]`;
+    expect(content.length).toBeGreaterThan(AGENT_MESSAGE_MAX_CHARS);
+    expect(content.length).toBeLessThan(AGENT_TOOL_TRANSPORT_MAX_CHARS);
+
+    expect(
+      parseAgentChatRequest({
+        versionId: "agentv_1",
+        messages: [
+          { role: "assistant", content },
+          { role: "user", content: "Continue" },
+        ],
+      }),
+    ).toHaveProperty("error");
+  });
+
+  it("rejects oversized call result markers padded through duplicate resultText keys", () => {
+    const duplicateResultText = `{"status":"ok","resultText":"${"x".repeat(9_000)}","resultText":"page","totalChars":4,"truncated":false}`;
+    const content = [
+      callNote({ tool: "fetch_page", args: {} }),
+      `[[tool:callresult:${encodeURIComponent(duplicateResultText)}]]`,
+    ].join("\n");
+    expect(content.length).toBeGreaterThan(AGENT_MESSAGE_MAX_CHARS);
+    expect(content.length).toBeLessThan(AGENT_TOOL_TRANSPORT_MAX_CHARS);
+
+    expect(
+      parseAgentChatRequest({
+        versionId: "agentv_1",
+        messages: [
+          { role: "assistant", content },
+          { role: "user", content: "Continue" },
+        ],
+      }),
+    ).toHaveProperty("error");
+  });
+
+  it("rejects oversized continuation data padded with insignificant JSON whitespace", () => {
+    const whitespace = " ".repeat(9_000);
+    const content = `{"tool"${whitespace}:"fetch_page","envelope":{"status":"ok","resultText":"page","totalChars":4,"truncated":false}}`;
+    expect(content.length).toBeGreaterThan(AGENT_MESSAGE_MAX_CHARS);
+    expect(content.length).toBeLessThan(AGENT_TOOL_TRANSPORT_MAX_CHARS);
+
+    expect(
+      parseAgentChatRequest({
+        versionId: "agentv_1",
+        continuation: true,
+        messages: [{ role: "data", content }],
+      }),
+    ).toHaveProperty("error");
+  });
+
+  it("rejects oversized continuation data padded through duplicate resultText keys", () => {
+    const content = `{"tool":"fetch_page","envelope":{"status":"ok","resultText":"${"x".repeat(9_000)}","resultText":"page","totalChars":4,"truncated":false}}`;
+    expect(content.length).toBeGreaterThan(AGENT_MESSAGE_MAX_CHARS);
+    expect(content.length).toBeLessThan(AGENT_TOOL_TRANSPORT_MAX_CHARS);
+
+    expect(
+      parseAgentChatRequest({
+        versionId: "agentv_1",
+        continuation: true,
+        messages: [{ role: "data", content }],
+      }),
+    ).toHaveProperty("error");
+  });
+
+  it("rejects a canonical 360 marker flood that compacts below the model cap", () => {
+    const pair = [
+      callNote({ tool: "x", args: {} }),
+      callResultNote(callErrorEnvelope("")),
+    ];
+    const content = Array.from({ length: 180 }, () => pair).flat().join("\n");
+    expect(content.split("\n")).toHaveLength(360);
+    expect(content.length).toBeGreaterThan(AGENT_MESSAGE_MAX_CHARS);
+    expect(content.length).toBeLessThan(AGENT_TOOL_TRANSPORT_MAX_CHARS);
+
+    expect(
+      parseAgentChatRequest({
+        versionId: "agentv_1",
+        messages: [
+          { role: "assistant", content },
+          { role: "user", content: "Continue" },
+        ],
+      }),
+    ).toHaveProperty("error");
+  });
+
+  it("rejects narration above the message cap alongside a valid trace", () => {
+    const content = [
+      "x".repeat(AGENT_MESSAGE_MAX_CHARS + 1),
+      callNote({ tool: "fetch_page", args: {} }),
+      callResultNote(capCallResult(" \0".repeat(2_000))),
+    ].join("\n");
     expect(content.length).toBeGreaterThan(AGENT_MESSAGE_MAX_CHARS);
 
     expect(

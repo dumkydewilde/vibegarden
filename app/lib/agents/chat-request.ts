@@ -1,6 +1,8 @@
 import type { AgentHistoryMessage } from "@vibegarden/agent-core";
 import {
   CALL_RESULT_MAX_CHARS,
+  callNote,
+  callResultNote,
   parseCallResultEnvelope,
   splitToolNotes,
   toModelText,
@@ -104,6 +106,10 @@ function parseContinuationResult(raw: string): ContinuationResult | null {
   }
 }
 
+function canonicalContinuationResult(result: ContinuationResult): string {
+  return JSON.stringify({ tool: result.tool, envelope: result.envelope });
+}
+
 function contentForModel(message: AgentChatMessage): string | null {
   if (message.role === "data") {
     const result = parseContinuationResult(message.content);
@@ -119,30 +125,66 @@ function contentForModel(message: AgentChatMessage): string | null {
     : message.content;
 }
 
-function isExactWorkbenchTrace(content: string): boolean {
+type TraceMarker =
+  | { status: "not-marker" }
+  | { status: "invalid" }
+  | { status: "valid"; type: "call" | "callresult" };
+
+function canonicalTraceMarker(raw: string): TraceMarker {
+  const segments = splitToolNotes(raw);
+  if (segments.length !== 1) return { status: "not-marker" };
+  const segment = segments[0];
+  if (segment?.type === "call") {
+    const canonical = callNote({ tool: segment.tool, args: segment.args });
+    return canonical === raw
+      ? { status: "valid", type: "call" }
+      : { status: "invalid" };
+  }
+  if (segment?.type === "callresult") {
+    const canonical = callResultNote(segment.result);
+    return canonical === raw
+      ? { status: "valid", type: "callresult" }
+      : { status: "invalid" };
+  }
+  return { status: "not-marker" };
+}
+
+function isBoundedWorkbenchTrace(content: string): boolean {
   let markerCount = 0;
-  let whitespaceChars = content.length;
+  let textChars = content.length;
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
-    whitespaceChars -= trimmed.length;
     if (!trimmed) continue;
-    const segments = splitToolNotes(trimmed);
-    if (
-      segments.length !== 1 ||
-      (segments[0]?.type !== "call" && segments[0]?.type !== "callresult")
-    ) {
-      return false;
-    }
+    const marker = canonicalTraceMarker(trimmed);
+    if (marker.status === "invalid") return false;
+    if (marker.status === "not-marker") continue;
+
+    const expectedType = markerCount % 2 === 0 ? "call" : "callresult";
+    if (marker.type !== expectedType) return false;
     markerCount += 1;
+    if (markerCount > WORKBENCH_MAX_CONTINUATIONS * 2) return false;
+    textChars -= trimmed.length;
   }
-  return markerCount > 0 && whitespaceChars <= AGENT_MESSAGE_MAX_CHARS;
+  return markerCount > 0 && textChars <= AGENT_MESSAGE_MAX_CHARS;
 }
 
 function isBoundedToolTransport(message: AgentChatMessage): boolean {
   if (message.content.length > AGENT_TOOL_TRANSPORT_MAX_CHARS) return false;
   if (message.role === "user") return false;
-  if (message.role === "assistant" && !isExactWorkbenchTrace(message.content)) {
+  if (
+    message.role === "assistant" &&
+    !isBoundedWorkbenchTrace(message.content)
+  ) {
     return false;
+  }
+  if (message.role === "data") {
+    const result = parseContinuationResult(message.content);
+    if (
+      !result ||
+      canonicalContinuationResult(result) !== message.content
+    ) {
+      return false;
+    }
   }
   const modelContent = contentForModel(message);
   return modelContent !== null && modelContent.length <= AGENT_MESSAGE_MAX_CHARS;

@@ -271,3 +271,57 @@ npm run typecheck
 react-router typegen && tsc
 exit 0
 ```
+
+## Final protocol grammar follow-up
+
+The expanded assistant and continuation transport now validates the raw wire
+grammar before using decoded content to grant the larger transport allowance.
+
+### Canonical assistant traces
+
+- Every oversized call and call-result marker is decoded and rebuilt through
+  the same `callNote` or `callResultNote` serializer used by the browser.
+- The rebuilt marker must equal the raw marker exactly. Duplicate JSON keys,
+  insignificant JSON whitespace, alternate URI encodings, and values changed
+  by server-side capping cannot use the expanded allowance.
+- Marker order must alternate from call to call result. One assistant trace is
+  limited to five pairs, derived from `WORKBENCH_MAX_CONTINUATIONS`.
+- Narration is allowed before, between, or after valid markers. All raw bytes
+  outside the canonical markers, including separators and surrounding
+  whitespace, stay within the ordinary 8,000 character message budget.
+- The worst-case encoded 4,000 character result remains valid with an ordinary
+  narration prefix.
+
+### Canonical continuation data
+
+Oversized continuation data must equal `JSON.stringify` of its parsed and
+server-capped `{ tool, envelope }` value. This rejects duplicate result fields
+and JSON whitespace padding while preserving the valid browser-produced
+format. The 120-message input bound and endpoint checks for offered and
+matching tool names are unchanged.
+
+### TDD evidence
+
+The adversarial regressions failed before implementation:
+
+```text
+npm test -- app/lib/agents/__tests__/chat-request.test.ts
+Test Files  1 failed (1)
+Tests       5 failed | 13 passed (18)
+```
+
+The failures covered a narrated worst-case trace, duplicate `args`, duplicate
+`resultText`, 9,000 characters of insignificant JSON whitespace, and a
+canonical 360-marker flood.
+
+Final verification:
+
+```text
+npm test -- app/lib/agents packages 'app/routes/__tests__/api.agents.$agentId.chat.test.ts'
+Test Files  11 passed (11)
+Tests       142 passed (142)
+
+npm run typecheck
+react-router typegen && tsc
+exit 0
+```
