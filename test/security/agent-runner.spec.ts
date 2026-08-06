@@ -49,6 +49,7 @@ test("serves the runner with an explicit frame and network-denying policy", asyn
   expect(direct?.status()).toBe(200);
   const headers = direct?.headers() ?? {};
   expect(headers["content-security-policy"]).toContain("default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; connect-src 'none'");
+  expect(headers["content-security-policy"]).toContain("worker-src blob:");
   expect(headers["content-security-policy"]).toContain("frame-ancestors http://vibegarden.test:8788");
   expect(headers["content-security-policy"]).not.toContain("*");
   expect(headers["x-frame-options"]).toBeUndefined();
@@ -79,6 +80,36 @@ test("serves the runner with an explicit frame and network-denying policy", asyn
   expect(cappedLogs.logs.every((line) => line.length === 500)).toBe(true);
 
   await expect(execute(page, "const value = {}; value.self = value; return value;")).resolves.toMatchObject({ ok: false });
+});
+
+test("runs tool source without navigation or script-import network channels", async ({ page }) => {
+  await openRunner(page);
+  const leakedUrl = "http://vibegarden.test:8788/__fixture/form?leak=runner-secret";
+  const attemptedRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("runner-secret")) attemptedRequests.push(request.url());
+  });
+
+  const result = await execute(page, `location.href = ${JSON.stringify(leakedUrl)}; return location.href;`);
+  const importResult = await execute(page, `importScripts(${JSON.stringify(`${leakedUrl}&kind=script`)}); return "imported";`);
+  const forgedBridge = await execute(page, 'postMessage({ type: "host", method: "memoryList", params: [] });');
+
+  expect(result.ok).toBe(false);
+  expect(importResult).toMatchObject({ ok: false });
+  expect(forgedBridge).toMatchObject({ ok: false });
+  expect(forgedBridge.error).toContain("declared env capabilities");
+  expect(attemptedRequests).toEqual([]);
+  expect(page.frames().some((frame) => frame.url().includes("runner-secret"))).toBe(false);
+  expect(page.frames().some((frame) => frame.url() === runnerUrl)).toBe(true);
+});
+
+test("keeps runner control state outside the user execution realm", async ({ page }) => {
+  await openRunner(page);
+
+  await expect(execute(page, "return [typeof busy, typeof pending, typeof hostCall].join(',');")).resolves.toMatchObject({
+    ok: true,
+    value: '"undefined,undefined,undefined"',
+  });
 });
 
 test("bridges host calls and rejects concurrent execution", async ({ page }) => {
@@ -126,7 +157,7 @@ test("bridges host calls and rejects concurrent execution", async ({ page }) => 
     frame.contentWindow.postMessage({
       type: "execute",
       id: firstId,
-      source: 'return await env.fetchPage("https://example.com/article");',
+      source: 'globalThis.busy = false; globalThis.pending = new Map(); globalThis.hostCall = () => "forged"; return await env.fetchPage("https://example.com/article");',
       args: {},
     }, "*");
   }));

@@ -2,7 +2,7 @@ const blocked = "blocked";
 const attempts = {
   parentDom: "attempted", parentWrite: "attempted", cookies: "attempted", storage: "attempted",
   indexedDb: "attempted", form: "attempted", popup: "attempted", topNavigation: "attempted",
-  websiteWrite: "attempted", undeclaredFetch: "attempted", nestedFrame: "attempted",
+  websiteWrite: "attempted", undeclaredFetch: "attempted", nestedFrame: "attempted", runnerFrame: "attempted",
   capabilities: { camera: "attempted", microphone: "attempted", geolocation: "attempted", clipboard: "attempted", payment: "attempted", usb: "attempted" },
 };
 const blockedByCsp = new Set();
@@ -29,6 +29,7 @@ const nested = document.createElement("iframe");
 nested.src = "https://evil.example/nested";
 nested.addEventListener("load", () => { attempts.nestedFrame = "unexpected"; });
 document.body.append(nested);
+document.querySelector("#forbidden-agent-runner").addEventListener("load", () => { attempts.runnerFrame = "unexpected"; });
 
 fetch("http://vibegarden.test:8788/__fixture/write", { method: "POST", credentials: "include" })
   .then(() => { attempts.websiteWrite = "unexpected"; })
@@ -48,7 +49,7 @@ rejectCapability("usb", navigator.usb && navigator.usb.requestDevice({ filters: 
 if (window.PaymentRequest) try { rejectCapability("payment", new PaymentRequest([{ supportedMethods: "basic-card" }], { total: { label: "Total", amount: { currency: "USD", value: "1" } } }).show()); } catch { attempts.capabilities.payment = blocked; } else attempts.capabilities.payment = blocked;
 setTimeout(() => {
   if (blockedByCsp.has("form-action") || attempts.form === "attempted") attempts.form = blocked;
-  if (blockedByCsp.has("frame-src")) attempts.nestedFrame = blocked;
+  if (blockedByCsp.has("frame-src")) { attempts.nestedFrame = blocked; attempts.runnerFrame = blocked; }
   if (attempts.topNavigation === "attempted") attempts.topNavigation = blocked;
   parent.postMessage({ type: "artifact-security-attempts", attempts }, "*");
   document.body.textContent = "security probe complete";

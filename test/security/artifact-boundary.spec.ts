@@ -29,6 +29,7 @@ test("uploaded content remains in an opaque, capability-only iframe", async ({ p
     websiteWrite: "blocked",
     undeclaredFetch: "blocked",
     nestedFrame: "blocked",
+    runnerFrame: "blocked",
     capabilities: {
       camera: "blocked", microphone: "blocked", geolocation: "blocked",
       clipboard: "blocked", payment: "blocked", usb: "blocked",
@@ -37,6 +38,7 @@ test("uploaded content remains in an opaque, capability-only iframe", async ({ p
 
   const frame = page.frameLocator("iframe");
   await expect(frame.locator("body")).toContainText("security probe complete");
+  expect(page.frames().some((candidate) => candidate.url().endsWith("/agent-runner"))).toBe(false);
   await expect(page.locator("#parent-marker")).toHaveText("parent intact");
   await expect(page.locator("iframe")).toHaveAttribute("sandbox", "allow-scripts");
 

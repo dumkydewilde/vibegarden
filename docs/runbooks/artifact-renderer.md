@@ -60,12 +60,21 @@ deny-all permissions policy, and no CORS response header.
 
 The runner CSP begins with
 `default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; connect-src 'none'`.
-Inline script and evaluation are required to compile a user tool. All direct
-network access and every other resource type remain blocked. Fetching pages and
-reading or writing Agent Workbench memory are parent-owned capabilities exposed
-through shape-validated `postMessage` calls. Because the iframe has an opaque
-origin, both sides use `targetOrigin: "*"`; they must also verify the message
-source and protocol shape before acting.
+The inline script is the runner controller. It creates one in-memory Blob
+Worker at a time, so the only allowed worker source is `blob:`. The policy does
+not allow remote scripts or worker URLs, and the Worker inherits
+`connect-src 'none'`. Tool source therefore has no document or navigable frame
+and cannot use URL navigation as a network channel.
+
+The iframe owns the busy state and parent protocol. The tool runs in a separate
+Worker realm and cannot read or mutate that state. A private `MessageChannel`
+connects the Worker controller to the iframe controller; its port is retained
+inside the Worker controller closure and is not exposed to user source. Tool
+source can reach fetching and Agent Workbench memory only through the declared,
+frozen `env` methods. The worker blocks its global `postMessage`, `close`, and
+`importScripts` entry points before executing a tool. The iframe remains opaque,
+so it and the website use `targetOrigin: "*"` and validate both message source
+and protocol shape before acting.
 
 Any change to the runner route, HTML, script, CSP, headers, message protocol, or
 iframe sandbox is a renderer security-boundary change. Update its negative
