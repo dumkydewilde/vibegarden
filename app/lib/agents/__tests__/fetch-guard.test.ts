@@ -14,7 +14,10 @@ const blocked = [
   "https://[::1]/x",
   "https://192.168.1.10/x",
   "https://localhost/x",
+  "https://preview.localhost/x",
+  "https://local/x",
   "https://foo.local/x",
+  "https://internal/x",
   "https://metadata.internal/x",
   "https://usercontent.vibegarden.club/x",
   "https://vibegarden.club/x",
@@ -105,6 +108,24 @@ describe("readCappedText", () => {
       truncated: true,
     });
   });
+
+  it("drops a split UTF-8 sequence rather than expanding past the byte cap", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([0x61, 0x62, 0x63, 0xc3]));
+        controller.enqueue(new Uint8Array([0xa9, 0x7a]));
+      },
+    });
+
+    const result = await readCappedText(new Response(body), 4);
+
+    expect(result).toEqual({
+      body: "abc",
+      totalChars: 5,
+      truncated: true,
+    });
+    expect(new TextEncoder().encode(result.body).byteLength).toBeLessThanOrEqual(4);
+  });
 });
 
 describe("proxyFetch", () => {
@@ -151,6 +172,21 @@ describe("proxyFetch", () => {
       new Response(null, {
         status: 302,
         headers: { location: "https://127.0.0.1/secret" },
+      }),
+    ) as unknown as typeof fetch;
+
+    await expect(proxyFetch("https://example.com/start", fetchImpl)).resolves.toEqual({
+      ok: false,
+      error: "That address points at a private network, which the fetch tool does not reach.",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a redirect to a localhost subdomain before requesting it", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(null, {
+        status: 302,
+        headers: { location: "https://preview.localhost/secret" },
       }),
     ) as unknown as typeof fetch;
 

@@ -29,7 +29,10 @@ export function checkFetchUrl(raw: string): FetchUrlResult {
   const isIpv6Literal = url.hostname.includes("[");
   const isPrivateName =
     hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname === "local" ||
     hostname.endsWith(".local") ||
+    hostname === "internal" ||
     hostname.endsWith(".internal");
   const isVibeGardenHost =
     hostname === "vibegarden.club" || hostname.endsWith(".vibegarden.club");
@@ -39,6 +42,15 @@ export function checkFetchUrl(raw: string): FetchUrlResult {
   }
 
   return { url };
+}
+
+function capDecodedText(body: string, maxBytes: number): string {
+  const encoder = new TextEncoder();
+  if (encoder.encode(body).byteLength <= maxBytes) return body;
+
+  const capped = new Uint8Array(maxBytes);
+  const { written } = encoder.encodeInto(body, capped);
+  return new TextDecoder().decode(capped.subarray(0, written));
 }
 
 /** Allow response types that can be usefully exposed as text to a tool. */
@@ -94,7 +106,7 @@ export async function readCappedText(
         body += bodyDecoder.decode(value.subarray(0, remaining), { stream: true });
         bytesKept += remaining;
       }
-      body += bodyDecoder.decode();
+      body = capDecodedText(body, maxBytes);
       totalChars += totalDecoder.decode().length;
       try {
         await reader.cancel();
