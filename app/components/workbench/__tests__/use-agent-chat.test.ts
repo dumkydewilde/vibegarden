@@ -1,9 +1,11 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  callErrorEnvelope,
   callNote,
   callResultNote,
   capCallResult,
+  splitToolNotes,
 } from "@vibegarden/agent-web";
 
 import {
@@ -250,16 +252,39 @@ describe("useAgentChat", () => {
     expect(parseAgentChatRequest(finalContinuation)).toHaveProperty("value");
   });
 
-  it("does not run a tool when no admissible continuation can carry its trace", async () => {
-    const oversizedCall = callNote({
+  it("closes the call without running a tool when a maximum Unicode result cannot fit", async () => {
+    const largeCall = callNote({
       tool: "fetch_page",
-      args: { url: `https://example.com/${"x".repeat(50_000)}` },
+      args: { url: `https://example.com/${"x".repeat(16_800)}` },
     });
+    expect(largeCall).toHaveLength(16_937);
+    const maximumEmojiEnvelope = capCallResult("😀".repeat(2_000));
+    expect(maximumEmojiEnvelope.resultText).toHaveLength(4_000);
+    expect(
+      parseAgentChatRequest({
+        versionId: "version-1",
+        continuation: true,
+        messages: [
+          { role: "user", content: "Try the large call" },
+          {
+            role: "assistant",
+            content: `${largeCall}\n\n${callResultNote(maximumEmojiEnvelope)}`,
+          },
+          {
+            role: "data",
+            content: JSON.stringify({
+              tool: "fetch_page",
+              envelope: maximumEmojiEnvelope,
+            }),
+          },
+        ],
+      }),
+    ).toHaveProperty("error");
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         new ReadableStream<Uint8Array>({
           start(controller) {
-            controller.enqueue(encoder.encode(oversizedCall));
+            controller.enqueue(encoder.encode(largeCall));
             controller.close();
           },
         }),
@@ -267,8 +292,8 @@ describe("useAgentChat", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
     const executor = vi.fn().mockResolvedValue({
-      raw: "unused",
-      envelope: capCallResult("unused"),
+      raw: "😀".repeat(2_000),
+      envelope: maximumEmojiEnvelope,
     });
     const { result } = renderHook(() =>
       useAgentChat({
@@ -283,8 +308,25 @@ describe("useAgentChat", () => {
 
     expect(executor).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(result.current.entries[1]?.content).toContain(
-      "The tool was not run because its result could not be continued safely.",
+    const assistantContent = result.current.entries[1]?.content ?? "";
+    const safeStop =
+      "The tool was not run because its result could not be continued safely.";
+    expect(assistantContent).toBe(
+      `${largeCall}\n\n${callResultNote(callErrorEnvelope(safeStop))}\n\n${safeStop}`,
     );
+    expect(
+      splitToolNotes(assistantContent).map((segment) => segment.type),
+    ).toEqual(["call", "callresult", "text"]);
+    expect(
+      parseAgentChatRequest({
+        versionId: "version-1",
+        messages: [
+          { role: "user", content: "Try the large call" },
+          { role: "assistant", content: assistantContent },
+          { role: "user", content: "Continue" },
+        ],
+      }),
+    ).toHaveProperty("value");
+    expect(result.current.rawResults).toEqual(new Map());
   });
 });

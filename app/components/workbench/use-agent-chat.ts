@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import {
+  CALL_RESULT_MAX_CHARS,
   callNote,
   callErrorEnvelope,
   callResultNote,
@@ -47,6 +48,14 @@ const UNSAFE_CONTINUATION =
   "The tool finished, but this trace could not be continued safely.";
 const UNSAFE_TOOL_CALL =
   "The tool was not run because its result could not be continued safely.";
+// U+0800 uses the largest URI encoding per JavaScript character. Proving this
+// envelope fits guarantees every capped successful result will fit too.
+const MAX_CONTINUATION_ENVELOPE: CallResultEnvelope = {
+  status: "ok",
+  resultText: "\u0800".repeat(CALL_RESULT_MAX_CHARS),
+  totalChars: Number.MAX_SAFE_INTEGER,
+  truncated: true,
+};
 
 export type RawResultKey = `${number}:${number}`;
 
@@ -289,14 +298,16 @@ export function useAgentChat({
           if (last?.type !== "call") break;
 
           if (callCount < WORKBENCH_MAX_CONTINUATIONS) {
-            const preflightEnvelope = callErrorEnvelope("");
             const preflight = continuationMessages(
-              `${assistantText}\n\n${callResultNote(preflightEnvelope)}`,
+              `${assistantText}\n\n${callResultNote(MAX_CONTINUATION_ENVELOPE)}`,
               last.tool,
-              preflightEnvelope,
+              MAX_CONTINUATION_ENVELOPE,
             );
             if (preflight === null) {
-              appendAssistant(`\n\n${UNSAFE_TOOL_CALL}`);
+              const safeStopEnvelope = callErrorEnvelope(UNSAFE_TOOL_CALL);
+              appendAssistant(
+                `\n\n${callResultNote(safeStopEnvelope)}\n\n${UNSAFE_TOOL_CALL}`,
+              );
               break;
             }
           }
