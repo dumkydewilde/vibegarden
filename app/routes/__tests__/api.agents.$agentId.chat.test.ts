@@ -29,7 +29,15 @@ vi.mock("~/lib/models", () => ({
 }));
 vi.mock("~/lib/db.server", () => ({ getDb: vi.fn().mockReturnValue({}) }));
 vi.mock("~/lib/agents/repository.server", () => ({
-  getAgentForUser: vi.fn().mockResolvedValue({ definition: {} }),
+  getAgentForUser: vi.fn().mockResolvedValue({
+    definition: {
+      version: 1,
+      systemPrompt: "Be helpful.",
+      tools: [],
+      skills: [],
+      builtins: { fetchPage: true, memory: false },
+    },
+  }),
 }));
 vi.mock("~/lib/agents/prompt.server", () => ({
   buildAgentSystemPrompt: mocks.buildAgentSystemPrompt,
@@ -90,5 +98,66 @@ describe("agent chat upstream failures", () => {
       } as never),
     ).rejects.toThrow(promptError);
     expect(mocks.startTurn).not.toHaveBeenCalled();
+  });
+
+  it("offers tools on a continuation and emits a terminal call marker", async () => {
+    mocks.startTurn.mockResolvedValue({
+      ok: true,
+      events: (async function* () {
+        yield {
+          type: "delegated-call" as const,
+          tool: "fetch_page",
+          payload: { url: "https://example.com/next" },
+        };
+      })(),
+    });
+    const resultText = "x".repeat(5_000);
+
+    const response = await action({
+      request: new Request(
+        "https://example.com/clubs/club-1/api/agents/agent-1/chat",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            versionId: "version-1",
+            continuation: true,
+            messages: [
+              { role: "assistant", content: "Fetching it." },
+              {
+                role: "data",
+                content: JSON.stringify({
+                  tool: "fetch_page",
+                  envelope: {
+                    status: "ok",
+                    resultText,
+                    totalChars: resultText.length,
+                    truncated: false,
+                  },
+                }),
+              },
+            ],
+          }),
+        },
+      ),
+      context: { get: () => ({ env: {} }) },
+      params: { clubSlug: "club-1", agentId: "agent-1" },
+    } as never);
+
+    expect(response.status).toBe(200);
+    const marker = await response.text();
+    expect(marker).toMatch(/^\[\[tool:call:/);
+    expect(marker).not.toMatch(/\n$/);
+
+    const [config, history] = mocks.startTurn.mock.calls[0] ?? [];
+    expect(config.tools.map((tool: { name: string }) => tool.name)).toEqual([
+      "fetch_page",
+    ]);
+    expect(history).toEqual([
+      { role: "assistant", content: "Fetching it." },
+      {
+        role: "user",
+        content: `Tool result for fetch_page:\n${"x".repeat(4_000)}`,
+      },
+    ]);
   });
 });

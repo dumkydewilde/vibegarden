@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   AGENT_HISTORY_LIMIT,
   AGENT_MESSAGE_MAX_CHARS,
+  WORKBENCH_MAX_CONTINUATIONS,
   parseAgentChatRequest,
 } from "../chat-request";
 
@@ -58,6 +59,47 @@ describe("parseAgentChatRequest", () => {
     };
 
     expect(parseAgentChatRequest(raw)).toEqual({ value: raw });
+  });
+
+  it("accepts only a valid data envelope as a continuation", () => {
+    const envelope = {
+      status: "ok" as const,
+      resultText: "page text",
+      totalChars: 9,
+      truncated: false,
+    };
+    const raw = {
+      versionId: "agentv_1",
+      continuation: true,
+      messages: [
+        { role: "user", content: "Fetch it" },
+        {
+          role: "data",
+          content: JSON.stringify({ tool: "fetch_page", envelope }),
+        },
+      ],
+    };
+
+    expect(parseAgentChatRequest(raw)).toEqual({ value: raw });
+    expect(WORKBENCH_MAX_CONTINUATIONS).toBe(5);
+
+    expect(
+      parseAgentChatRequest({
+        ...raw,
+        messages: [{ role: "assistant", content: "not tool data" }],
+      }),
+    ).toEqual({ error: "A continuation needs a valid tool result envelope." });
+    expect(
+      parseAgentChatRequest({
+        ...raw,
+        messages: [
+          {
+            role: "data",
+            content: JSON.stringify({ tool: "fetch_page", envelope: {} }),
+          },
+        ],
+      }),
+    ).toEqual({ error: "A continuation needs a valid tool result envelope." });
   });
 
   it("trims a valid history to the newest messages", () => {

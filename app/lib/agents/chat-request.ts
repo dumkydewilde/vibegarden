@@ -1,9 +1,22 @@
+import type { AgentHistoryMessage } from "@vibegarden/agent-core";
+import {
+  parseCallResultEnvelope,
+  toModelText,
+  type CallResultEnvelope,
+} from "@vibegarden/agent-web";
+
 export const AGENT_MESSAGE_MAX_CHARS = 8_000;
 export const AGENT_HISTORY_LIMIT = 30;
+export const WORKBENCH_MAX_CONTINUATIONS = 5;
 
-type AgentChatMessage = {
+export type AgentChatMessage = {
   role: "user" | "assistant" | "data";
   content: string;
+};
+
+type ContinuationResult = {
+  tool: string;
+  envelope: CallResultEnvelope;
 };
 
 export type AgentChatRequest = {
@@ -17,6 +30,55 @@ const MESSAGE_ROLES = new Set<AgentChatMessage["role"]>([
   "assistant",
   "data",
 ]);
+
+function parseContinuationResult(raw: string): ContinuationResult | null {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed) ||
+      typeof parsed.tool !== "string" ||
+      !parsed.tool.trim()
+    ) {
+      return null;
+    }
+    const envelope = parseCallResultEnvelope(JSON.stringify(parsed.envelope));
+    return envelope ? { tool: parsed.tool, envelope } : null;
+  } catch {
+    return null;
+  }
+}
+
+export function historyForModel(
+  messages: AgentChatMessage[],
+): AgentHistoryMessage[] {
+  return messages.flatMap((message) => {
+    if (message.role === "data") {
+      const result = parseContinuationResult(message.content);
+      if (!result) return [];
+      const text =
+        result.envelope.status === "ok"
+          ? result.envelope.resultText
+          : `Error: ${result.envelope.error}`;
+      return [
+        {
+          role: "user" as const,
+          content: `Tool result for ${result.tool}:\n${text}`,
+        },
+      ];
+    }
+    return [
+      {
+        role: message.role,
+        content:
+          message.role === "assistant"
+            ? toModelText(message.content)
+            : message.content,
+      },
+    ];
+  });
+}
 
 export function parseAgentChatRequest(
   raw: unknown,
@@ -72,6 +134,13 @@ export function parseAgentChatRequest(
 
     const continuation = candidate.continuation === true;
     const lastMessage = messages[messages.length - 1];
+    if (
+      continuation &&
+      (lastMessage.role !== "data" ||
+        parseContinuationResult(lastMessage.content) === null)
+    ) {
+      return { error: "A continuation needs a valid tool result envelope." };
+    }
     if (
       !continuation &&
       (lastMessage.role !== "user" || !lastMessage.content.trim())

@@ -1,11 +1,16 @@
-import { startTurn, type AgentHistoryMessage } from "@vibegarden/agent-core";
+import { startTurn } from "@vibegarden/agent-core";
+import { markerForEvent } from "@vibegarden/agent-web";
 
 import type { User } from "~/db/schema";
 import { apiAuthorizationError } from "~/lib/api-errors";
 import { getAgentForUser } from "~/lib/agents/repository.server";
 import { buildAgentSystemPrompt } from "~/lib/agents/prompt.server";
-import { parseAgentChatRequest } from "~/lib/agents/chat-request";
+import {
+  historyForModel,
+  parseAgentChatRequest,
+} from "~/lib/agents/chat-request";
 import { requireUser } from "~/lib/auth.server";
+import { agentToolSpecs } from "~/lib/agents/tools.server";
 import { getClubChatCredential } from "~/lib/club-ai.server";
 import { requireClubContext, type ClubContext } from "~/lib/clubs.server";
 import { cloudflareContext } from "~/lib/context";
@@ -62,13 +67,8 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     );
   }
 
-  const tools = [];
-  const history: AgentHistoryMessage[] = body.messages
-    .filter((message) => message.role !== "data")
-    .map((message) => ({
-      role: message.role as "user" | "assistant",
-      content: message.content,
-    }));
+  const tools = agentToolSpecs(loaded.definition);
+  const history = historyForModel(body.messages);
 
   const turnConfig = {
     apiKey,
@@ -101,10 +101,38 @@ export async function action({ request, context, params }: Route.ActionArgs) {
 
   const textStream = new ReadableStream<string>({
     async start(controller) {
+      let full = "";
+      const emit = (delta: string) => {
+        full += delta;
+        controller.enqueue(delta);
+      };
+      const emitMarker = (marker: string, trailingBreak: boolean) =>
+        emit(
+          `${full && !full.endsWith("\n\n") ? "\n\n" : ""}${marker}${trailingBreak ? "\n\n" : ""}`,
+        );
+
       for await (const event of turn.events) {
-        if (event.type === "text") controller.enqueue(event.delta);
-        if (event.type === "error") {
-          controller.enqueue("\n\nSomething went wrong on my end. Try again?");
+        switch (event.type) {
+          case "text":
+            emit(event.delta);
+            break;
+          case "note":
+          case "diagram":
+          case "articles": {
+            const marker = markerForEvent(event);
+            if (marker) emitMarker(marker, true);
+            break;
+          }
+          case "delegated-call": {
+            const marker = markerForEvent(event);
+            if (marker) emitMarker(marker, false);
+            break;
+          }
+          case "error":
+            emit("\n\nSomething went wrong on my end. Try again?");
+            break;
+          case "done":
+            break;
         }
       }
       controller.close();
