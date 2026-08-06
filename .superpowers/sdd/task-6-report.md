@@ -153,3 +153,38 @@ The local browser flow needs an explicit local `WEB_ALLOWED_ORIGINS` binding,
 and preferably `DEV_LOGIN_TOKEN`, before the full create, save, and streamed
 chat scenario can be exercised. Automated hook, type, and full-suite coverage
 is green; the unverified part is the local write path and live model response.
+
+## Follow-up browser verification
+
+The missing local origin was added only to ignored `.dev.vars` as the exact
+value `WEB_ALLOWED_ORIGINS=http://localhost:5173`. The final local setting has
+one entry, no wildcard, and no `127.0.0.1` origin; `wrangler.jsonc` was not
+changed.
+
+A disposable local user, signed session, club, membership, and encrypted club
+credential were established in local D1 using the already available local
+OpenRouter credential. The app was started at `http://localhost:5173`, and an
+authenticated Chrome browser completed the full flow:
+
+- created `Task 6 Persona Agent` with a disposable description and reached its
+  workbench (the earlier 403 did not recur)
+- set the system prompt to begin every answer with `Ahoy!`, saved, and observed
+  the visible `Saved as a new version.` status
+- sent `Who are you, and how will you help me?`; at 250 ms the user bubble was
+  visible while Message, Send, and Reset were disabled, proving the streaming
+  request/busy state was active
+- observed the completed streamed response beginning `Ahoy! I'm Rowan, your
+  friendly museum guide` and containing two sentences, matching the saved
+  persona constraint
+
+A post-response browser screenshot was captured and visually reviewed at a
+1920 by 935 viewport. It showed the saved prompt and status in the Instructions
+panel and the user/assistant bubbles in Test chat, with readable spacing,
+consistent dark-theme contrast, and no horizontal clipping. Numeric viewport
+evidence was `scrollWidth=1905`, `clientWidth=1905`, and `canScrollX=false`;
+vertical page scrolling was expected for the full workbench at that viewport.
+
+The disposable agent/version, credential, session, membership, club, and user
+were deleted afterward and verified absent. The transient local credential
+encryption setting was removed. The exact localhost origin override remains in
+ignored `.dev.vars` for future local browser verification and is not committed.
