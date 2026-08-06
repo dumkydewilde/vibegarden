@@ -3,6 +3,30 @@
 export const FETCH_BODY_MAX_BYTES = 1_000_000;
 export const FETCH_TIMEOUT_MS = 10_000;
 export const FETCH_MAX_REDIRECTS = 3;
+export const FETCH_RATE_LIMIT = 30;
+
+export function rateLimiter(
+  limit = FETCH_RATE_LIMIT,
+  windowMs = 60_000,
+): { take: (key: string, now?: number) => boolean } {
+  const timestampsByKey = new Map<string, number[]>();
+
+  return {
+    take(key, now = Date.now()) {
+      const windowStart = now - windowMs;
+      const timestamps = (timestampsByKey.get(key) ?? []).filter(
+        (timestamp) => timestamp > windowStart,
+      );
+      if (timestamps.length >= limit) {
+        timestampsByKey.set(key, timestamps);
+        return false;
+      }
+      timestamps.push(now);
+      timestampsByKey.set(key, timestamps);
+      return true;
+    },
+  };
+}
 
 type FetchUrlResult =
   | { url: URL; error?: never }

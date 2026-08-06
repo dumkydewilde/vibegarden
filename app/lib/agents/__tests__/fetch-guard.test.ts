@@ -5,6 +5,7 @@ import {
   FETCH_TIMEOUT_MS,
   isAllowedContentType,
   proxyFetch,
+  rateLimiter,
   readCappedText,
 } from "../fetch-guard.server";
 
@@ -316,5 +317,18 @@ describe("proxyFetch", () => {
       ok: false,
       error: "That page did not return readable text, JSON, or XML.",
     });
+  });
+});
+
+describe("rateLimiter", () => {
+  it("allows 30 takes, refuses the 31st, and resets one window later", () => {
+    const limiter = rateLimiter();
+    const now = 1_000;
+
+    for (let index = 0; index < 30; index += 1) {
+      expect(limiter.take("user_1", now)).toBe(true);
+    }
+    expect(limiter.take("user_1", now)).toBe(false);
+    expect(limiter.take("user_1", now + 60_000)).toBe(true);
   });
 });

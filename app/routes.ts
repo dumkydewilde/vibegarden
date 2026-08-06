@@ -15,6 +15,7 @@ export default [
     "clubs/:clubSlug/api/agents/:agentId/chat",
     "routes/api.agents.$agentId.chat.ts",
   ),
+  route("clubs/:clubSlug/api/fetch-proxy", "routes/api.fetch-proxy.ts"),
   route("clubs/:clubSlug/api/thread", "routes/api.thread.ts"),
   route("clubs/:clubSlug/api/feedback", "routes/api.feedback.ts"),
   route("clubs/:clubSlug", "routes/app-layout.tsx", [
