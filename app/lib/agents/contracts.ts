@@ -11,14 +11,14 @@ export const SKILL_CONTENT_MAX_CHARS = 4_000;
 export const TOOL_NAME_RE = /^[a-z][a-z0-9_]{1,39}$/;
 
 const toolSchema = z.object({
-  name: z.string().regex(TOOL_NAME_RE, "tool name must be snake_case, 2-40 chars"),
+  name: z.string().regex(TOOL_NAME_RE, "tool name must be snake_case, 1-40 chars"),
   description: z.string().min(1).max(TOOL_DESCRIPTION_MAX_CHARS),
   parameters: z.record(z.string(), z.unknown()),
   source: z.string().min(1).max(TOOL_SOURCE_MAX_CHARS),
 });
 
 const skillSchema = z.object({
-  name: z.string().regex(TOOL_NAME_RE, "skill name must be snake_case, 2-40 chars"),
+  name: z.string().regex(TOOL_NAME_RE, "skill name must be snake_case, 1-40 chars"),
   description: z.string().min(1).max(TOOL_DESCRIPTION_MAX_CHARS),
   content: z.string().min(1).max(SKILL_CONTENT_MAX_CHARS),
 });
@@ -60,7 +60,14 @@ export function parseAgentDefinition(
     names.add(item.name);
   }
 
-  if (new TextEncoder().encode(JSON.stringify(parsed.data)).length > DEFINITION_MAX_BYTES) {
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(parsed.data);
+  } catch {
+    return { error: "definition must contain only JSON serializable values" };
+  }
+
+  if (new TextEncoder().encode(serialized).length > DEFINITION_MAX_BYTES) {
     return { error: "definition exceeds 64KB; trim tool sources or skills" };
   }
 

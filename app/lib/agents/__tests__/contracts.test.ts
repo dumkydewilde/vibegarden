@@ -31,6 +31,23 @@ describe("parseAgentDefinition", () => {
     expect(parseAgentDefinition({ ...emptyDefinition(), tools: [tool] }).value).toBeDefined();
   });
 
+  it("returns an error for a tool parameter that cannot be JSON serialized", () => {
+    const result = parseAgentDefinition({
+      ...emptyDefinition(),
+      tools: [
+        {
+          name: "bigint_parameter",
+          description: "Uses a non-JSON value.",
+          parameters: { count: BigInt(1) },
+          source: "return 1;",
+        },
+      ],
+    });
+
+    expect(result.value).toBeUndefined();
+    expect(result.error).toMatch(/JSON serializ/i);
+  });
+
   it("rejects a bad tool name", () => {
     const tool = {
       name: "Bad Name",
