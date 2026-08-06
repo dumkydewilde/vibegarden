@@ -1,6 +1,7 @@
 import { verifyCapability, type RendererCapability } from "../app/lib/artifacts/capability";
 import { buildRendererHeaders, type RendererAssetKind } from "../app/lib/artifacts/policy";
 import { normalizeArtifactPath } from "../app/lib/artifacts/validation";
+import { handleAgentRunnerRequest } from "./agent-runner";
 
 const RUNTIME_PREFIX = "/runtime/duckdb/1.33.1-dev57.0/";
 const RUNTIME_OBJECT_PREFIX = "runtime/duckdb/1.33.1-dev57.0/";
@@ -116,6 +117,7 @@ export default {
     if (request.method !== "GET") return privateError(405);
     try {
       const url = new URL(request.url);
+      if (url.pathname === "/agent-runner") return handleAgentRunnerRequest(env.PARENT_ORIGIN);
       if (url.pathname.startsWith(RUNTIME_PREFIX)) return runtimeResponse(request, env, url);
       if (url.pathname.startsWith("/v1/")) return artifactResponse(request, env, url);
       return privateError(404);

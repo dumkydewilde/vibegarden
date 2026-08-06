@@ -48,6 +48,30 @@ never use wildcard origins or sources. Previews may use only
 `<iframe sandbox="allow-scripts">`; do not add same-origin, forms, popups,
 downloads, or top-navigation permissions without a reviewed feature.
 
+## Agent runner
+
+The renderer serves the static Agent Workbench tool runner at
+`GET /agent-runner`. The website embeds it only with
+`<iframe sandbox="allow-scripts">`, which gives the document an opaque origin.
+The response deliberately omits `X-Frame-Options` and uses the renderer's
+explicit `PARENT_ORIGIN` in `frame-ancestors`, so only the website can frame it.
+It also sends `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, a
+deny-all permissions policy, and no CORS response header.
+
+The runner CSP begins with
+`default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; connect-src 'none'`.
+Inline script and evaluation are required to compile a user tool. All direct
+network access and every other resource type remain blocked. Fetching pages and
+reading or writing Agent Workbench memory are parent-owned capabilities exposed
+through shape-validated `postMessage` calls. Because the iframe has an opaque
+origin, both sides use `targetOrigin: "*"`; they must also verify the message
+source and protocol shape before acting.
+
+Any change to the runner route, HTML, script, CSP, headers, message protocol, or
+iframe sandbox is a renderer security-boundary change. Update its negative
+browser assertions and run the full security gate in this runbook before the
+change lands.
+
 ## Content-author guidance
 
 Use pinned dependency URLs and integrity metadata whenever the provider
