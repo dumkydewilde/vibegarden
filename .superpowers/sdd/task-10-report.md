@@ -325,3 +325,47 @@ npm run typecheck
 react-router typegen && tsc
 exit 0
 ```
+
+## Final all-size grammar and provenance follow-up
+
+Canonical generic marker grammar now applies to every assistant message that
+contains a `call` or `callresult` marker, including messages below the ordinary
+8,000 character cap. Plain assistant prose without generic markers keeps the
+ordinary cap. Generic traces must use canonical marker serialization, alternate
+from call to call result, and contain no more than five calls.
+
+Continuation data now uses canonical envelope JSON at every size. Duplicate
+keys, insignificant JSON whitespace, over-cap values changed by server
+recapping, and other noncanonical serializations are rejected instead of being
+accepted through the ordinary-size path.
+
+Continuation provenance now retains the paired result for each parsed call.
+The latest call must name an offered tool. If that call is complete, the
+preceding canonical call result must equal the continuation envelope. If that
+call is still pending, the first continuation remains valid without a preceding
+result marker. Result-only and incorrectly ordered traces are rejected.
+
+The new regressions failed before implementation:
+
+```text
+npm test -- app/lib/agents/__tests__/chat-request.test.ts
+Test Files  1 failed (1)
+Tests       4 failed | 22 passed (26)
+```
+
+The failures covered a small duplicate-key call marker, small continuation JSON
+with insignificant whitespace, six canonical call and result pairs below the
+ordinary cap, and result A in the trace paired with contradictory continuation
+data B.
+
+Final verification:
+
+```text
+npm test -- app/lib/agents packages 'app/routes/__tests__/api.agents.$agentId.chat.test.ts'
+Test Files  11 passed (11)
+Tests       149 passed (149)
+
+npm run typecheck
+react-router typegen && tsc
+exit 0
+```

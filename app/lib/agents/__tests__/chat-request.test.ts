@@ -11,6 +11,7 @@ import {
   AGENT_MESSAGE_MAX_CHARS,
   AGENT_TOOL_TRANSPORT_MAX_CHARS,
   WORKBENCH_MAX_CONTINUATIONS,
+  continuationMatchesOfferedTool,
   historyForModel,
   parseAgentChatRequest,
 } from "../chat-request";
@@ -223,6 +224,61 @@ describe("parseAgentChatRequest", () => {
     ).toHaveProperty("error");
   });
 
+  it("rejects small noncanonical generic markers", () => {
+    const duplicateArgs =
+      '{"version":1,"tool":"fetch_page","args":{},"args":{"url":"https://example.com"}}';
+    const content = `[[tool:call:${encodeURIComponent(duplicateArgs)}]]`;
+    expect(content.length).toBeLessThan(AGENT_MESSAGE_MAX_CHARS);
+
+    expect(
+      parseAgentChatRequest({
+        versionId: "agentv_1",
+        messages: [
+          { role: "assistant", content },
+          { role: "user", content: "Continue" },
+        ],
+      }),
+    ).toHaveProperty("error");
+  });
+
+  it("rejects small noncanonical continuation JSON", () => {
+    const content =
+      '{ "tool": "fetch_page", "envelope": { "status": "error", "error": "denied" } }';
+    expect(content.length).toBeLessThan(AGENT_MESSAGE_MAX_CHARS);
+
+    expect(
+      parseAgentChatRequest({
+        versionId: "agentv_1",
+        continuation: true,
+        messages: [{ role: "data", content }],
+      }),
+    ).toHaveProperty("error");
+  });
+
+  it("rejects six canonical call and result pairs below the message cap", () => {
+    const pair = [
+      callNote({ tool: "fetch_page", args: {} }),
+      callResultNote(callErrorEnvelope("denied")),
+    ];
+    const content = Array.from(
+      { length: WORKBENCH_MAX_CONTINUATIONS + 1 },
+      () => pair,
+    )
+      .flat()
+      .join("\n");
+    expect(content.length).toBeLessThan(AGENT_MESSAGE_MAX_CHARS);
+
+    expect(
+      parseAgentChatRequest({
+        versionId: "agentv_1",
+        messages: [
+          { role: "assistant", content },
+          { role: "user", content: "Continue" },
+        ],
+      }),
+    ).toHaveProperty("error");
+  });
+
   it("rejects a canonical 360 marker flood that compacts below the model cap", () => {
     const pair = [
       callNote({ tool: "x", args: {} }),
@@ -384,5 +440,81 @@ describe("parseAgentChatRequest", () => {
     ).toEqual({
       error: `messages must contain ${inputLimit} items or fewer.`,
     });
+  });
+});
+
+describe("continuationMatchesOfferedTool", () => {
+  const offered = new Set(["fetch_page"]);
+  const resultA = capCallResult("result A");
+  const resultB = capCallResult("result B");
+  const data = (envelope: ReturnType<typeof capCallResult>) => ({
+    role: "data" as const,
+    content: JSON.stringify({ tool: "fetch_page", envelope }),
+  });
+
+  it("accepts a continuation matching the preceding call result", () => {
+    expect(
+      continuationMatchesOfferedTool(
+        [
+          {
+            role: "assistant",
+            content: [
+              callNote({ tool: "fetch_page", args: {} }),
+              callResultNote(resultA),
+            ].join("\n"),
+          },
+          data(resultA),
+        ],
+        offered,
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a continuation contradicting the preceding call result", () => {
+    expect(
+      continuationMatchesOfferedTool(
+        [
+          {
+            role: "assistant",
+            content: [
+              callNote({ tool: "fetch_page", args: {} }),
+              callResultNote(resultA),
+            ].join("\n"),
+          },
+          data(resultB),
+        ],
+        offered,
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts the first continuation when the preceding trace ends in a call", () => {
+    expect(
+      continuationMatchesOfferedTool(
+        [
+          {
+            role: "assistant",
+            content: callNote({ tool: "fetch_page", args: {} }),
+          },
+          data(resultA),
+        ],
+        offered,
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a result without its preceding call", () => {
+    expect(
+      continuationMatchesOfferedTool(
+        [
+          {
+            role: "assistant",
+            content: callResultNote(resultA),
+          },
+          data(resultA),
+        ],
+        offered,
+      ),
+    ).toBe(false);
   });
 });

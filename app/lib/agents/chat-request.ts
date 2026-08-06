@@ -128,7 +128,12 @@ function contentForModel(message: AgentChatMessage): string | null {
 type TraceMarker =
   | { status: "not-marker" }
   | { status: "invalid" }
-  | { status: "valid"; type: "call" | "callresult" };
+  | {
+      status: "valid";
+      type: "call";
+      tool: string;
+    }
+  | { status: "valid"; type: "callresult"; result: CallResultEnvelope };
 
 function canonicalTraceMarker(raw: string): TraceMarker {
   const segments = splitToolNotes(raw);
@@ -137,45 +142,89 @@ function canonicalTraceMarker(raw: string): TraceMarker {
   if (segment?.type === "call") {
     const canonical = callNote({ tool: segment.tool, args: segment.args });
     return canonical === raw
-      ? { status: "valid", type: "call" }
+      ? {
+          status: "valid",
+          type: "call",
+          tool: segment.tool,
+        }
       : { status: "invalid" };
   }
   if (segment?.type === "callresult") {
     const canonical = callResultNote(segment.result);
     return canonical === raw
-      ? { status: "valid", type: "callresult" }
+      ? { status: "valid", type: "callresult", result: segment.result }
       : { status: "invalid" };
   }
   return { status: "not-marker" };
 }
 
-function isBoundedWorkbenchTrace(content: string): boolean {
-  let markerCount = 0;
+type TraceCall = {
+  tool: string;
+  result?: CallResultEnvelope;
+};
+
+type WorkbenchTrace =
+  | { status: "none" }
+  | { status: "invalid" }
+  | { status: "valid"; calls: TraceCall[]; textChars: number };
+
+function hasGenericMarker(content: string): boolean {
+  return (
+    content.includes("[[tool:call:") ||
+    content.includes("[[tool:callresult:")
+  );
+}
+
+function parseWorkbenchTrace(content: string): WorkbenchTrace {
+  const calls: TraceCall[] = [];
   let textChars = content.length;
+  let expectedType: "call" | "callresult" = "call";
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     const marker = canonicalTraceMarker(trimmed);
-    if (marker.status === "invalid") return false;
-    if (marker.status === "not-marker") continue;
+    if (marker.status === "invalid") return { status: "invalid" };
+    if (marker.status === "not-marker") {
+      if (hasGenericMarker(line)) return { status: "invalid" };
+      continue;
+    }
 
-    const expectedType = markerCount % 2 === 0 ? "call" : "callresult";
-    if (marker.type !== expectedType) return false;
-    markerCount += 1;
-    if (markerCount > WORKBENCH_MAX_CONTINUATIONS * 2) return false;
+    if (marker.type !== expectedType) return { status: "invalid" };
+    if (marker.type === "call") {
+      calls.push({ tool: marker.tool });
+      if (calls.length > WORKBENCH_MAX_CONTINUATIONS) {
+        return { status: "invalid" };
+      }
+      expectedType = "callresult";
+    } else {
+      const call = calls.at(-1);
+      if (!call) return { status: "invalid" };
+      call.result = marker.result;
+      expectedType = "call";
+    }
     textChars -= trimmed.length;
   }
-  return markerCount > 0 && textChars <= AGENT_MESSAGE_MAX_CHARS;
+  if (calls.length === 0) {
+    return hasGenericMarker(content)
+      ? { status: "invalid" }
+      : { status: "none" };
+  }
+  return { status: "valid", calls, textChars };
 }
 
-function isBoundedToolTransport(message: AgentChatMessage): boolean {
+function isValidMessageTransport(message: AgentChatMessage): boolean {
+  if (message.role === "user") {
+    return message.content.length <= AGENT_MESSAGE_MAX_CHARS;
+  }
   if (message.content.length > AGENT_TOOL_TRANSPORT_MAX_CHARS) return false;
-  if (message.role === "user") return false;
-  if (
-    message.role === "assistant" &&
-    !isBoundedWorkbenchTrace(message.content)
-  ) {
-    return false;
+
+  if (message.role === "assistant") {
+    const trace = parseWorkbenchTrace(message.content);
+    if (trace.status === "invalid") return false;
+    if (trace.status === "none") {
+      return message.content.length <= AGENT_MESSAGE_MAX_CHARS;
+    }
+    if (trace.textChars > AGENT_MESSAGE_MAX_CHARS) return false;
   }
   if (message.role === "data") {
     const result = parseContinuationResult(message.content);
@@ -201,10 +250,14 @@ export function continuationMatchesOfferedTool(
   }
   const result = parseContinuationResult(dataMessage.content);
   if (!result || !offeredToolNames.has(result.tool)) return false;
-  const call = splitToolNotes(assistantMessage.content)
-    .filter((segment) => segment.type === "call")
-    .at(-1);
-  return call?.type === "call" && call.tool === result.tool;
+  const trace = parseWorkbenchTrace(assistantMessage.content);
+  if (trace.status !== "valid") return false;
+  const call = trace.calls.at(-1);
+  if (!call || call.tool !== result.tool) return false;
+  return (
+    call.result === undefined ||
+    callResultNote(call.result) === callResultNote(result.envelope)
+  );
 }
 
 export function historyForModel(
@@ -272,10 +325,12 @@ export function parseAgentChatRequest(
         role: item.role as AgentChatMessage["role"],
         content: item.content,
       };
-      if (
-        item.content.length > AGENT_MESSAGE_MAX_CHARS &&
-        !isBoundedToolTransport(normalizedMessage)
-      ) {
+      if (!isValidMessageTransport(normalizedMessage)) {
+        if (normalizedMessage.role === "data") {
+          return {
+            error: "A continuation needs a valid tool result envelope.",
+          };
+        }
         return {
           error: `Message content must be ${AGENT_MESSAGE_MAX_CHARS} characters or fewer.`,
         };

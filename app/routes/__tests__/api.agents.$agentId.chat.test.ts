@@ -112,7 +112,7 @@ describe("agent chat upstream failures", () => {
         };
       })(),
     });
-    const resultText = "x".repeat(5_000);
+    const resultText = "x".repeat(4_000);
 
     const response = await action({
       request: new Request(
