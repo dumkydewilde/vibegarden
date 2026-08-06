@@ -1,9 +1,17 @@
 import { ArrowLeft, Bot } from "lucide-react";
-import { useCallback, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Form, Link, useNavigation } from "react-router";
 import { callErrorEnvelope, capCallResult } from "@vibegarden/agent-web";
 
 import type { Route } from "./+types/garden.agents.$id";
+import { agentMemory } from "~/components/workbench/memory.client";
+import { createRunner } from "~/components/workbench/runner.client";
 import { TraceChat } from "~/components/workbench/trace-chat";
 import {
   useAgentChat,
@@ -50,12 +58,53 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   return {
     ...loaded,
     canEdit: loaded.agent.ownerId === user.id,
+    runnerUrl: new URL("/agent-runner", env.RENDERER_ORIGIN).href,
+    userId: user.id,
     modelPrompt: buildAgentSystemPrompt(
       loaded.definition,
       club.club.name,
       [],
     ),
   };
+}
+
+export async function fetchWorkbenchPage(
+  clubSlug: string,
+  url: string,
+): Promise<string> {
+  const response = await fetch(
+    `/clubs/${encodeURIComponent(clubSlug)}/api/fetch-proxy`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as {
+    body?: unknown;
+    error?: unknown;
+  } | null;
+  if (!response.ok) {
+    throw new Error(
+      typeof payload?.error === "string" && payload.error
+        ? payload.error
+        : "The page could not be fetched.",
+    );
+  }
+  if (typeof payload?.body !== "string") {
+    throw new Error("The fetch proxy returned an invalid response.");
+  }
+  return payload.body;
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function rawRunnerResult(value: string, logs: string[]): string {
+  return logs.length === 0
+    ? value
+    : `${value}\n\nRunner logs:\n${logs.join("\n")}`;
 }
 
 export async function action({ request, context, params }: Route.ActionArgs) {
@@ -186,11 +235,44 @@ function WorkbenchChat({
   clubSlug,
   agentId,
   versionId,
+  definition,
+  runnerUrl,
+  userId,
 }: {
   clubSlug: string;
   agentId: string;
   versionId: string;
+  definition: AgentDefinition;
+  runnerUrl: string;
+  userId: string;
 }) {
+  const memory = useMemo(
+    () => agentMemory(agentId, userId),
+    [agentId, userId],
+  );
+  const runnerRef = useRef<ReturnType<typeof createRunner> | null>(null);
+  const fetchPageBody = useCallback(
+    (url: string) => fetchWorkbenchPage(clubSlug, url),
+    [clubSlug],
+  );
+
+  useEffect(() => {
+    const runner = createRunner({
+      runnerUrl,
+      host: {
+        fetchPage: fetchPageBody,
+        memoryGet: memory.get,
+        memorySet: memory.set,
+        memoryList: memory.list,
+      },
+    });
+    runnerRef.current = runner;
+    return () => {
+      runnerRef.current = null;
+      runner.dispose();
+    };
+  }, [fetchPageBody, memory, runnerUrl]);
+
   const fetchPage = useCallback<ToolExecutor>(
     async (call) => {
       if (typeof call.args.url !== "string") {
@@ -200,58 +282,92 @@ function WorkbenchChat({
       }
 
       try {
-        const response = await fetch(
-          `/clubs/${encodeURIComponent(clubSlug)}/api/fetch-proxy`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: call.args.url }),
-          },
-        );
-        const payload = (await response.json().catch(() => null)) as {
-          body?: unknown;
-          error?: unknown;
-        } | null;
-        if (!response.ok) {
-          return {
-            envelope: callErrorEnvelope(
-              typeof payload?.error === "string" && payload.error
-                ? payload.error
-                : "The page could not be fetched.",
-            ),
-          };
-        }
-        if (typeof payload?.body !== "string") {
-          return {
-            envelope: callErrorEnvelope(
-              "The fetch proxy returned an invalid response.",
-            ),
-          };
-        }
-        return { raw: payload.body, envelope: capCallResult(payload.body) };
+        const body = await fetchPageBody(call.args.url);
+        return { raw: body, envelope: capCallResult(body) };
       } catch (error) {
         return {
           envelope: callErrorEnvelope(
-            error instanceof Error && error.message
-              ? error.message
-              : "The page could not be fetched.",
+            errorMessage(error, "The page could not be fetched."),
           ),
         };
       }
     },
-    [clubSlug],
+    [fetchPageBody],
   );
+
+  const remember = useCallback<ToolExecutor>(
+    async (call) => {
+      const { key, value } = call.args;
+      if (typeof key !== "string" || typeof value !== "string") {
+        return {
+          envelope: callErrorEnvelope(
+            "remember needs string key and value arguments.",
+          ),
+        };
+      }
+      try {
+        await memory.set(key, value);
+        return { envelope: capCallResult(`Remembered ${key}.`) };
+      } catch (error) {
+        return {
+          envelope: callErrorEnvelope(
+            errorMessage(error, "The value could not be remembered."),
+          ),
+        };
+      }
+    },
+    [memory],
+  );
+
+  const recall = useCallback<ToolExecutor>(async () => {
+    try {
+      const raw = (await memory.list())
+        .map(({ key, value }) => `${key}: ${value}`)
+        .join("\n");
+      return { raw, envelope: capCallResult(raw) };
+    } catch (error) {
+      return {
+        envelope: callErrorEnvelope(
+          errorMessage(error, "Memory could not be recalled."),
+        ),
+      };
+    }
+  }, [memory]);
+
   const fallbackExecutor = useCallback<ToolExecutor>(
-    async () => ({
-      envelope: callErrorEnvelope("No executor for this tool yet."),
-    }),
-    [],
+    async (call) => {
+      const tool = definition.tools.find(({ name }) => name === call.tool);
+      if (!tool) {
+        return {
+          envelope: callErrorEnvelope("No executor for this tool yet."),
+        };
+      }
+      const runner = runnerRef.current;
+      if (!runner) {
+        return {
+          envelope: callErrorEnvelope("The tool runner is not ready yet."),
+        };
+      }
+      const result = await runner.run(tool.source, call.args);
+      if (!result.ok) {
+        return { envelope: callErrorEnvelope(result.error) };
+      }
+      return {
+        raw: rawRunnerResult(result.value, result.logs),
+        envelope: capCallResult(result.value),
+      };
+    },
+    [definition.tools],
+  );
+  const executors = useMemo(
+    () => ({ fetch_page: fetchPage, remember, recall }),
+    [fetchPage, recall, remember],
   );
   const { entries, send, busy, reset, rawResults } = useAgentChat({
     clubSlug,
     agentId,
     versionId,
-    executors: { fetch_page: fetchPage },
+    executors,
     fallbackExecutor,
   });
 
@@ -267,7 +383,15 @@ function WorkbenchChat({
 }
 
 export default function AgentWorkbench({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { agent, version, definition, canEdit, modelPrompt } = loaderData;
+  const {
+    agent,
+    version,
+    definition,
+    canEdit,
+    modelPrompt,
+    runnerUrl,
+    userId,
+  } = loaderData;
   const listPath = clubPath(params.clubSlug, "garden/agents");
 
   return (
@@ -330,6 +454,9 @@ export default function AgentWorkbench({ loaderData, actionData, params }: Route
             clubSlug={params.clubSlug}
             agentId={agent.id}
             versionId={version.id}
+            definition={definition}
+            runnerUrl={runnerUrl}
+            userId={userId}
           />
 
           <details className="group rounded-xl border bg-card shadow-sm">
