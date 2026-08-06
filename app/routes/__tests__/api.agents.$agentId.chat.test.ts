@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   startTurn: vi.fn(),
+  buildAgentSystemPrompt: vi.fn(),
 }));
 
 vi.mock("@vibegarden/agent-core", () => ({
@@ -31,7 +32,7 @@ vi.mock("~/lib/agents/repository.server", () => ({
   getAgentForUser: vi.fn().mockResolvedValue({ definition: {} }),
 }));
 vi.mock("~/lib/agents/prompt.server", () => ({
-  buildAgentSystemPrompt: vi.fn().mockReturnValue("system"),
+  buildAgentSystemPrompt: mocks.buildAgentSystemPrompt,
 }));
 
 import { action } from "../api.agents.$agentId.chat";
@@ -39,6 +40,7 @@ import { action } from "../api.agents.$agentId.chat";
 describe("agent chat upstream failures", () => {
   beforeEach(() => {
     mocks.startTurn.mockReset();
+    mocks.buildAgentSystemPrompt.mockReset().mockReturnValue("system");
   });
 
   it("returns 502 when starting the initial model request rejects", async () => {
@@ -63,5 +65,30 @@ describe("agent chat upstream failures", () => {
     await expect(response.json()).resolves.toEqual({
       error: "The language model is not reachable right now.",
     });
+  });
+
+  it("does not convert prompt construction failures into model-unreachable responses", async () => {
+    const promptError = new Error("invalid agent definition");
+    mocks.buildAgentSystemPrompt.mockImplementation(() => {
+      throw promptError;
+    });
+
+    await expect(
+      action({
+        request: new Request(
+          "https://example.com/clubs/club-1/api/agents/agent-1/chat",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              versionId: "version-1",
+              messages: [{ role: "user", content: "hello" }],
+            }),
+          },
+        ),
+        context: { get: () => ({ env: {} }) },
+        params: { clubSlug: "club-1", agentId: "agent-1" },
+      } as never),
+    ).rejects.toThrow(promptError);
+    expect(mocks.startTurn).not.toHaveBeenCalled();
   });
 });
