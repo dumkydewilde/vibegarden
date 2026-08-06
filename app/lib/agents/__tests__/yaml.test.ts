@@ -56,6 +56,38 @@ source: return 1;
     expect("error" in parsed && parsed.error).toMatch(/tool name/i);
   });
 
+  it("rejects an unknown root field in valid YAML", () => {
+    const parsed = toolFromYaml(`
+name: extract_title
+description: Extracts a page title from HTML.
+parameters:
+  type: object
+source: return args;
+surprise: must not be dropped
+`);
+
+    expect(parsed).toHaveProperty("error");
+    expect("error" in parsed && parsed.error).toMatch(
+      /surprise|unknown|unrecognized/i,
+    );
+  });
+
+  it("refuses to render a runtime tool with an extra own root field", () => {
+    const unsafe = Object.defineProperty({ ...tool }, "surprise", {
+      configurable: true,
+      enumerable: false,
+      value: "must not be dropped",
+    }) as AgentToolDef;
+
+    expect(() => toolToYaml(unsafe)).toThrow(
+      /surprise|unknown|unrecognized/i,
+    );
+  });
+
+  it("continues to render a canonical tool with exactly the valid fields", () => {
+    expect(toolFromYaml(toolToYaml(tool))).toEqual({ value: tool });
+  });
+
   it.each([".nan", ".inf", "1e999", "!!binary SGVsbG8="])(
     "rejects the non-JSON YAML parameter value %s without coercing it",
     (value) => {

@@ -25,7 +25,14 @@ const toolSchema = z.object({
   description: z.string().min(1).max(TOOL_DESCRIPTION_MAX_CHARS),
   parameters: z.record(z.string(), z.unknown()),
   source: z.string().min(1).max(TOOL_SOURCE_MAX_CHARS),
-});
+}).strict();
+
+const TOOL_ROOT_FIELDS: ReadonlySet<PropertyKey> = new Set([
+  "name",
+  "description",
+  "parameters",
+  "source",
+]);
 
 const skillSchema = z.object({
   name: z
@@ -63,6 +70,35 @@ function ownDataProperty(value: unknown, key: string): OwnDataProperty {
   return descriptor && "value" in descriptor
     ? { found: true, value: descriptor.value }
     : { found: false };
+}
+
+function canonicalToolRootError(raw: unknown): string | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return undefined;
+  }
+  if (Object.getPrototypeOf(raw) !== Object.prototype) {
+    return "tool must be a plain object";
+  }
+
+  for (const key of Reflect.ownKeys(raw)) {
+    if (!TOOL_ROOT_FIELDS.has(key)) {
+      return `tool has unknown root field "${String(key)}"`;
+    }
+  }
+
+  for (const key of TOOL_ROOT_FIELDS) {
+    if (typeof key !== "string") continue;
+    const descriptor = Object.getOwnPropertyDescriptor(raw, key);
+    if (
+      !descriptor ||
+      !descriptor.enumerable ||
+      !("value" in descriptor)
+    ) {
+      return `${key}: expected an enumerable own data property`;
+    }
+  }
+
+  return undefined;
 }
 
 function isLosslessJsonValue(
@@ -130,6 +166,9 @@ export function parseAgentTool(
   raw: unknown,
 ): { value: AgentToolDef; error?: never } | { value?: never; error: string } {
   try {
+    const rootError = canonicalToolRootError(raw);
+    if (rootError) return { error: rootError };
+
     const parsed = toolSchema.safeParse(raw);
     if (!parsed.success) {
       const first = parsed.error.issues[0];
