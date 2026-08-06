@@ -175,6 +175,41 @@ describe("useAgentChat", () => {
     expect(result.current.busy).toBe(false);
   });
 
+  it("keeps failed runner logs in raw trace state and out of model transport", async () => {
+    const marker = callNote({
+      tool: "extract_title",
+      args: { title: "Workbench" },
+    });
+    const envelope = callErrorEnvelope("extraction failed");
+    const raw = "Runner error:\nextraction failed\n\nRunner logs:\nstarted extraction";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(marker))
+      .mockResolvedValueOnce(new Response("I could not extract the title."));
+    vi.stubGlobal("fetch", fetchMock);
+    const fallbackExecutor = vi.fn().mockResolvedValue({ raw, envelope });
+    const { result } = renderHook(() =>
+      useAgentChat({
+        clubSlug: "garden-club",
+        agentId: "agent-1",
+        versionId: "version-1",
+        fallbackExecutor,
+      }),
+    );
+
+    await act(async () => result.current.send("Extract the title"));
+
+    const continuation = String(
+      (fetchMock.mock.calls[1]?.[1] as RequestInit | undefined)?.body,
+    );
+    expect(continuation).toContain("extraction failed");
+    expect(continuation).not.toContain("started extraction");
+    expect(result.current.rawResults.get(rawResultKey(1, 0))).toBe(raw);
+    expect(result.current.entries[1]?.content).toContain(
+      "I could not extract the title.",
+    );
+  });
+
   it("continues a multi-call trace after accumulated narration exceeds the message cap", async () => {
     const firstCall = callNote({
       tool: "fetch_page",

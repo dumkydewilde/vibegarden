@@ -7,11 +7,19 @@ import {
   useState,
 } from "react";
 import { Form, Link, useNavigation } from "react-router";
-import { callErrorEnvelope, capCallResult } from "@vibegarden/agent-web";
+import {
+  CALL_ERROR_MAX_CHARS,
+  callErrorEnvelope,
+  capCallResult,
+} from "@vibegarden/agent-web";
 
 import type { Route } from "./+types/garden.agents.$id";
 import { agentMemory } from "~/components/workbench/memory.client";
-import { createRunner } from "~/components/workbench/runner.client";
+import {
+  createRunner,
+  type HostHandlers,
+  type RunnerResult,
+} from "~/components/workbench/runner.client";
 import { TraceChat } from "~/components/workbench/trace-chat";
 import {
   useAgentChat,
@@ -68,10 +76,53 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   };
 }
 
+export type FetchWorkbenchPageResult = {
+  status: number;
+  contentType: string;
+  body: string;
+  totalChars: number;
+  truncated: boolean;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isFetchWorkbenchPageResult(
+  value: unknown,
+): value is FetchWorkbenchPageResult {
+  if (!isRecord(value)) return false;
+  const keys = Object.keys(value).sort();
+  const expected = [
+    "body",
+    "contentType",
+    "status",
+    "totalChars",
+    "truncated",
+  ];
+  if (
+    keys.length !== expected.length ||
+    !keys.every((key, index) => key === expected[index]) ||
+    !Number.isInteger(value.status) ||
+    (value.status as number) < 100 ||
+    (value.status as number) > 599 ||
+    typeof value.contentType !== "string" ||
+    typeof value.body !== "string" ||
+    !Number.isSafeInteger(value.totalChars) ||
+    (value.totalChars as number) < value.body.length ||
+    typeof value.truncated !== "boolean"
+  ) {
+    return false;
+  }
+  return value.truncated
+    ? value.totalChars > value.body.length
+    : value.totalChars === value.body.length;
+}
+
 export async function fetchWorkbenchPage(
   clubSlug: string,
   url: string,
-): Promise<string> {
+): Promise<FetchWorkbenchPageResult> {
   const response = await fetch(
     `/clubs/${encodeURIComponent(clubSlug)}/api/fetch-proxy`,
     {
@@ -80,31 +131,162 @@ export async function fetchWorkbenchPage(
       body: JSON.stringify({ url }),
     },
   );
-  const payload = (await response.json().catch(() => null)) as {
-    body?: unknown;
-    error?: unknown;
-  } | null;
+  const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     throw new Error(
-      typeof payload?.error === "string" && payload.error
+      isRecord(payload) && typeof payload.error === "string" && payload.error
         ? payload.error
         : "The page could not be fetched.",
     );
   }
-  if (typeof payload?.body !== "string") {
+  if (!isFetchWorkbenchPageResult(payload)) {
     throw new Error("The fetch proxy returned an invalid response.");
   }
-  return payload.body;
+  return payload;
 }
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
+const RUNNER_LOG_MAX_LINES = 50;
+const RUNNER_LOG_MAX_CHARS = 500;
+
+function boundedRunnerLogs(logs: string[]): string[] {
+  return logs
+    .slice(0, RUNNER_LOG_MAX_LINES)
+    .map((line) => line.slice(0, RUNNER_LOG_MAX_CHARS));
+}
+
 function rawRunnerResult(value: string, logs: string[]): string {
-  return logs.length === 0
+  const boundedLogs = boundedRunnerLogs(logs);
+  return boundedLogs.length === 0
     ? value
-    : `${value}\n\nRunner logs:\n${logs.join("\n")}`;
+    : `${value}\n\nRunner logs:\n${boundedLogs.join("\n")}`;
+}
+
+function rawRunnerError(error: string, logs: string[]): string {
+  const boundedError = error.slice(0, CALL_ERROR_MAX_CHARS);
+  const boundedLogs = boundedRunnerLogs(logs);
+  return boundedLogs.length === 0
+    ? `Runner error:\n${boundedError}`
+    : `Runner error:\n${boundedError}\n\nRunner logs:\n${boundedLogs.join("\n")}`;
+}
+
+type WorkbenchMemory = ReturnType<typeof agentMemory>;
+type WorkbenchRunner = {
+  run: (
+    source: string,
+    args: Record<string, unknown>,
+  ) => Promise<RunnerResult>;
+};
+
+export function createWorkbenchWiring({
+  definition,
+  fetchPage,
+  memory,
+  getRunner,
+}: {
+  definition: AgentDefinition;
+  fetchPage: (url: string) => Promise<FetchWorkbenchPageResult>;
+  memory: WorkbenchMemory;
+  getRunner: () => WorkbenchRunner | null;
+}): {
+  host: HostHandlers;
+  executors: Record<string, ToolExecutor>;
+  fallbackExecutor: ToolExecutor;
+} {
+  const fetchPageExecutor: ToolExecutor = async (call) => {
+    if (typeof call.args.url !== "string") {
+      return {
+        envelope: callErrorEnvelope("fetch_page needs a string URL."),
+      };
+    }
+
+    try {
+      const result = await fetchPage(call.args.url);
+      return { raw: result.body, envelope: capCallResult(result.body) };
+    } catch (error) {
+      return {
+        envelope: callErrorEnvelope(
+          errorMessage(error, "The page could not be fetched."),
+        ),
+      };
+    }
+  };
+
+  const remember: ToolExecutor = async (call) => {
+    const { key, value } = call.args;
+    if (typeof key !== "string" || typeof value !== "string") {
+      return {
+        envelope: callErrorEnvelope(
+          "remember needs string key and value arguments.",
+        ),
+      };
+    }
+    try {
+      await memory.set(key, value);
+      return { envelope: capCallResult(`Remembered ${key}.`) };
+    } catch (error) {
+      return {
+        envelope: callErrorEnvelope(
+          errorMessage(error, "The value could not be remembered."),
+        ),
+      };
+    }
+  };
+
+  const recall: ToolExecutor = async () => {
+    try {
+      const raw = (await memory.list())
+        .map(({ key, value }) => `${key}: ${value}`)
+        .join("\n");
+      return { raw, envelope: capCallResult(raw) };
+    } catch (error) {
+      return {
+        envelope: callErrorEnvelope(
+          errorMessage(error, "Memory could not be recalled."),
+        ),
+      };
+    }
+  };
+
+  const fallbackExecutor: ToolExecutor = async (call) => {
+    const tool = definition.tools.find(({ name }) => name === call.tool);
+    if (!tool) {
+      return {
+        envelope: callErrorEnvelope("No executor for this tool yet."),
+      };
+    }
+    const runner = getRunner();
+    if (!runner) {
+      return {
+        envelope: callErrorEnvelope("The tool runner is not ready yet."),
+      };
+    }
+    const result = await runner.run(tool.source, call.args);
+    if (!result.ok) {
+      return {
+        raw: rawRunnerError(result.error, result.logs),
+        envelope: callErrorEnvelope(result.error),
+      };
+    }
+    return {
+      raw: rawRunnerResult(result.value, result.logs),
+      envelope: capCallResult(result.value),
+    };
+  };
+
+  return {
+    host: {
+      fetchPage,
+      memoryGet: memory.get,
+      memorySet: memory.set,
+      memoryList: memory.list,
+    },
+    executors: { fetch_page: fetchPageExecutor, remember, recall },
+    fallbackExecutor,
+  };
 }
 
 export async function action({ request, context, params }: Route.ActionArgs) {
@@ -246,129 +428,48 @@ function WorkbenchChat({
   runnerUrl: string;
   userId: string;
 }) {
-  const memory = useMemo(
-    () => agentMemory(agentId, userId),
-    [agentId, userId],
-  );
+  const [memory, setMemory] = useState<WorkbenchMemory | null>(null);
   const runnerRef = useRef<ReturnType<typeof createRunner> | null>(null);
-  const fetchPageBody = useCallback(
+  const fetchPage = useCallback(
     (url: string) => fetchWorkbenchPage(clubSlug, url),
     [clubSlug],
   );
+  const getRunner = useCallback(() => runnerRef.current, []);
 
   useEffect(() => {
+    setMemory(agentMemory(agentId, userId));
+  }, [agentId, userId]);
+
+  const wiring = useMemo(
+    () => memory
+      ? createWorkbenchWiring({
+          definition,
+          fetchPage,
+          memory,
+          getRunner,
+        })
+      : null,
+    [definition, fetchPage, getRunner, memory],
+  );
+
+  useEffect(() => {
+    if (!wiring) return;
     const runner = createRunner({
       runnerUrl,
-      host: {
-        fetchPage: fetchPageBody,
-        memoryGet: memory.get,
-        memorySet: memory.set,
-        memoryList: memory.list,
-      },
+      host: wiring.host,
     });
     runnerRef.current = runner;
     return () => {
       runnerRef.current = null;
       runner.dispose();
     };
-  }, [fetchPageBody, memory, runnerUrl]);
-
-  const fetchPage = useCallback<ToolExecutor>(
-    async (call) => {
-      if (typeof call.args.url !== "string") {
-        return {
-          envelope: callErrorEnvelope("fetch_page needs a string URL."),
-        };
-      }
-
-      try {
-        const body = await fetchPageBody(call.args.url);
-        return { raw: body, envelope: capCallResult(body) };
-      } catch (error) {
-        return {
-          envelope: callErrorEnvelope(
-            errorMessage(error, "The page could not be fetched."),
-          ),
-        };
-      }
-    },
-    [fetchPageBody],
-  );
-
-  const remember = useCallback<ToolExecutor>(
-    async (call) => {
-      const { key, value } = call.args;
-      if (typeof key !== "string" || typeof value !== "string") {
-        return {
-          envelope: callErrorEnvelope(
-            "remember needs string key and value arguments.",
-          ),
-        };
-      }
-      try {
-        await memory.set(key, value);
-        return { envelope: capCallResult(`Remembered ${key}.`) };
-      } catch (error) {
-        return {
-          envelope: callErrorEnvelope(
-            errorMessage(error, "The value could not be remembered."),
-          ),
-        };
-      }
-    },
-    [memory],
-  );
-
-  const recall = useCallback<ToolExecutor>(async () => {
-    try {
-      const raw = (await memory.list())
-        .map(({ key, value }) => `${key}: ${value}`)
-        .join("\n");
-      return { raw, envelope: capCallResult(raw) };
-    } catch (error) {
-      return {
-        envelope: callErrorEnvelope(
-          errorMessage(error, "Memory could not be recalled."),
-        ),
-      };
-    }
-  }, [memory]);
-
-  const fallbackExecutor = useCallback<ToolExecutor>(
-    async (call) => {
-      const tool = definition.tools.find(({ name }) => name === call.tool);
-      if (!tool) {
-        return {
-          envelope: callErrorEnvelope("No executor for this tool yet."),
-        };
-      }
-      const runner = runnerRef.current;
-      if (!runner) {
-        return {
-          envelope: callErrorEnvelope("The tool runner is not ready yet."),
-        };
-      }
-      const result = await runner.run(tool.source, call.args);
-      if (!result.ok) {
-        return { envelope: callErrorEnvelope(result.error) };
-      }
-      return {
-        raw: rawRunnerResult(result.value, result.logs),
-        envelope: capCallResult(result.value),
-      };
-    },
-    [definition.tools],
-  );
-  const executors = useMemo(
-    () => ({ fetch_page: fetchPage, remember, recall }),
-    [fetchPage, recall, remember],
-  );
+  }, [runnerUrl, wiring]);
   const { entries, send, busy, reset, rawResults } = useAgentChat({
     clubSlug,
     agentId,
     versionId,
-    executors,
-    fallbackExecutor,
+    executors: wiring?.executors,
+    fallbackExecutor: wiring?.fallbackExecutor,
   });
 
   return (
