@@ -70,21 +70,29 @@ export async function action({ request, context, params }: Route.ActionArgs) {
       content: message.content,
     }));
 
-  const turn = await startTurn(
-    {
-      apiKey,
-      model: model.id,
-      systemPrompt: buildAgentSystemPrompt(
-        loaded.definition,
-        club.club.name,
+  let turn: Awaited<ReturnType<typeof startTurn>>;
+  try {
+    turn = await startTurn(
+      {
+        apiKey,
+        model: model.id,
+        systemPrompt: buildAgentSystemPrompt(
+          loaded.definition,
+          club.club.name,
+          tools,
+        ),
         tools,
-      ),
-      tools,
-      maxToolRounds: 3,
-      headers: { "X-Title": "Vibe Garden Agent Workbench" },
-    },
-    history,
-  );
+        maxToolRounds: 3,
+        headers: { "X-Title": "Vibe Garden Agent Workbench" },
+      },
+      history,
+    );
+  } catch {
+    return Response.json(
+      { error: "The language model is not reachable right now." },
+      { status: 502 },
+    );
+  }
   if (!turn.ok) {
     return Response.json(
       { error: "The language model is not reachable right now." },
