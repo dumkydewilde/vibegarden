@@ -1,9 +1,17 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { useState } from "react";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import type { AgentDefinition } from "~/lib/agents/contracts";
 import { DefinitionEditor } from "../definition-editor";
+import { useScopedToolProposal } from "../use-scoped-tool-proposal";
 
 const definition: AgentDefinition = {
   version: 1,
@@ -18,6 +26,13 @@ const definition: AgentDefinition = {
   ],
   skills: [],
   builtins: { fetchPage: true, memory: true },
+};
+
+const stagedTool = {
+  name: "extract_article_text",
+  description: "Extracts readable article text from fetched HTML.",
+  parameters: { type: "object", properties: {} },
+  source: "return String(args.html ?? '');",
 };
 
 function renderEditor(
@@ -38,6 +53,44 @@ function renderEditor(
     },
   ]);
   render(<Stub />);
+}
+
+function renderScopedEditor() {
+  const Stub = createRoutesStub([
+    {
+      path: "/",
+      Component: () => {
+        const [agentId, setAgentId] = useState("agent-a");
+        const proposal = useScopedToolProposal(agentId, true);
+        return (
+          <>
+            <button type="button" onClick={() => setAgentId("agent-a")}>
+              Agent A
+            </button>
+            <button type="button" onClick={() => setAgentId("agent-b")}>
+              Agent B
+            </button>
+            <DefinitionEditor
+              key={agentId}
+              agent={{ name: "Text helper", description: "Works with text." }}
+              definition={definition}
+              stagedTool={proposal}
+            />
+          </>
+        );
+      },
+      action: () => null,
+    },
+  ]);
+  render(<Stub />);
+}
+
+function applyProposal(agentId: string) {
+  window.dispatchEvent(
+    new CustomEvent("workbench:apply-tool", {
+      detail: { agentId, tool: stagedTool },
+    }),
+  );
 }
 
 describe("DefinitionEditor", () => {
@@ -164,13 +217,6 @@ source: return args;
   });
 
   it("stages a sidekick proposal without discarding current tools", () => {
-    const stagedTool = {
-      name: "extract_article_text",
-      description: "Extracts readable article text from fetched HTML.",
-      parameters: { type: "object", properties: {} },
-      source: "return String(args.html ?? '');",
-    };
-
     renderEditor(definition, stagedTool);
 
     expect(screen.getByText("extract_article_text")).toBeVisible();
@@ -183,6 +229,23 @@ source: return args;
     fireEvent.click(
       screen.getByRole("button", { name: "Remove extract_article_text" }),
     );
+    expect(screen.queryByText("extract_article_text")).toBeNull();
+  });
+
+  it("does not auto-stage a removed proposal after returning to its agent", () => {
+    renderScopedEditor();
+
+    act(() => applyProposal("agent-a"));
+    expect(screen.getByText("extract_article_text")).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove extract_article_text" }),
+    );
+    expect(screen.queryByText("extract_article_text")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Agent B" }));
+    expect(screen.queryByText("extract_article_text")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Agent A" }));
+
     expect(screen.queryByText("extract_article_text")).toBeNull();
   });
 });

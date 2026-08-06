@@ -30,6 +30,9 @@ describe("useScopedToolProposal", () => {
     act(() => apply("agent-a"));
     expect(result.current).toEqual(tool);
 
+    rerender({ agentId: "agent-a" });
+    expect(result.current).toEqual(tool);
+
     rerender({ agentId: "agent-b" });
     expect(result.current).toBeNull();
 
@@ -38,6 +41,22 @@ describe("useScopedToolProposal", () => {
 
     act(() => apply("agent-b"));
     expect(result.current).toEqual(tool);
+  });
+
+  it("does not revive a proposal after leaving and returning to its agent", () => {
+    const { result, rerender } = renderHook(
+      ({ agentId }) => useScopedToolProposal(agentId, true),
+      { initialProps: { agentId: "agent-a" } },
+    );
+
+    act(() => apply("agent-a"));
+    expect(result.current).toEqual(tool);
+
+    rerender({ agentId: "agent-b" });
+    expect(result.current).toBeNull();
+
+    rerender({ agentId: "agent-a" });
+    expect(result.current).toBeNull();
   });
 
   it("clears the departed agent context on navigation and unmount", () => {

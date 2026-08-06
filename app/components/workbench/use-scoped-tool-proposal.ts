@@ -1,8 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  parseAgentTool,
-  type AgentToolDef,
-} from "~/lib/agents/contracts";
+import { parseAgentTool, type AgentToolDef } from "~/lib/agents/contracts";
 
 type ScopedProposal = {
   agentId: string;
@@ -10,11 +7,7 @@ type ScopedProposal = {
 };
 
 function parseScopedProposal(value: unknown): ScopedProposal | null {
-  if (
-    value === null ||
-    typeof value !== "object" ||
-    Array.isArray(value)
-  ) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
   const detail = value as Record<string, unknown>;
@@ -26,9 +19,7 @@ function parseScopedProposal(value: unknown): ScopedProposal | null {
     return null;
   }
   const parsed = parseAgentTool(detail.tool);
-  return parsed.error
-    ? null
-    : { agentId: detail.agentId, tool: parsed.value };
+  return parsed.error ? null : { agentId: detail.agentId, tool: parsed.value };
 }
 
 export function useScopedToolProposal(
@@ -36,6 +27,10 @@ export function useScopedToolProposal(
   enabled: boolean,
 ): AgentToolDef | null {
   const [proposal, setProposal] = useState<ScopedProposal | null>(null);
+
+  useEffect(() => {
+    setProposal(null);
+  }, [agentId]);
 
   useEffect(() => {
     if (!enabled) return;
