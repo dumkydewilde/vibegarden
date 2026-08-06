@@ -6,7 +6,11 @@ import {
   capCallResult,
 } from "@vibegarden/agent-web";
 
-import { useAgentChat } from "../use-agent-chat";
+import {
+  AGENT_MESSAGE_MAX_CHARS,
+  parseAgentChatRequest,
+} from "~/lib/agents/chat-request";
+import { rawResultKey, useAgentChat } from "../use-agent-chat";
 
 const encoder = new TextEncoder();
 
@@ -165,7 +169,122 @@ describe("useAgentChat", () => {
         content: `${marker}\n\n${callResultNote(envelope)}\n\nThe guide says to start with a small test.`,
       },
     ]);
-    expect(result.current.rawResults.get(1)).toBe(raw);
+    expect(result.current.rawResults.get(rawResultKey(1, 0))).toBe(raw);
     expect(result.current.busy).toBe(false);
+  });
+
+  it("continues a multi-call trace after accumulated narration exceeds the message cap", async () => {
+    const firstCall = callNote({
+      tool: "fetch_page",
+      args: { url: "https://example.com/first" },
+    });
+    const secondCall = callNote({
+      tool: "fetch_page",
+      args: { url: "https://example.com/second" },
+    });
+    const longNarration = "n".repeat(AGENT_MESSAGE_MAX_CHARS + 500);
+    const responses = [firstCall, `${longNarration}\n\n${secondCall}`, "Done."];
+    const fetchMock = vi.fn().mockImplementation((_url, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body));
+      const parsed = parseAgentChatRequest(request);
+      if ("error" in parsed) {
+        return Promise.resolve(new Response(null, { status: 400 }));
+      }
+      const text = responses.shift();
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(encoder.encode(text));
+              controller.close();
+            },
+          }),
+        ),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const executor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        raw: "first raw",
+        envelope: capCallResult("first result"),
+      })
+      .mockResolvedValueOnce({
+        raw: "second raw",
+        envelope: capCallResult("second result"),
+      });
+    const { result } = renderHook(() =>
+      useAgentChat({
+        clubSlug: "garden-club",
+        agentId: "agent-1",
+        versionId: "version-1",
+        executors: { fetch_page: executor },
+      }),
+    );
+
+    await act(async () => result.current.send("Read both pages"));
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(executor).toHaveBeenCalledTimes(2);
+    expect(result.current.entries[1]?.content).toContain(longNarration);
+    expect(result.current.entries[1]?.content).toContain("Done.");
+    expect(result.current.entries[1]?.content).not.toContain("not reachable");
+    expect(result.current.rawResults).toEqual(
+      new Map([
+        [rawResultKey(1, 0), "first raw"],
+        [rawResultKey(1, 1), "second raw"],
+      ]),
+    );
+
+    const finalContinuation = JSON.parse(
+      String(
+        (fetchMock.mock.calls[2]?.[1] as RequestInit | undefined)?.body,
+      ),
+    );
+    const assistantTransport = finalContinuation.messages.at(-2)?.content;
+    expect(assistantTransport).toContain(firstCall);
+    expect(assistantTransport).toContain(secondCall);
+    expect(assistantTransport.length).toBeLessThan(
+      result.current.entries[1]!.content.length,
+    );
+    expect(parseAgentChatRequest(finalContinuation)).toHaveProperty("value");
+  });
+
+  it("does not run a tool when no admissible continuation can carry its trace", async () => {
+    const oversizedCall = callNote({
+      tool: "fetch_page",
+      args: { url: `https://example.com/${"x".repeat(50_000)}` },
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(oversizedCall));
+            controller.close();
+          },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const executor = vi.fn().mockResolvedValue({
+      raw: "unused",
+      envelope: capCallResult("unused"),
+    });
+    const { result } = renderHook(() =>
+      useAgentChat({
+        clubSlug: "garden-club",
+        agentId: "agent-1",
+        versionId: "version-1",
+        executors: { fetch_page: executor },
+      }),
+    );
+
+    await act(async () => result.current.send("Try the oversized call"));
+
+    expect(executor).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.current.entries[1]?.content).toContain(
+      "The tool was not run because its result could not be continued safely.",
+    );
   });
 });

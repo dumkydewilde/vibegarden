@@ -4,7 +4,11 @@ import Markdown from "react-markdown";
 import { splitToolNotes } from "@vibegarden/agent-web";
 
 import { CallCard } from "./call-card";
-import type { ChatEntry } from "./use-agent-chat";
+import {
+  rawResultKey,
+  type ChatEntry,
+  type RawResultKey,
+} from "./use-agent-chat";
 import { ContentLink } from "~/components/content-link";
 import { Button } from "~/components/ui/button";
 import {
@@ -24,7 +28,7 @@ export function TraceChat({
   reset,
 }: {
   entries: ChatEntry[];
-  rawResults: Map<number, string>;
+  rawResults: Map<RawResultKey, string>;
   busy: boolean;
   send: (text: string) => Promise<void>;
   reset: () => void;
@@ -89,6 +93,7 @@ export function TraceChat({
               }
 
               const segments = splitToolNotes(entry.content);
+              let resultIndex = 0;
               return (
                 <div
                   key={`${entry.role}-${entryIndex}`}
@@ -118,15 +123,17 @@ export function TraceChat({
                         segment.type === "call" ||
                         segment.type === "callresult"
                       ) {
+                        const raw =
+                          segment.type === "callresult"
+                            ? rawResults.get(
+                                rawResultKey(entryIndex, resultIndex++),
+                              )
+                            : undefined;
                         return (
                           <CallCard
                             key={segmentIndex}
                             segment={segment}
-                            raw={
-                              segment.type === "callresult"
-                                ? rawResults.get(entryIndex)
-                                : undefined
-                            }
+                            raw={raw}
                           />
                         );
                       }
@@ -138,7 +145,10 @@ export function TraceChat({
             })
           )}
         </div>
-        <form onSubmit={submit} className="flex gap-2">
+        <form
+          onSubmit={submit}
+          className="flex gap-2 md:pr-24 2xl:pr-0"
+        >
           <Input
             aria-label="Message"
             value={message}

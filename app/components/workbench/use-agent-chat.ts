@@ -1,12 +1,21 @@
 import { useCallback, useState } from "react";
 import {
+  callNote,
   callErrorEnvelope,
   callResultNote,
   splitToolNotes,
+  toModelText,
   type CallResultEnvelope,
+  type ToolNoteSegment,
 } from "@vibegarden/agent-web";
 
-import { WORKBENCH_MAX_CONTINUATIONS } from "~/lib/agents/chat-request";
+import {
+  AGENT_MESSAGE_MAX_CHARS,
+  AGENT_TOOL_TRANSPORT_MAX_CHARS,
+  parseAgentChatRequest,
+  WORKBENCH_MAX_CONTINUATIONS,
+  type AgentChatMessage,
+} from "~/lib/agents/chat-request";
 
 export type ChatEntry = {
   role: "user" | "assistant";
@@ -34,6 +43,110 @@ const EMPTY_EXECUTORS: Record<string, ToolExecutor> = {};
 const DEFAULT_FALLBACK_EXECUTOR: ToolExecutor = async () => ({
   envelope: callErrorEnvelope("No executor for this tool yet."),
 });
+const UNSAFE_CONTINUATION =
+  "The tool finished, but this trace could not be continued safely.";
+const UNSAFE_TOOL_CALL =
+  "The tool was not run because its result could not be continued safely.";
+
+export type RawResultKey = `${number}:${number}`;
+
+export function rawResultKey(
+  entryIndex: number,
+  resultIndex: number,
+): RawResultKey {
+  return `${entryIndex}:${resultIndex}`;
+}
+
+function traceMarker(segment: ToolNoteSegment): string | null {
+  if (segment.type === "call") {
+    return callNote({ tool: segment.tool, args: segment.args });
+  }
+  if (segment.type === "callresult") {
+    return callResultNote(segment.result);
+  }
+  return null;
+}
+
+function buildTraceTransport(
+  segments: ToolNoteSegment[],
+  narrationChars: number,
+): string {
+  let remaining = narrationChars;
+  const retainedText = new Map<number, string>();
+  for (let index = segments.length - 1; index >= 0 && remaining > 0; index--) {
+    const segment = segments[index];
+    if (segment?.type !== "text") continue;
+    const text = segment.text.slice(-remaining);
+    if (text) retainedText.set(index, text);
+    remaining -= text.length;
+  }
+
+  return segments
+    .flatMap((segment, index) => {
+      const marker = traceMarker(segment);
+      if (marker) return [marker];
+      if (segment.type === "text") {
+        const text = retainedText.get(index);
+        return text ? [text] : [];
+      }
+      return [];
+    })
+    .join("\n\n");
+}
+
+/** Keep the complete trace in browser state while bounding model transport. */
+function assistantContentForTransport(content: string): string | null {
+  const segments = splitToolNotes(content);
+  const traceSegments = segments.filter(
+    (segment) => segment.type === "call" || segment.type === "callresult",
+  );
+  if (traceSegments.length === 0) {
+    return content.slice(-AGENT_MESSAGE_MAX_CHARS);
+  }
+
+  let expected: "call" | "callresult" = "call";
+  let markerChars = 0;
+  for (const segment of traceSegments) {
+    if (segment.type !== expected) return null;
+    const marker = traceMarker(segment);
+    if (!marker) return null;
+    markerChars += marker.length;
+    expected = expected === "call" ? "callresult" : "call";
+  }
+
+  const narrationChars = segments.reduce(
+    (total, segment) =>
+      total + (segment.type === "text" ? segment.text.length : 0),
+    0,
+  );
+  const isValid = (candidate: string) =>
+    candidate.length <= AGENT_TOOL_TRANSPORT_MAX_CHARS &&
+    candidate.length - markerChars <= AGENT_MESSAGE_MAX_CHARS &&
+    toModelText(candidate).length <= AGENT_MESSAGE_MAX_CHARS;
+
+  const markerOnly = buildTraceTransport(segments, 0);
+  if (!isValid(markerOnly)) return null;
+
+  let low = 0;
+  let high = Math.min(narrationChars, AGENT_MESSAGE_MAX_CHARS);
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (isValid(buildTraceTransport(segments, middle))) {
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return buildTraceTransport(segments, low);
+}
+
+function entriesForTransport(entries: ChatEntry[]): AgentChatMessage[] {
+  return entries.flatMap((entry) => {
+    if (entry.role === "user") return [entry];
+    const content = assistantContentForTransport(entry.content);
+    return content === null ? [] : [{ role: "assistant", content }];
+  });
+}
 
 function executorError(error: unknown): CallResultEnvelope {
   return callErrorEnvelope(
@@ -54,10 +167,10 @@ export function useAgentChat({
   send: (text: string) => Promise<void>;
   busy: boolean;
   reset: () => void;
-  rawResults: Map<number, string>;
+  rawResults: Map<RawResultKey, string>;
 } {
   const [entries, setEntries] = useState<ChatEntry[]>([]);
-  const [rawResults, setRawResults] = useState<Map<number, string>>(
+  const [rawResults, setRawResults] = useState<Map<RawResultKey, string>>(
     () => new Map(),
   );
   const [busy, setBusy] = useState(false);
@@ -69,6 +182,7 @@ export function useAgentChat({
 
       const userEntry: ChatEntry = { role: "user", content };
       const history = [...entries, userEntry];
+      const transportHistory = entriesForTransport(history);
       const assistantIndex = history.length;
       let assistantAdded = false;
       let assistantText = "";
@@ -137,8 +251,34 @@ export function useAgentChat({
         }
       };
 
+      const continuationMessages = (
+        assistantContent: string,
+        tool: string,
+        envelope: CallResultEnvelope,
+      ): AgentChatMessage[] | null => {
+        const assistantTransport =
+          assistantContentForTransport(assistantContent);
+        if (assistantTransport === null) return null;
+        const messages: AgentChatMessage[] = [
+          ...transportHistory,
+          { role: "assistant", content: assistantTransport },
+          {
+            role: "data",
+            content: JSON.stringify({ tool, envelope }),
+          },
+        ];
+        return "error" in
+          parseAgentChatRequest({
+            versionId,
+            continuation: true,
+            messages,
+          })
+          ? null
+          : messages;
+      };
+
       try {
-        await streamTurn(history, false);
+        await streamTurn(transportHistory, false);
 
         for (
           let callCount = 1;
@@ -147,6 +287,19 @@ export function useAgentChat({
         ) {
           const last = splitToolNotes(assistantText).at(-1);
           if (last?.type !== "call") break;
+
+          if (callCount < WORKBENCH_MAX_CONTINUATIONS) {
+            const preflightEnvelope = callErrorEnvelope("");
+            const preflight = continuationMessages(
+              `${assistantText}\n\n${callResultNote(preflightEnvelope)}`,
+              last.tool,
+              preflightEnvelope,
+            );
+            if (preflight === null) {
+              appendAssistant(`\n\n${UNSAFE_TOOL_CALL}`);
+              break;
+            }
+          }
 
           const executor = executors[last.tool] ?? fallbackExecutor;
           let execution: Awaited<ReturnType<ToolExecutor>>;
@@ -159,11 +312,17 @@ export function useAgentChat({
             execution = { envelope: executorError(error) };
           }
 
+          const resultIndex = splitToolNotes(assistantText).filter(
+            (segment) => segment.type === "callresult",
+          ).length;
           appendAssistant(`\n\n${callResultNote(execution.envelope)}`);
           if ("raw" in execution && typeof execution.raw === "string") {
             setRawResults((current) => {
               const next = new Map(current);
-              next.set(assistantIndex, execution.raw);
+              next.set(
+                rawResultKey(assistantIndex, resultIndex),
+                execution.raw,
+              );
               return next;
             });
           }
@@ -173,20 +332,17 @@ export function useAgentChat({
             break;
           }
 
-          await streamTurn(
-            [
-              ...history,
-              { role: "assistant", content: assistantText },
-              {
-                role: "data",
-                content: JSON.stringify({
-                  tool: last.tool,
-                  envelope: execution.envelope,
-                }),
-              },
-            ],
-            true,
+          const messages = continuationMessages(
+            assistantText,
+            last.tool,
+            execution.envelope,
           );
+          if (messages === null) {
+            appendAssistant(`\n\n${UNSAFE_CONTINUATION}`);
+            break;
+          }
+
+          await streamTurn(messages, true);
         }
       } catch {
         if (assistantAdded) {

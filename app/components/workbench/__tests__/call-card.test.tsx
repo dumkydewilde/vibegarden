@@ -1,7 +1,15 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import {
+  callErrorEnvelope,
+  callNote,
+  callResultNote,
+  capCallResult,
+} from "@vibegarden/agent-web";
 
 import { CallCard } from "../call-card";
+import { TraceChat } from "../trace-chat";
+import { rawResultKey } from "../use-agent-chat";
 
 describe("CallCard", () => {
   it("renders a tool call name and its formatted arguments", () => {
@@ -61,5 +69,28 @@ describe("CallCard", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "The target refused access.",
     );
+  });
+
+  it("keeps each raw payload attached to its own result segment", () => {
+    const assistant = [
+      callNote({ tool: "fetch_page", args: { url: "https://one.example" } }),
+      callResultNote(capCallResult("first model excerpt")),
+      "Trying another source.",
+      callNote({ tool: "fetch_page", args: { url: "https://two.example" } }),
+      callResultNote(callErrorEnvelope("The second fetch failed.")),
+    ].join("\n\n");
+
+    render(
+      <TraceChat
+        entries={[{ role: "assistant", content: assistant }]}
+        rawResults={new Map([[rawResultKey(0, 0), "first raw payload"]])}
+        busy={false}
+        send={async () => {}}
+        reset={() => {}}
+      />,
+    );
+
+    expect(screen.getAllByText("first raw payload")).toHaveLength(1);
+    expect(screen.getByText("The second fetch failed.")).toBeVisible();
   });
 });
