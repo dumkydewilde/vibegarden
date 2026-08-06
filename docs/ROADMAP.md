@@ -274,9 +274,9 @@ tools, skills, memory) in a glass-box UI. Spec:
 
 - [x] Stage 1: schema, CRUD, prompt-only agents in the workbench
 - [x] Stage 2: fetch_page via SSRF-guarded proxy + raw vs sent-to-model trace
-- [ ] Stage 3: sandboxed runner (usercontent origin), user JS tools, memory
-- [ ] Stage 4: skills (use_skill) + Gardener propose_tool sidekick
-- [ ] Stage 5: club sharing with pinned versions, try-it, remix
+- [x] Stage 3: sandboxed runner (usercontent origin), user JS tools, memory
+- [x] Stage 4: skills (use_skill) + Gardener propose_tool sidekick
+- [x] Stage 5: club sharing with pinned versions, try-it, remix
 
 ## Later / ideas
 

@@ -8,6 +8,7 @@ import {
   deleteAgent,
   getAgentForUser,
   listAgents,
+  remixAgent,
   saveAgentVersion,
   setAgentSharing,
   type AgentScope,
@@ -319,6 +320,80 @@ describe("agents repository", () => {
     expect((await listAgents(db, memberScope)).shared).toEqual([]);
     await expect(
       getAgentForUser(db, memberScope, created.agent.id),
+    ).resolves.toBeNull();
+  });
+
+  it("does not remix a private agent for another club member", async () => {
+    const db = getDb({ DB: env.DB } as Env);
+    const created = await createAgent(db, ownerScope, {
+      name: "Private source",
+      description: "Owner only",
+      definition: definition("Private instructions"),
+    });
+
+    await expect(
+      remixAgent(db, memberScope, created.agent.id),
+    ).resolves.toBeNull();
+    await expect(listAgents(db, memberScope)).resolves.toEqual({
+      mine: [],
+      shared: [],
+    });
+  });
+
+  it("remixes the pinned shared definition instead of the latest owner draft", async () => {
+    const db = getDb({ DB: env.DB } as Env);
+    const sharedDefinition: AgentDefinition = {
+      ...definition("Pinned shared instructions"),
+      tools: [
+        {
+          name: "shared_tool",
+          description: "Returns the pinned value.",
+          parameters: { type: "object", properties: {} },
+          source: 'return "shared";',
+        },
+      ],
+    };
+    const created = await createAgent(db, ownerScope, {
+      name: "Source agent",
+      description: "The source description",
+      definition: sharedDefinition,
+    });
+    await setAgentSharing(db, ownerScope, created.agent.id, true);
+    await saveAgentVersion(db, ownerScope, created.agent.id, {
+      name: "Renamed private draft",
+      description: "Private draft description",
+      definition: definition("Unshared draft instructions"),
+    });
+
+    const remixed = await remixAgent(db, memberScope, created.agent.id);
+    const loaded = remixed
+      ? await getAgentForUser(db, memberScope, remixed.id)
+      : null;
+
+    expect(remixed).toMatchObject({
+      clubId: memberScope.clubId,
+      ownerId: memberScope.userId,
+      name: "Remix of Renamed private draft",
+      description: "Private draft description",
+      visibility: "private",
+      sharedVersionId: null,
+    });
+    expect(loaded?.definition).toEqual(sharedDefinition);
+    expect(loaded?.version.createdBy).toBe(memberScope.userId);
+    expect(loaded?.agent.latestVersionId).toBe(loaded?.version.id);
+  });
+
+  it("does not remix a shared agent into another club", async () => {
+    const db = getDb({ DB: env.DB } as Env);
+    const created = await createAgent(db, ownerScope, {
+      name: "Club source",
+      description: "Same club only",
+      definition: definition("Club instructions"),
+    });
+    await setAgentSharing(db, ownerScope, created.agent.id, true);
+
+    await expect(
+      remixAgent(db, otherClubScope, created.agent.id),
     ).resolves.toBeNull();
   });
 

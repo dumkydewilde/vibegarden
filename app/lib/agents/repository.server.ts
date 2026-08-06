@@ -273,6 +273,43 @@ export async function setAgentSharing(
   return rows[0] ?? null;
 }
 
+export async function remixAgent(
+  db: Db,
+  scope: AgentScope,
+  agentId: string,
+): Promise<Agent | null> {
+  const rows = await db
+    .select()
+    .from(agents)
+    .where(
+      and(
+        eq(agents.id, agentId),
+        eq(agents.clubId, scope.clubId),
+        eq(agents.visibility, "club"),
+        isNotNull(agents.sharedVersionId),
+        isNull(agents.deletedAt),
+      ),
+    )
+    .limit(1);
+  const source = rows[0];
+  if (!source?.sharedVersionId) return null;
+
+  const shared = await getAgentForUser(
+    db,
+    scope,
+    source.id,
+    source.sharedVersionId,
+  );
+  if (!shared || shared.version.id !== source.sharedVersionId) return null;
+
+  const { agent } = await createAgent(db, scope, {
+    name: `Remix of ${source.name}`,
+    description: source.description,
+    definition: shared.definition,
+  });
+  return agent;
+}
+
 export async function deleteAgent(
   db: Db,
   scope: AgentScope,
