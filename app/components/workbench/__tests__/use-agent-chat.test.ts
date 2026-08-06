@@ -457,6 +457,60 @@ describe("useAgentChat", () => {
     );
   });
 
+  it("uses the fallback for a constructor tool without calling an inherited executor", async () => {
+    const marker = callNote({
+      tool: "constructor",
+      args: { value: "Workbench" },
+    });
+    const envelope = capCallResult("loaded source output");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(marker))
+      .mockResolvedValueOnce(new Response("The loaded tool returned a value."));
+    vi.stubGlobal("fetch", fetchMock);
+    const inheritedExecutor = vi.fn().mockResolvedValue({
+      envelope: capCallResult("inherited output"),
+    });
+    const executors = Object.create({
+      constructor: inheritedExecutor,
+    }) as Record<string, typeof inheritedExecutor>;
+    const fallbackExecutor = vi.fn().mockResolvedValue({
+      raw: "loaded source output",
+      envelope,
+    });
+    const { result } = renderHook(() =>
+      useAgentChat({
+        clubSlug: "garden-club",
+        agentId: "agent-1",
+        versionId: "version-1",
+        offeredToolNames: ["constructor"],
+        executors,
+        fallbackToolNames: ["constructor"],
+        fallbackExecutor,
+      }),
+    );
+
+    await act(async () => result.current.send("Run the loaded tool"));
+
+    expect(inheritedExecutor).not.toHaveBeenCalled();
+    expect(fallbackExecutor).toHaveBeenCalledWith({
+      tool: "constructor",
+      args: { value: "Workbench" },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.current.entries[1]?.content).toBe(
+      `${marker}\n\n${callResultNote(envelope)}\n\nThe loaded tool returned a value.`,
+    );
+    expect(
+      splitToolNotes(result.current.entries[1]?.content ?? "").map(
+        (segment) => segment.type,
+      ),
+    ).toEqual(["call", "callresult", "text"]);
+    expect(result.current.rawResults.get(rawResultKey(1, 0))).toBe(
+      "loaded source output",
+    );
+  });
+
   it("does not admit an offered user tool before its runner executor is ready", async () => {
     const marker = callNote({ tool: "extract_title", args: {} });
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response(marker));

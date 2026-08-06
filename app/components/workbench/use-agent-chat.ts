@@ -324,7 +324,9 @@ export function useAgentChat({
           if (last?.type !== "call") break;
 
           const offered = offeredToolNames.includes(last.tool);
-          const directExecutor = executors[last.tool];
+          const directExecutor = Object.hasOwn(executors, last.tool)
+            ? executors[last.tool]
+            : undefined;
           const fallbackEnabled = fallbackToolNames.includes(last.tool);
           const executor = offered
             ? directExecutor ?? (fallbackEnabled ? fallbackExecutor : null)
