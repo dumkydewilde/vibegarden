@@ -11,6 +11,10 @@ export default [
   route("join/:token", "routes/join.tsx"),
   route("clubs/:clubSlug/welcome", "routes/welcome.tsx"),
   route("clubs/:clubSlug/api/chat", "routes/api.chat.ts"),
+  route(
+    "clubs/:clubSlug/api/agents/:agentId/chat",
+    "routes/api.agents.$agentId.chat.ts",
+  ),
   route("clubs/:clubSlug/api/thread", "routes/api.thread.ts"),
   route("clubs/:clubSlug/api/feedback", "routes/api.feedback.ts"),
   route("clubs/:clubSlug", "routes/app-layout.tsx", [
