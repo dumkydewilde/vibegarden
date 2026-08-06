@@ -14,6 +14,7 @@ import {
   type ToolSpec,
 } from "@vibegarden/agent-core";
 import promptTemplate from "../../content/gardener/system-prompt.md?raw";
+import { parseAgentDefinition } from "./agents/contracts";
 
 // Glob instead of a direct import so deleting the file also disables it.
 const audienceFiles = import.meta.glob<string>(
@@ -60,6 +61,8 @@ export type WireContextItem = {
     | "agent-definition";
   label: string;
   content: string;
+  /** Stable identity for context tied to one Agent Workbench agent. */
+  agentId?: string;
 };
 
 export const HISTORY_LIMIT = 30;
@@ -74,6 +77,22 @@ const pageNames: Record<string, string> = {
   "/gallery": "the gallery",
   "/inspiration": "the inspiration page",
 };
+
+function contextContent(item: WireContextItem): string {
+  if (item.kind !== "agent-definition") {
+    return item.content.slice(0, CONTEXT_ITEM_MAX_CHARS);
+  }
+
+  try {
+    const parsed = parseAgentDefinition(JSON.parse(item.content));
+    if (!parsed.error) return JSON.stringify(parsed.value);
+  } catch {
+    // The safe JSON fallback below keeps malformed client context bounded.
+  }
+  return JSON.stringify({
+    error: "The attached agent definition was invalid.",
+  });
+}
 
 function describePage(page: string | undefined) {
   if (!page) return null;
@@ -155,7 +174,7 @@ export function buildSystemPrompt(
     const blocks = contextItems
       .map(
         (item) =>
-          `<context kind="${item.kind}" label=${JSON.stringify(item.label)}>\n${item.content.slice(0, CONTEXT_ITEM_MAX_CHARS)}\n</context>`,
+          `<context kind="${item.kind}" label=${JSON.stringify(item.label)}>\n${contextContent(item)}\n</context>`,
       )
       .join("\n\n");
     prompt += `\n\nThe person brought this content into the conversation. Treat it as what they are currently looking at:\n\n${blocks}`;

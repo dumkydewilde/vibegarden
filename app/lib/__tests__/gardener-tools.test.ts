@@ -9,7 +9,7 @@ import {
   htmlToText,
   offeredGardenerTools,
 } from "~/lib/gardener-tools.server";
-import { markerForEvent } from "@vibegarden/agent-web";
+import { markerForEvent, splitToolNotes } from "@vibegarden/agent-web";
 
 const call = (name: string, args: object) => ({
   id: "call_1",
@@ -19,6 +19,8 @@ const call = (name: string, args: object) => ({
 
 const config = {};
 const specs = gardenerToolSpecs(config);
+const agentContext = { agentId: "agent-article-helper" };
+const proposalSpecs = gardenerToolSpecs({ agentContext });
 
 const execute = (c: { id: string; name: string; arguments: string }) =>
   runToolCall(specs, c);
@@ -26,6 +28,15 @@ const execute = (c: { id: string; name: string; arguments: string }) =>
 /** The web marker for a call's activity note, as the chat route emits it. */
 const noteMarker = (c: { id: string; name: string; arguments: string }) => {
   const event = noteEventFor(specs, c);
+  return event ? markerForEvent(event) : null;
+};
+
+const proposalNoteMarker = (c: {
+  id: string;
+  name: string;
+  arguments: string;
+}) => {
+  const event = noteEventFor(proposalSpecs, c);
   return event ? markerForEvent(event) : null;
 };
 
@@ -74,7 +85,7 @@ describe("gardener tool execution", () => {
     expect(names(offeredGardenerTools(config))).toContain("query_data");
     expect(names(offeredGardenerTools(config))).not.toContain("propose_tool");
     expect(
-      names(offeredGardenerTools({ agentContext: true })),
+      names(offeredGardenerTools({ agentContext })),
     ).toContain("propose_tool");
   });
 
@@ -94,9 +105,13 @@ describe("gardener tool execution", () => {
     expect(await execute(proposal)).toBe(
       "The proposal was shown to the builder; they will apply it if they like it. Do not repeat the source in chat.",
     );
-    expect(noteMarker(proposal)).toContain("[[tool:proposal:");
+    const marker = proposalNoteMarker(proposal);
+    expect(marker).toContain("[[tool:proposal:");
     expect(
-      openAiToolDefinitions(offeredGardenerTools({ agentContext: true })).find(
+      splitToolNotes(marker ?? "").find((segment) => segment.type === "proposal"),
+    ).toMatchObject({ agentId: agentContext.agentId });
+    expect(
+      openAiToolDefinitions(offeredGardenerTools({ agentContext })).find(
         (item) => item.function.name === "propose_tool",
       )?.function.description,
     ).toContain("agent tool");
@@ -121,7 +136,7 @@ describe("gardener tool execution", () => {
     ]) {
       const proposal = call("propose_tool", args);
       expect(await execute(proposal)).toContain("Error:");
-      expect(noteMarker(proposal)).toBeNull();
+      expect(proposalNoteMarker(proposal)).toBeNull();
     }
   });
 

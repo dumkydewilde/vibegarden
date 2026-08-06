@@ -169,7 +169,9 @@ function ToolProposalCard({
           size="sm"
           onClick={() =>
             window.dispatchEvent(
-              new CustomEvent("workbench:apply-tool", { detail: tool }),
+              new CustomEvent("workbench:apply-tool", {
+                detail: { agentId: proposal.agentId, tool },
+              }),
             )
           }
         >

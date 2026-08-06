@@ -24,6 +24,10 @@ import {
 } from "~/components/workbench/runner.client";
 import { TraceChat } from "~/components/workbench/trace-chat";
 import {
+  useAgentContextScope,
+  useScopedToolProposal,
+} from "~/components/workbench/use-scoped-tool-proposal";
+import {
   useAgentChat,
   type ToolExecutor,
 } from "~/components/workbench/use-agent-chat";
@@ -36,11 +40,7 @@ import {
 } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import type { AgentDefinition } from "~/lib/agents/contracts";
-import {
-  parseAgentDefinition,
-  parseAgentTool,
-  type AgentToolDef,
-} from "~/lib/agents/contracts";
+import { parseAgentDefinition } from "~/lib/agents/contracts";
 import {
   getAgentForUser,
   saveAgentVersion,
@@ -420,24 +420,14 @@ export default function AgentWorkbench({ loaderData, actionData, params }: Route
   const gardener = useOptionalGardener();
   const [workingDefinition, setWorkingDefinition] =
     useState<AgentDefinition>(definition);
-  const [stagedTool, setStagedTool] = useState<AgentToolDef | null>(null);
+  const stagedTool = useScopedToolProposal(agent.id, canEdit);
+  useAgentContextScope(agent.id, gardener?.removeAgentContext);
   const listPath = clubPath(params.clubSlug, "garden/agents");
-
-  useEffect(() => {
-    if (!canEdit) return;
-    const applyTool = (event: Event) => {
-      if (!(event instanceof CustomEvent)) return;
-      const parsed = parseAgentTool(event.detail);
-      if (parsed.error) return;
-      setStagedTool(parsed.value);
-    };
-    window.addEventListener("workbench:apply-tool", applyTool);
-    return () => window.removeEventListener("workbench:apply-tool", applyTool);
-  }, [canEdit]);
 
   const openSidekick = () => {
     gardener?.addContext({
       kind: "agent-definition",
+      agentId: agent.id,
       label: agent.name,
       content: JSON.stringify(workingDefinition),
     });

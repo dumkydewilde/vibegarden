@@ -211,6 +211,7 @@ describe("call markers", () => {
 describe("proposal markers", () => {
   it("round-trips a proposed tool and compacts it for model history", () => {
     const proposal = {
+      agentId: "agent-article-helper",
       name: "extract_article_text",
       description: "Extracts readable article text from fetched HTML.",
       parameters: {

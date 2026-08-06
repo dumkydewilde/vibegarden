@@ -16,6 +16,7 @@ export type AgentEvent =
   /** A browser tool proposal the builder can inspect and choose to stage. */
   | {
       type: "proposal";
+      agentId: string;
       name: string;
       description: string;
       parameters: Record<string, unknown>;

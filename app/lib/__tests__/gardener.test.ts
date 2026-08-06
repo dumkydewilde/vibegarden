@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readSseRound } from "@vibegarden/agent-core";
 import { queryNote } from "@vibegarden/agent-web";
 import { offeredGardenerTools } from "~/lib/gardener-tools.server";
+import { parseAgentDefinition } from "~/lib/agents/contracts";
 import {
   buildAudienceSection,
   buildSystemPrompt,
@@ -108,13 +109,79 @@ describe("buildSystemPrompt", () => {
         },
       ],
       undefined,
-      { tools: offeredGardenerTools({ agentContext: true }) },
+      {
+        tools: offeredGardenerTools({
+          agentContext: { agentId: "agent-article-helper" },
+        }),
+      },
     );
 
     expect(prompt).toContain(
       "Always call propose_tool when the builder asks you to create or change a tool",
     );
     expect(prompt).toContain("Never paste or repeat the tool source in prose");
+  });
+
+  it("keeps a full-sized valid agent definition as parseable current context", () => {
+    const definition = {
+      version: 1 as const,
+      systemPrompt: "p".repeat(7_900),
+      tools: [
+        {
+          name: "extract_article",
+          description: "Extract article text.",
+          parameters: {
+            type: "object",
+            properties: { html: { type: "string" } },
+          },
+          source: `return ${JSON.stringify("a".repeat(15_900))};`,
+        },
+        {
+          name: "summarize_article",
+          description: "Prepare article text for a summary.",
+          parameters: {
+            type: "object",
+            properties: { text: { type: "string" } },
+          },
+          source: `return ${JSON.stringify("b".repeat(15_900))};`,
+        },
+        {
+          name: "format_article",
+          description: "Format an article result.",
+          parameters: {
+            type: "object",
+            properties: { text: { type: "string" } },
+          },
+          source: `return ${JSON.stringify("c".repeat(15_900))};`,
+        },
+      ],
+      skills: [
+        {
+          name: "editorial_voice",
+          description: "Current editorial guidance.",
+          content: "s".repeat(3_900),
+        },
+      ],
+      builtins: { fetchPage: true, memory: true },
+    };
+    const serialized = JSON.stringify(definition);
+    expect(new TextEncoder().encode(serialized).length).toBeGreaterThan(59_000);
+    expect(parseAgentDefinition(JSON.parse(serialized)).error).toBeUndefined();
+
+    const prompt = buildSystemPrompt([
+      {
+        kind: "agent-definition",
+        agentId: "agent-current",
+        label: "Current agent",
+        content: serialized,
+      },
+    ]);
+    const context = prompt.match(
+      /<context kind="agent-definition"[^>]*>\n([\s\S]*?)\n<\/context>/,
+    )?.[1];
+
+    expect(context).toBeDefined();
+    expect(JSON.parse(context!)).toEqual(definition);
   });
 
   it("routes learning recommendations before fresh or external reads", () => {

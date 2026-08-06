@@ -170,6 +170,7 @@ describe("ChatMessageBubble activity", () => {
   });
 
   it("renders a reviewable proposal card and dispatches its tool on apply", () => {
+    const agentId = "agent-article-helper";
     const tool = {
       name: "extract_article_text",
       description: "Extracts readable article text from fetched HTML.",
@@ -183,6 +184,7 @@ describe("ChatMessageBubble activity", () => {
       <ChatMessageBubble
         message={gardener(
           proposalNote({
+            agentId,
             ...tool,
             rationale: "A small focused transformation.",
           }),
@@ -198,7 +200,10 @@ describe("ChatMessageBubble activity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add to my agent" }));
 
     expect(onApply).toHaveBeenCalledTimes(1);
-    expect((onApply.mock.calls[0][0] as CustomEvent).detail).toEqual(tool);
+    expect((onApply.mock.calls[0][0] as CustomEvent).detail).toEqual({
+      agentId,
+      tool,
+    });
     window.removeEventListener("workbench:apply-tool", onApply);
   });
 

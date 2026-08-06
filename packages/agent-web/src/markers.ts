@@ -58,6 +58,7 @@ export function markerForEvent(
       return articlesNote({ slugs: event.slugs });
     case "proposal":
       return proposalNote({
+        agentId: event.agentId,
         name: event.name,
         description: event.description,
         parameters: event.parameters,
@@ -115,6 +116,7 @@ export type CallPayload = CallRequest & {
 
 export type ProposalPayload = {
   version: 1;
+  agentId: string;
   name: string;
   description: string;
   parameters: Record<string, unknown>;
@@ -135,6 +137,7 @@ export type ToolNoteSegment =
   | { type: "callresult"; result: CallResultEnvelope }
   | {
       type: "proposal";
+      agentId: string;
       name: string;
       description: string;
       parameters: Record<string, unknown>;
@@ -358,6 +361,7 @@ function decodeProposal(value: string): ProposalPayload | null {
     if (
       !hasExactKeys(parsed as Record<string, unknown>, [
         "version",
+        "agentId",
         "name",
         "description",
         "parameters",
@@ -365,6 +369,9 @@ function decodeProposal(value: string): ProposalPayload | null {
         "rationale",
       ]) ||
       parsed.version !== 1 ||
+      typeof parsed.agentId !== "string" ||
+      parsed.agentId.length < 1 ||
+      parsed.agentId.length > 128 ||
       typeof parsed.name !== "string" ||
       !/^[a-z][a-z0-9_]{1,39}$/.test(parsed.name) ||
       typeof parsed.description !== "string" ||
@@ -383,6 +390,7 @@ function decodeProposal(value: string): ProposalPayload | null {
     }
     return {
       version: 1,
+      agentId: parsed.agentId,
       name: parsed.name,
       description: parsed.description,
       parameters: parsed.parameters as Record<string, unknown>,
@@ -412,6 +420,7 @@ export function splitToolNotes(text: string): ToolNoteSegment[] {
         flush();
         segments.push({
           type: "proposal",
+          agentId: payload.agentId,
           name: payload.name,
           description: payload.description,
           parameters: payload.parameters,

@@ -200,10 +200,17 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const narrateOnly =
     continuation && (envelope?.status === "ok" || attachEnvelope?.status === "ok");
   const toolsAllowed = model.tools && !narrateOnly;
+  const agentContextItem = contextItems.find(
+    (item) =>
+      item.kind === "agent-definition" &&
+      typeof item.agentId === "string" &&
+      item.agentId.length > 0 &&
+      item.agentId.length <= 128,
+  );
   const toolConfig = gardenerToolsConfig(env, {
-    agentContext: contextItems.some(
-      (item) => item.kind === "agent-definition",
-    ),
+    agentContext: agentContextItem
+      ? { agentId: agentContextItem.agentId! }
+      : undefined,
   });
   const offeredTools = toolsAllowed
     ? offeredGardenerTools(toolConfig)
