@@ -20,7 +20,10 @@ const definition: AgentDefinition = {
   builtins: { fetchPage: true, memory: true },
 };
 
-function renderEditor(currentDefinition = definition) {
+function renderEditor(
+  currentDefinition = definition,
+  stagedTool?: AgentDefinition["tools"][number],
+) {
   const Stub = createRoutesStub([
     {
       path: "/",
@@ -28,6 +31,7 @@ function renderEditor(currentDefinition = definition) {
         <DefinitionEditor
           agent={{ name: "Text helper", description: "Works with text." }}
           definition={currentDefinition}
+          stagedTool={stagedTool}
         />
       ),
       action: () => null,
@@ -157,5 +161,28 @@ source: return args;
       type: "object",
       examples: [null, true, 3.5, { nested: { label: "exact" } }],
     });
+  });
+
+  it("stages a sidekick proposal without discarding current tools", () => {
+    const stagedTool = {
+      name: "extract_article_text",
+      description: "Extracts readable article text from fetched HTML.",
+      parameters: { type: "object", properties: {} },
+      source: "return String(args.html ?? '');",
+    };
+
+    renderEditor(definition, stagedTool);
+
+    expect(screen.getByText("extract_article_text")).toBeVisible();
+    const saved = JSON.parse(
+      (document.querySelector('input[name="definition"]') as HTMLInputElement)
+        .value,
+    ) as AgentDefinition;
+    expect(saved.tools).toEqual([...definition.tools, stagedTool]);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove extract_article_text" }),
+    );
+    expect(screen.queryByText("extract_article_text")).toBeNull();
   });
 });

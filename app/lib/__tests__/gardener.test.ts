@@ -98,6 +98,25 @@ describe("buildSystemPrompt", () => {
     expect(withQueryData).not.toContain("fresh_reads(topic?, content_type?)");
   });
 
+  it("requires proposal cards for agent tool authoring requests", () => {
+    const prompt = buildSystemPrompt(
+      [
+        {
+          kind: "agent-definition",
+          label: "Article helper",
+          content: '{"version":1,"tools":[]}',
+        },
+      ],
+      undefined,
+      { tools: offeredGardenerTools({ agentContext: true }) },
+    );
+
+    expect(prompt).toContain(
+      "Always call propose_tool when the builder asks you to create or change a tool",
+    );
+    expect(prompt).toContain("Never paste or repeat the tool source in prose");
+  });
+
   it("routes learning recommendations before fresh or external reads", () => {
     const prompt = buildSystemPrompt([], undefined, {
       tools: offeredGardenerTools({ freshReads: { token: "token" } }),

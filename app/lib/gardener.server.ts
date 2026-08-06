@@ -50,7 +50,14 @@ export type WireMessage = {
 /** A dataset the person attached, as the client reports it each request. */
 export type WireDataset = { name: string; summary: string };
 export type WireContextItem = {
-  kind: "page" | "article" | "module" | "paragraph" | "project" | "dataset";
+  kind:
+    | "page"
+    | "article"
+    | "module"
+    | "paragraph"
+    | "project"
+    | "dataset"
+    | "agent-definition";
   label: string;
   content: string;
 };

@@ -15,6 +15,7 @@ import {
   RESULT_MAX_ROWS,
 } from "@vibegarden/agent-web";
 import mermaidFlowchartNotes from "../../content/gardener/mermaid-flowchart-notes.md?raw";
+import { parseAgentTool, type AgentToolDef } from "./agents/contracts";
 
 /**
  * The Gardener's tools as agent-core ToolSpecs. gardenerToolSpecs(config) is
@@ -420,8 +421,100 @@ const attachDataSpec: ToolSpec = {
     parseAttachRequest(args).error ?? "Error: attach_data ran out of band.",
 };
 
+const PROPOSAL_RATIONALE_MAX_CHARS = 500;
+const PROPOSAL_FIELDS = new Set([
+  "name",
+  "description",
+  "parameters",
+  "source",
+  "rationale",
+]);
+
+type ToolProposal = AgentToolDef & { rationale: string };
+type ToolProposalValidation =
+  | { value: ToolProposal; error?: never }
+  | { value?: never; error: string };
+
+function validateToolProposal(
+  args: Record<string, unknown>,
+): ToolProposalValidation {
+  const unknown = Object.keys(args).find((key) => !PROPOSAL_FIELDS.has(key));
+  if (unknown) {
+    return { error: `Error: invalid tool proposal: unknown field "${unknown}".` };
+  }
+  if (typeof args.rationale !== "string") {
+    return { error: "Error: invalid tool proposal: rationale must be a string." };
+  }
+  if (args.rationale.length > PROPOSAL_RATIONALE_MAX_CHARS) {
+    return {
+      error:
+        "Error: invalid tool proposal: rationale must be 500 characters or fewer.",
+    };
+  }
+  const parsed = parseAgentTool({
+    name: args.name,
+    description: args.description,
+    parameters: args.parameters,
+    source: args.source,
+  });
+  if (parsed.error) {
+    return { error: `Error: invalid tool proposal: ${parsed.error}.` };
+  }
+  return { value: { ...parsed.value, rationale: args.rationale } };
+}
+
+const proposeToolSpec: ToolSpec = {
+  name: "propose_tool",
+  description:
+    "Propose a small browser-sandboxed agent tool for the builder to inspect and optionally add to their current agent.",
+  promptGuidance:
+    "propose_tool(name, description, parameters, source, rationale): show a review card for one small, readable agent tool. Always call propose_tool when the builder asks you to create or change a tool; do not merely describe a tool in prose. Tool source receives args and env; use env.fetchPage(url), env.memory.get(key), env.memory.set(key, value), env.memory.list(), and env.log(line) when needed. Return the useful raw value from the tool: the trace keeps the full raw result in the browser while only a capped envelope is sent to the model. Keep source focused and readable. Never paste or repeat the tool source in prose because the proposal card shows it in full.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      name: {
+        type: "string",
+        pattern: "^[a-z][a-z0-9_]{1,39}$",
+        description: "Lower-case snake_case tool name.",
+      },
+      description: {
+        type: "string",
+        maxLength: 400,
+        description: "What the tool does and when the agent should use it.",
+      },
+      parameters: {
+        type: "object",
+        description: "JSON Schema for the args object passed to the source.",
+      },
+      source: {
+        type: "string",
+        maxLength: 16_000,
+        description: "Readable JavaScript body run with args and env in the sandbox.",
+      },
+      rationale: {
+        type: "string",
+        maxLength: PROPOSAL_RATIONALE_MAX_CHARS,
+        description: "A short explanation of the design for the builder.",
+      },
+    },
+    required: ["name", "description", "parameters", "source", "rationale"],
+  },
+  execute: (args) => {
+    const proposal = validateToolProposal(args);
+    return proposal.error
+      ? proposal.error
+      : "The proposal was shown to the builder; they will apply it if they like it. Do not repeat the source in chat.";
+  },
+  noteFor: (args) => {
+    const proposal = validateToolProposal(args);
+    return proposal.error ? null : { type: "proposal", ...proposal.value };
+  },
+};
+
 export type GardenerToolsConfig = {
   freshReads?: MotherDuckConfig;
+  agentContext?: boolean;
 };
 
 /** Every Gardener tool, for executing whatever calls a model produces. */
@@ -435,6 +528,7 @@ export function gardenerToolSpecs(config: GardenerToolsConfig = {}): ToolSpec[] 
     attachDataSpec,
     freshReadsSpec(config.freshReads),
     queryDataSpec,
+    proposeToolSpec,
   ];
 }
 
@@ -448,6 +542,7 @@ export function offeredGardenerTools(
 ): ToolSpec[] {
   return gardenerToolSpecs(config).filter((spec) => {
     if (spec.name === "fresh_reads") return !!config.freshReads?.token;
+    if (spec.name === "propose_tool") return config.agentContext === true;
     return true;
   });
 }

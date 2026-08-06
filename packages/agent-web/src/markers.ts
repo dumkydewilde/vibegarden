@@ -56,6 +56,14 @@ export function markerForEvent(
       return diagramNote({ title: event.title, diagram: event.diagram });
     case "articles":
       return articlesNote({ slugs: event.slugs });
+    case "proposal":
+      return proposalNote({
+        name: event.name,
+        description: event.description,
+        parameters: event.parameters,
+        source: event.source,
+        rationale: event.rationale,
+      });
     case "delegated-call": {
       if (event.tool === "query_data") {
         const payload = event.payload as { sql?: unknown; chart?: unknown };
@@ -105,6 +113,15 @@ export type CallPayload = CallRequest & {
   version: 1;
 };
 
+export type ProposalPayload = {
+  version: 1;
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  source: string;
+  rationale: string;
+};
+
 export type ToolNoteSegment =
   | { type: "text"; text: string }
   | { type: "tool"; kind: ToolNoteKind; value: string }
@@ -115,7 +132,15 @@ export type ToolNoteSegment =
   | { type: "attach"; url: string }
   | { type: "attachresult"; result: AttachResultEnvelope }
   | { type: "call"; tool: string; args: Record<string, unknown> }
-  | { type: "callresult"; result: CallResultEnvelope };
+  | { type: "callresult"; result: CallResultEnvelope }
+  | {
+      type: "proposal";
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+      source: string;
+      rationale: string;
+    };
 
 const NOTE_LINE = /^\[\[tool:(article|module|web|note):(.+?)\]\]$/;
 const ARTICLES_LINE = /^\[\[tool:articles:(.+?)\]\]$/;
@@ -126,6 +151,7 @@ const ATTACH_LINE = /^\[\[tool:attach:(.+?)\]\]$/;
 const ATTACH_RESULT_LINE = /^\[\[tool:attachresult:(.+?)\]\]$/;
 const CALL_LINE = /^\[\[tool:call:(.+?)\]\]$/;
 const CALL_RESULT_LINE = /^\[\[tool:callresult:(.+?)\]\]$/;
+const PROPOSAL_LINE = /^\[\[tool:proposal:(.+?)\]\]$/;
 
 export function toolNote(kind: ToolNoteKind, value: string): string {
   return `[[tool:${kind}:${value}]]`;
@@ -175,6 +201,14 @@ export function callNote(payload: Omit<CallPayload, "version">): string {
 
 export function callResultNote(result: CallResultEnvelope): string {
   return `[[tool:callresult:${encodeURIComponent(JSON.stringify(result))}]]`;
+}
+
+export function proposalNote(
+  payload: Omit<ProposalPayload, "version">,
+): string {
+  return `[[tool:proposal:${encodeURIComponent(
+    JSON.stringify({ version: 1, ...payload } satisfies ProposalPayload),
+  )}]]`;
 }
 
 function decodeDiagram(value: string): DiagramPayload | null {
@@ -316,6 +350,50 @@ function decodeCallResult(value: string): CallResultEnvelope | null {
   }
 }
 
+function decodeProposal(value: string): ProposalPayload | null {
+  try {
+    const parsed = JSON.parse(
+      decodeURIComponent(value),
+    ) as Partial<ProposalPayload>;
+    if (
+      !hasExactKeys(parsed as Record<string, unknown>, [
+        "version",
+        "name",
+        "description",
+        "parameters",
+        "source",
+        "rationale",
+      ]) ||
+      parsed.version !== 1 ||
+      typeof parsed.name !== "string" ||
+      !/^[a-z][a-z0-9_]{1,39}$/.test(parsed.name) ||
+      typeof parsed.description !== "string" ||
+      parsed.description.length < 1 ||
+      parsed.description.length > 400 ||
+      typeof parsed.parameters !== "object" ||
+      parsed.parameters === null ||
+      Array.isArray(parsed.parameters) ||
+      typeof parsed.source !== "string" ||
+      parsed.source.length < 1 ||
+      parsed.source.length > 16_000 ||
+      typeof parsed.rationale !== "string" ||
+      parsed.rationale.length > 500
+    ) {
+      return null;
+    }
+    return {
+      version: 1,
+      name: parsed.name,
+      description: parsed.description,
+      parameters: parsed.parameters as Record<string, unknown>,
+      source: parsed.source,
+      rationale: parsed.rationale,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Break message text into text chunks and tool notes, in stream order. */
 export function splitToolNotes(text: string): ToolNoteSegment[] {
   const segments: ToolNoteSegment[] = [];
@@ -327,6 +405,24 @@ export function splitToolNotes(text: string): ToolNoteSegment[] {
   };
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
+    const proposalMatch = trimmed.match(PROPOSAL_LINE);
+    if (proposalMatch) {
+      const payload = decodeProposal(proposalMatch[1]);
+      if (payload) {
+        flush();
+        segments.push({
+          type: "proposal",
+          name: payload.name,
+          description: payload.description,
+          parameters: payload.parameters,
+          source: payload.source,
+          rationale: payload.rationale,
+        });
+      } else {
+        buffer.push(line);
+      }
+      continue;
+    }
     const articlesMatch = trimmed.match(ARTICLES_LINE);
     if (articlesMatch) {
       const payload = decodeArticles(articlesMatch[1]);
@@ -509,6 +605,8 @@ export function toModelText(text: string): string {
     } else if (segment.type === "callresult") {
       compacted.push(callSummaryLine(lastCallTool, segment.result));
       lastCallTool = "tool";
+    } else if (segment.type === "proposal") {
+      compacted.push(`[proposed tool ${segment.name}]`);
     }
   }
   return compacted.join("\n\n");

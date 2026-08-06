@@ -11,6 +11,7 @@ import { ChatMessageBubble } from "../chat-message";
 import {
   capResult,
   diagramNote,
+  proposalNote,
   queryNote,
   queryResultNote,
   toolNote,
@@ -166,6 +167,39 @@ describe("ChatMessageBubble activity", () => {
     expect(
       screen.getByRole("link", { name: "What is an agent?" }),
     ).toHaveAttribute("href", "/clubs/wotf/learning/what-is-an-agent");
+  });
+
+  it("renders a reviewable proposal card and dispatches its tool on apply", () => {
+    const tool = {
+      name: "extract_article_text",
+      description: "Extracts readable article text from fetched HTML.",
+      parameters: { type: "object", properties: {} },
+      source: "return String(args.html ?? '');",
+    };
+    const onApply = vi.fn();
+    window.addEventListener("workbench:apply-tool", onApply);
+
+    renderMessage(
+      <ChatMessageBubble
+        message={gardener(
+          proposalNote({
+            ...tool,
+            rationale: "A small focused transformation.",
+          }),
+        )}
+      />,
+    );
+
+    expect(screen.getByText("extract_article_text")).toBeVisible();
+    expect(screen.getByText(tool.description)).toBeVisible();
+    expect(screen.getByText("A small focused transformation.")).toBeVisible();
+    const source = screen.getByText(tool.source);
+    expect(source.closest("details")).not.toHaveAttribute("open");
+    fireEvent.click(screen.getByRole("button", { name: "Add to my agent" }));
+
+    expect(onApply).toHaveBeenCalledTimes(1);
+    expect((onApply.mock.calls[0][0] as CustomEvent).detail).toEqual(tool);
+    window.removeEventListener("workbench:apply-tool", onApply);
   });
 
   it("renders a query chart as an accessible SVG instead of naked SQL", () => {

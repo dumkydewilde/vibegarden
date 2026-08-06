@@ -1,4 +1,4 @@
-import { ArrowLeft, Bot } from "lucide-react";
+import { ArrowLeft, Bot, Sparkles, Sprout } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -15,6 +15,7 @@ import {
 
 import type { Route } from "./+types/garden.agents.$id";
 import { DefinitionEditor } from "~/components/workbench/definition-editor";
+import { useOptionalGardener } from "~/components/gardener/gardener-provider";
 import { agentMemory } from "~/components/workbench/memory.client";
 import {
   createRunner,
@@ -33,8 +34,13 @@ import {
   CardHeader,
   CardTitle,
 } from "~/components/ui/card";
+import { Button } from "~/components/ui/button";
 import type { AgentDefinition } from "~/lib/agents/contracts";
-import { parseAgentDefinition } from "~/lib/agents/contracts";
+import {
+  parseAgentDefinition,
+  parseAgentTool,
+  type AgentToolDef,
+} from "~/lib/agents/contracts";
 import {
   getAgentForUser,
   saveAgentVersion,
@@ -411,7 +417,31 @@ export default function AgentWorkbench({ loaderData, actionData, params }: Route
     runnerUrl,
     userId,
   } = loaderData;
+  const gardener = useOptionalGardener();
+  const [workingDefinition, setWorkingDefinition] =
+    useState<AgentDefinition>(definition);
+  const [stagedTool, setStagedTool] = useState<AgentToolDef | null>(null);
   const listPath = clubPath(params.clubSlug, "garden/agents");
+
+  useEffect(() => {
+    if (!canEdit) return;
+    const applyTool = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const parsed = parseAgentTool(event.detail);
+      if (parsed.error) return;
+      setStagedTool(parsed.value);
+    };
+    window.addEventListener("workbench:apply-tool", applyTool);
+    return () => window.removeEventListener("workbench:apply-tool", applyTool);
+  }, [canEdit]);
+
+  const openSidekick = () => {
+    gardener?.addContext({
+      kind: "agent-definition",
+      label: agent.name,
+      content: JSON.stringify(workingDefinition),
+    });
+  };
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -448,6 +478,8 @@ export default function AgentWorkbench({ loaderData, actionData, params }: Route
               agent={agent}
               definition={definition}
               actionData={actionData}
+              stagedTool={stagedTool}
+              onDefinitionChange={setWorkingDefinition}
             />
           ) : (
             <Card>
@@ -468,6 +500,35 @@ export default function AgentWorkbench({ loaderData, actionData, params }: Route
         </div>
 
         <div className="space-y-6">
+          {canEdit && gardener && (
+            <Card className="overflow-hidden border-primary/20 bg-primary/[0.03]">
+              <CardHeader className="border-b border-primary/10">
+                <div className="flex items-start gap-3">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
+                    <Sprout className="size-4 text-primary" />
+                  </span>
+                  <div>
+                    <CardTitle className="font-serif text-xl font-normal">
+                      Build with The Gardener
+                    </CardTitle>
+                    <CardDescription className="mt-1 leading-relaxed">
+                      Share this draft as context, then ask for a small tool you can inspect before adding.
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-5">
+                <Button
+                  type="button"
+                  onClick={openSidekick}
+                >
+                  <Sparkles className="size-4" />
+                  Ask for a tool
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           <WorkbenchChat
             key={version.id}
             clubSlug={params.clubSlug}

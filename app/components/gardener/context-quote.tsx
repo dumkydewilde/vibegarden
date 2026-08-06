@@ -1,6 +1,7 @@
 import {
   Blocks,
   BookOpen,
+  Bot,
   Database,
   FileText,
   Quote,
@@ -17,6 +18,7 @@ const kindIcon = {
   paragraph: Quote,
   project: Sprout,
   dataset: Database,
+  "agent-definition": Bot,
 } as const;
 
 const kindLabel = {
@@ -26,6 +28,7 @@ const kindLabel = {
   paragraph: "From the article",
   project: "Freshly planted",
   dataset: "Dataset",
+  "agent-definition": "Agent definition",
 } as const;
 
 /**

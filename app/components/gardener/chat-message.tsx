@@ -1,4 +1,12 @@
-import { Blocks, BookOpen, Database, Globe, Sprout } from "lucide-react";
+import {
+  Blocks,
+  BookOpen,
+  Braces,
+  Database,
+  Globe,
+  Plus,
+  Sprout,
+} from "lucide-react";
 import Markdown from "react-markdown";
 import { useParams } from "react-router";
 import { ContextQuote } from "./context-quote";
@@ -16,6 +24,7 @@ import {
 } from "@vibegarden/agent-web";
 import { cn } from "~/lib/utils";
 import { clubPath } from "~/lib/club-path";
+import { Button } from "~/components/ui/button";
 
 const noteWrapper =
   "flex max-w-full items-center gap-1.5 rounded-lg bg-muted/60 px-2.5 py-1.5 text-xs italic text-muted-foreground";
@@ -110,6 +119,63 @@ function ArticleRecommendationCards({
             title={article.meta.title}
           />
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ToolProposalCard({
+  proposal,
+}: {
+  proposal: Extract<ToolNoteSegment, { type: "proposal" }>;
+}) {
+  const tool = {
+    name: proposal.name,
+    description: proposal.description,
+    parameters: proposal.parameters,
+    source: proposal.source,
+  };
+  return (
+    <div className="w-full overflow-hidden rounded-xl border border-primary/20 bg-card shadow-sm">
+      <div className="border-b bg-primary/[0.04] px-4 py-3">
+        <p className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <Braces className="size-3.5 text-primary" />
+          Proposed tool
+        </p>
+        <code className="mt-2 block break-all text-sm font-semibold text-foreground">
+          {proposal.name}
+        </code>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+          {proposal.description}
+        </p>
+      </div>
+      <div className="space-y-3 px-4 py-3">
+        {proposal.rationale && (
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {proposal.rationale}
+          </p>
+        )}
+        <details className="group rounded-lg border bg-muted/20">
+          <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden">
+            <span className="group-open:hidden">View source</span>
+            <span className="hidden group-open:inline">Hide source</span>
+          </summary>
+          <pre className="max-h-72 overflow-auto whitespace-pre-wrap border-t px-3 py-3 font-mono text-xs leading-relaxed text-foreground">
+            {proposal.source}
+          </pre>
+        </details>
+        <Button
+          type="button"
+          size="sm"
+          onClick={() =>
+            window.dispatchEvent(
+              new CustomEvent("workbench:apply-tool", { detail: tool }),
+            )
+          }
+        >
+          <Plus className="size-4" />
+          Add to my agent
+        </Button>
       </div>
     </div>
   );
@@ -269,6 +335,9 @@ export function ChatMessageBubble({
                   />
                 );
               }
+              if (segment.type === "proposal") {
+                return <ToolProposalCard key={i} proposal={segment} />;
+              }
               if (segment.type === "query") {
                 // Its result, when present, is the very next segment;
                 // render the pair as one block.
@@ -301,7 +370,7 @@ export function ChatMessageBubble({
                 );
               }
               if (segment.type === "attachresult") return null; // consumed above
-              return (
+              if (segment.type === "tool") return (
                 <ToolNoteBubble
                   key={i}
                   segment={segment}
@@ -309,6 +378,7 @@ export function ChatMessageBubble({
                   clubSlug={clubSlug ?? ""}
                 />
               );
+              return null;
             })}
             {readingResults && (
               <ActivityBubble label="Reading the results..." />

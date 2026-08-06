@@ -1,5 +1,5 @@
 import { Pencil, Plus, Trash2, Wrench } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Form, useNavigation } from "react-router";
 
 import { ToolEditor } from "~/components/workbench/tool-editor";
@@ -65,10 +65,14 @@ export function DefinitionEditor({
   agent,
   definition,
   actionData,
+  stagedTool,
+  onDefinitionChange,
 }: {
   agent: { name: string; description: string };
   definition: AgentDefinition;
   actionData?: { error?: string; saved?: boolean };
+  stagedTool?: AgentToolDef | null;
+  onDefinitionChange?: (definition: AgentDefinition) => void;
 }) {
   const navigation = useNavigation();
   const [name, setName] = useState(agent.name);
@@ -80,6 +84,31 @@ export function DefinitionEditor({
     navigation.state === "submitting" &&
     navigation.formData?.get("intent") === "save";
   const submittedDefinition = JSON.stringify(draft);
+
+  useEffect(() => {
+    onDefinitionChange?.(draft);
+  }, [draft, onDefinitionChange]);
+
+  useEffect(() => {
+    if (!stagedTool) return;
+    if (draft.skills.some(({ name: skillName }) => skillName === stagedTool.name)) {
+      setToolError(`A skill named "${stagedTool.name}" already exists.`);
+      return;
+    }
+    const existing = draft.tools.findIndex(
+      ({ name: toolName }) => toolName === stagedTool.name,
+    );
+    if (existing < 0 && draft.tools.length >= MAX_TOOLS) {
+      setToolError(`Remove a tool before adding "${stagedTool.name}".`);
+      return;
+    }
+    const tools = [...draft.tools];
+    if (existing >= 0) tools[existing] = stagedTool;
+    else tools.push(stagedTool);
+    setDraft({ ...draft, tools });
+    setEditing(null);
+    setToolError(null);
+  }, [stagedTool]);
 
   function applyTool(tool: AgentToolDef) {
     if (!editing) return;

@@ -30,7 +30,14 @@ export type ContextItem = {
   label: string;
   /** What gets sent to the model: page content, a paragraph, etc. */
   content: string;
-  kind: "page" | "article" | "module" | "paragraph" | "project" | "dataset";
+  kind:
+    | "page"
+    | "article"
+    | "module"
+    | "paragraph"
+    | "project"
+    | "dataset"
+    | "agent-definition";
   /** For project context: ties the conversation to that project. */
   projectId?: string;
   /** For dataset context: removing the chip also drops the DuckDB view. */

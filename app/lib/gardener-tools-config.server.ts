@@ -1,8 +1,12 @@
 import type { GardenerToolsConfig } from "./gardener-tools.server";
 
 /** Translate Worker bindings once, at the Vibe Garden host boundary. */
-export function gardenerToolsConfig(env: Env): GardenerToolsConfig {
+export function gardenerToolsConfig(
+  env: Env,
+  options: { agentContext?: boolean } = {},
+): GardenerToolsConfig {
   return {
+    agentContext: options.agentContext === true,
     freshReads: env.MOTHERDUCK_TOKEN
       ? {
           token: env.MOTHERDUCK_TOKEN,

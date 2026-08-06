@@ -9,6 +9,7 @@ import {
   capCallResult,
   markerForEvent,
   parseCallResultEnvelope,
+  proposalNote,
   splitToolNotes,
   toModelText,
 } from "@vibegarden/agent-web";
@@ -204,5 +205,31 @@ describe("call markers", () => {
     expect(markerForEvent(event)).toBe(
       callNote({ tool: event.tool, args: event.payload }),
     );
+  });
+});
+
+describe("proposal markers", () => {
+  it("round-trips a proposed tool and compacts it for model history", () => {
+    const proposal = {
+      name: "extract_article_text",
+      description: "Extracts readable article text from fetched HTML.",
+      parameters: {
+        type: "object",
+        properties: { html: { type: "string" } },
+        required: ["html"],
+      },
+      source: 'return String(args.html ?? "").replace(/<[^>]+>/g, " ");',
+      rationale: "Keeps HTML cleanup small and visible in the trace.",
+    };
+    const marker = proposalNote(proposal);
+
+    expect(splitToolNotes(`Here is a small tool.\n\n${marker}`)).toEqual([
+      { type: "text", text: "Here is a small tool." },
+      { type: "proposal", ...proposal },
+    ]);
+    expect(toModelText(marker)).toBe("[proposed tool extract_article_text]");
+    expect(
+      markerForEvent({ type: "proposal", ...proposal }),
+    ).toBe(marker);
   });
 });
