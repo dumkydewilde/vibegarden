@@ -43,6 +43,29 @@ export type AgentToolDef = z.infer<typeof toolSchema>;
 export type AgentSkillDef = z.infer<typeof skillSchema>;
 export type AgentDefinition = z.infer<typeof definitionSchema>;
 
+export function parseAgentTool(
+  raw: unknown,
+): { value: AgentToolDef; error?: never } | { value?: never; error: string } {
+  try {
+    const parsed = toolSchema.safeParse(raw);
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      return { error: `${first.path.join(".") || "tool"}: ${first.message}` };
+    }
+    if (RESERVED_TOOL_NAMES.has(parsed.data.name)) {
+      return { error: `tool name "${parsed.data.name}" is reserved` };
+    }
+    try {
+      JSON.stringify(parsed.data);
+    } catch {
+      return { error: "tool must contain only JSON serializable values" };
+    }
+    return { value: parsed.data };
+  } catch {
+    return { error: "tool could not be parsed safely" };
+  }
+}
+
 export function emptyDefinition(): AgentDefinition {
   return {
     version: 1,

@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Form, Link, useNavigation } from "react-router";
+import { Link } from "react-router";
 import {
   CALL_ERROR_MAX_CHARS,
   callErrorEnvelope,
@@ -14,6 +14,7 @@ import {
 } from "@vibegarden/agent-web";
 
 import type { Route } from "./+types/garden.agents.$id";
+import { DefinitionEditor } from "~/components/workbench/definition-editor";
 import { agentMemory } from "~/components/workbench/memory.client";
 import {
   createRunner,
@@ -25,7 +26,6 @@ import {
   useAgentChat,
   type ToolExecutor,
 } from "~/components/workbench/use-agent-chat";
-import { Button } from "~/components/ui/button";
 import {
   Card,
   CardContent,
@@ -33,8 +33,6 @@ import {
   CardHeader,
   CardTitle,
 } from "~/components/ui/card";
-import { Input } from "~/components/ui/input";
-import { Textarea } from "~/components/ui/textarea";
 import type { AgentDefinition } from "~/lib/agents/contracts";
 import { parseAgentDefinition } from "~/lib/agents/contracts";
 import {
@@ -331,86 +329,6 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     },
   );
   return { saved: true };
-}
-
-function DefinitionEditor({
-  agent,
-  definition,
-  actionData,
-}: {
-  agent: { name: string; description: string };
-  definition: AgentDefinition;
-  actionData: Route.ComponentProps["actionData"];
-}) {
-  const navigation = useNavigation();
-  const [name, setName] = useState(agent.name);
-  const [description, setDescription] = useState(agent.description);
-  const [systemPrompt, setSystemPrompt] = useState(definition.systemPrompt);
-  const saving =
-    navigation.state === "submitting" &&
-    navigation.formData?.get("intent") === "save";
-  const submittedDefinition = JSON.stringify({ ...definition, systemPrompt });
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="font-serif text-xl font-normal">Instructions</CardTitle>
-        <CardDescription>Give the agent a purpose, voice, and clear boundaries.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Form method="post" className="space-y-5">
-          <input type="hidden" name="intent" value="save" />
-          <input type="hidden" name="definition" value={submittedDefinition} />
-          <div className="space-y-2">
-            <label htmlFor="agent-name" className="text-sm font-medium">Name</label>
-            <Input
-              id="agent-name"
-              name="name"
-              required
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="agent-description" className="text-sm font-medium">Description</label>
-            <Textarea
-              id="agent-description"
-              name="description"
-              rows={2}
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-baseline justify-between gap-3">
-              <label htmlFor="system-prompt" className="text-sm font-medium">System prompt</label>
-              <span className="text-xs tabular-nums text-muted-foreground">
-                {systemPrompt.length.toLocaleString()} / 8,000
-              </span>
-            </div>
-            <Textarea
-              id="system-prompt"
-              rows={14}
-              maxLength={8_000}
-              value={systemPrompt}
-              onChange={(event) => setSystemPrompt(event.target.value)}
-              placeholder="You are a thoughtful museum guide. Explain each artwork in plain language, ask one curious follow-up question, and never invent facts."
-              className="min-h-72 resize-y font-mono text-sm leading-relaxed"
-            />
-          </div>
-          {actionData && "error" in actionData && actionData.error && (
-            <p role="alert" className="text-sm text-destructive">{actionData.error}</p>
-          )}
-          {actionData && "saved" in actionData && actionData.saved && (
-            <p role="status" className="text-sm text-muted-foreground">Saved as a new version.</p>
-          )}
-          <Button type="submit" disabled={saving}>
-            {saving ? "Saving..." : "Save new version"}
-          </Button>
-        </Form>
-      </CardContent>
-    </Card>
-  );
 }
 
 function WorkbenchChat({
