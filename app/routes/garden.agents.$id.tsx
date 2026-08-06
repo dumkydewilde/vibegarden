@@ -1,9 +1,14 @@
-import { ArrowLeft, Bot, RotateCcw, Send } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { ArrowLeft, Bot } from "lucide-react";
+import { useCallback, useState } from "react";
 import { Form, Link, useNavigation } from "react-router";
+import { callErrorEnvelope, capCallResult } from "@vibegarden/agent-web";
 
 import type { Route } from "./+types/garden.agents.$id";
-import { useAgentChat } from "~/components/workbench/use-agent-chat";
+import { TraceChat } from "~/components/workbench/trace-chat";
+import {
+  useAgentChat,
+  type ToolExecutor,
+} from "~/components/workbench/use-agent-chat";
 import { Button } from "~/components/ui/button";
 import {
   Card,
@@ -186,75 +191,78 @@ function WorkbenchChat({
   agentId: string;
   versionId: string;
 }) {
-  const [message, setMessage] = useState("");
-  const { entries, send, busy, reset } = useAgentChat({
+  const fetchPage = useCallback<ToolExecutor>(
+    async (call) => {
+      if (typeof call.args.url !== "string") {
+        return {
+          envelope: callErrorEnvelope("fetch_page needs a string URL."),
+        };
+      }
+
+      try {
+        const response = await fetch(
+          `/clubs/${encodeURIComponent(clubSlug)}/api/fetch-proxy`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: call.args.url }),
+          },
+        );
+        const payload = (await response.json().catch(() => null)) as {
+          body?: unknown;
+          error?: unknown;
+        } | null;
+        if (!response.ok) {
+          return {
+            envelope: callErrorEnvelope(
+              typeof payload?.error === "string" && payload.error
+                ? payload.error
+                : "The page could not be fetched.",
+            ),
+          };
+        }
+        if (typeof payload?.body !== "string") {
+          return {
+            envelope: callErrorEnvelope(
+              "The fetch proxy returned an invalid response.",
+            ),
+          };
+        }
+        return { raw: payload.body, envelope: capCallResult(payload.body) };
+      } catch (error) {
+        return {
+          envelope: callErrorEnvelope(
+            error instanceof Error && error.message
+              ? error.message
+              : "The page could not be fetched.",
+          ),
+        };
+      }
+    },
+    [clubSlug],
+  );
+  const fallbackExecutor = useCallback<ToolExecutor>(
+    async () => ({
+      envelope: callErrorEnvelope("No executor for this tool yet."),
+    }),
+    [],
+  );
+  const { entries, send, busy, reset, rawResults } = useAgentChat({
     clubSlug,
     agentId,
     versionId,
+    executors: { fetch_page: fetchPage },
+    fallbackExecutor,
   });
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const text = message.trim();
-    if (!text || busy) return;
-    setMessage("");
-    await send(text);
-  }
-
   return (
-    <Card>
-      <CardHeader className="border-b">
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-2">
-            <CardTitle className="font-serif text-xl font-normal">Test chat</CardTitle>
-            <CardDescription>Try the saved version of this prompt.</CardDescription>
-          </div>
-          {entries.length > 0 && (
-            <Button type="button" variant="ghost" size="sm" onClick={reset} disabled={busy}>
-              <RotateCcw className="size-3.5" />
-              Reset
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div
-          className="flex min-h-72 max-h-[30rem] flex-col gap-3 overflow-y-auto rounded-lg border bg-muted/20 p-4"
-          aria-live="polite"
-        >
-          {entries.length === 0 ? (
-            <div className="m-auto max-w-xs text-center text-sm text-muted-foreground">
-              Send a message to see how the agent follows your instructions.
-            </div>
-          ) : (
-            entries.map((entry, index) => (
-              <div
-                key={`${entry.role}-${index}`}
-                className={
-                  entry.role === "user"
-                    ? "ml-auto max-w-[85%] rounded-xl bg-primary px-3.5 py-2.5 text-sm text-primary-foreground"
-                    : "max-w-[90%] whitespace-pre-wrap rounded-xl border bg-background px-3.5 py-2.5 text-sm leading-relaxed"
-                }
-              >
-                {entry.content || <span className="text-muted-foreground">Thinking...</span>}
-              </div>
-            ))
-          )}
-        </div>
-        <form onSubmit={submit} className="flex gap-2">
-          <Input
-            aria-label="Message"
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            placeholder="Ask your agent something..."
-            disabled={busy}
-          />
-          <Button type="submit" size="icon" disabled={busy || !message.trim()} aria-label="Send message">
-            <Send className="size-4" />
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+    <TraceChat
+      entries={entries}
+      rawResults={rawResults}
+      busy={busy}
+      send={send}
+      reset={reset}
+    />
   );
 }
 
