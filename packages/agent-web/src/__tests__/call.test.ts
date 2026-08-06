@@ -131,6 +131,23 @@ describe("call markers", () => {
     );
   });
 
+  it("normalizes line-breaking error whitespace before capping the summary", () => {
+    expect(
+      callSummaryLine(
+        "extract_text",
+        callErrorEnvelope("first line\nsecond line\r\nthird line\u2028fourth line"),
+      ),
+    ).toBe(
+      "[extract_text result: error: first line second line third line fourth line]",
+    );
+    expect(
+      callSummaryLine(
+        "extract_text",
+        callErrorEnvelope(`${"a".repeat(198)}\r\nb`),
+      ),
+    ).toBe(`[extract_text result: error: ${"a".repeat(198)} b]`);
+  });
+
   it("caps compacted argument JSON at 300 characters", () => {
     const compacted = toModelText(
       callNote({ tool: "extract_text", args: { text: "x".repeat(500) } }),

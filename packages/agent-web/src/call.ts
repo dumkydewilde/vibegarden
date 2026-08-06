@@ -77,7 +77,8 @@ export function callSummaryLine(
   envelope: CallResultEnvelope,
 ): string {
   if (envelope.status === "error") {
-    return `[${tool} result: error: ${envelope.error.slice(0, 200)}]`;
+    const error = envelope.error.replace(/[\r\n\v\f\u0085\u2028\u2029]+/g, " ");
+    return `[${tool} result: error: ${error.slice(0, 200)}]`;
   }
   const truncated = envelope.truncated ? ", truncated" : "";
   return `[${tool} result: ok, ${envelope.totalChars} chars${truncated}]`;
