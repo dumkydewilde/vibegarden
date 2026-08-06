@@ -48,6 +48,20 @@ describe("parseAgentDefinition", () => {
     expect(result.error).toMatch(/JSON serializ/i);
   });
 
+  it("returns an error when validation reads a throwing getter", () => {
+    const definition = new Proxy(emptyDefinition(), {
+      get(target, property, receiver) {
+        if (property === "systemPrompt") throw new Error("hostile getter");
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    const result = parseAgentDefinition(definition);
+
+    expect(result.value).toBeUndefined();
+    expect(result.error).toBeDefined();
+  });
+
   it("rejects a bad tool name", () => {
     const tool = {
       name: "Bad Name",

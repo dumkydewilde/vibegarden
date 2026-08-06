@@ -48,28 +48,32 @@ export function emptyDefinition(): AgentDefinition {
 export function parseAgentDefinition(
   raw: unknown,
 ): { value: AgentDefinition; error?: never } | { value?: never; error: string } {
-  const parsed = definitionSchema.safeParse(raw);
-  if (!parsed.success) {
-    const first = parsed.error.issues[0];
-    return { error: `${first.path.join(".") || "definition"}: ${first.message}` };
-  }
-
-  const names = new Set<string>();
-  for (const item of [...parsed.data.tools, ...parsed.data.skills]) {
-    if (names.has(item.name)) return { error: `duplicate name "${item.name}"` };
-    names.add(item.name);
-  }
-
-  let serialized: string;
   try {
-    serialized = JSON.stringify(parsed.data);
+    const parsed = definitionSchema.safeParse(raw);
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      return { error: `${first.path.join(".") || "definition"}: ${first.message}` };
+    }
+
+    const names = new Set<string>();
+    for (const item of [...parsed.data.tools, ...parsed.data.skills]) {
+      if (names.has(item.name)) return { error: `duplicate name "${item.name}"` };
+      names.add(item.name);
+    }
+
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(parsed.data);
+    } catch {
+      return { error: "definition must contain only JSON serializable values" };
+    }
+
+    if (new TextEncoder().encode(serialized).length > DEFINITION_MAX_BYTES) {
+      return { error: "definition exceeds 64KB; trim tool sources or skills" };
+    }
+
+    return { value: parsed.data };
   } catch {
-    return { error: "definition must contain only JSON serializable values" };
+    return { error: "definition could not be parsed safely" };
   }
-
-  if (new TextEncoder().encode(serialized).length > DEFINITION_MAX_BYTES) {
-    return { error: "definition exceeds 64KB; trim tool sources or skills" };
-  }
-
-  return { value: parsed.data };
 }

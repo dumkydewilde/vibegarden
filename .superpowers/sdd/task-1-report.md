@@ -93,3 +93,53 @@ $ npm run typecheck
 > typecheck
 > react-router typegen && tsc
 ```
+
+## Review follow-up: total parsing boundary
+
+### Scope
+
+Addressed the remaining Task 1 P1 in the parser and its focused suite:
+
+- `app/lib/agents/contracts.ts`
+- `app/lib/agents/__tests__/contracts.test.ts`
+- `.superpowers/sdd/task-1-report.md`
+
+### Red evidence
+
+Added a regression test that passes a `Proxy` around an otherwise valid empty
+definition. Its `systemPrompt` getter throws when Zod reads it. Before the fix:
+
+```text
+$ npm test -- app/lib/agents
+Test Files  1 failed (1)
+Tests  1 failed | 9 passed (10)
+Error: hostile getter
+at Object.get app/lib/agents/__tests__/contracts.test.ts:54:48
+at ZodObject.safeParse
+at parseAgentDefinition app/lib/agents/contracts.ts:51:35
+```
+
+This proved that `definitionSchema.safeParse(raw)` could itself throw for
+hostile input, violating `parseAgentDefinition`'s value-or-error contract.
+
+### Fix
+
+- Wrapped the entire schema parse, duplicate-name check, serialization, and
+  byte-count path in an outer `try`/`catch`.
+- The outer boundary returns the stable, safe readable error
+  `definition could not be parsed safely` without inspecting a possibly hostile
+  thrown value.
+- Retained the nested serialization-specific error for valid schema data that
+  cannot be JSON serialized, preserving the prior review fix and its behavior.
+
+### Green verification
+
+```text
+$ npm test -- app/lib/agents
+Test Files  1 passed (1)
+Tests  10 passed (10)
+
+$ npm run typecheck
+> typecheck
+> react-router typegen && tsc
+```
