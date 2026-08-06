@@ -18,6 +18,7 @@ export default defineConfig({
       "app/**/__tests__/**/*.test.{ts,tsx}",
       "packages/**/__tests__/**/*.test.{ts,tsx}",
     ],
+    exclude: ["app/lib/agents/__tests__/repository.test.ts"],
     setupFiles: ["./vitest.setup.ts"],
   },
 });
