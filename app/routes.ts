@@ -26,6 +26,8 @@ export default [
     ),
     route("garden/projects/:id", "routes/garden.projects.$id.tsx"),
     route("garden/modules/:slug", "routes/garden.modules.$slug.tsx"),
+    route("garden/agents", "routes/garden.agents.tsx"),
+    route("garden/agents/:id", "routes/garden.agents.$id.tsx"),
     route("learning", "routes/learning.tsx"),
     route("learning/:slug", "routes/learning.$slug.tsx"),
     route("artifacts", "routes/artifacts.tsx"),

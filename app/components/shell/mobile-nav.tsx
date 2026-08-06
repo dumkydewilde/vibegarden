@@ -50,7 +50,7 @@ export function MobileNav({ current, clubs }: Pick<ClubSwitcherProps, "current" 
               <li key={item.to}>
                 <NavLink
                   to={clubPath(clubSlug ?? "", item.to)}
-                  end={item.to === ""}
+                  end={item.to === "" || item.to === "garden"}
                   onClick={() => setOpen(false)}
                   className={({ isActive }) =>
                     cn(
