@@ -91,7 +91,8 @@ export async function readCappedText(
       if (done) {
         body += bodyDecoder.decode();
         totalChars += totalDecoder.decode().length;
-        return { body, totalChars, truncated: false };
+        const cappedBody = capDecodedText(body, maxBytes);
+        return { body: cappedBody, totalChars, truncated: cappedBody !== body };
       }
 
       totalChars += totalDecoder.decode(value, { stream: true }).length;

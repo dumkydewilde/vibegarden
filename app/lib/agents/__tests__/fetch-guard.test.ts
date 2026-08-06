@@ -126,6 +126,54 @@ describe("readCappedText", () => {
     });
     expect(new TextEncoder().encode(result.body).byteLength).toBeLessThanOrEqual(4);
   });
+
+  it.each([
+    {
+      name: "an incomplete multibyte sequence",
+      bytes: [0x61, 0x62, 0x63, 0xc3],
+      maxBytes: 4,
+      expectedBody: "abc",
+      expectedTotalChars: 4,
+    },
+    {
+      name: "an invalid leading byte",
+      bytes: [0xff],
+      maxBytes: 1,
+      expectedBody: "",
+      expectedTotalChars: 1,
+    },
+  ])(
+    "caps replacement characters emitted for $name at EOF",
+    async ({ bytes, maxBytes, expectedBody, expectedTotalChars }) => {
+      const result = await readCappedText(
+        new Response(new Uint8Array(bytes)),
+        maxBytes,
+      );
+
+      expect(result).toEqual({
+        body: expectedBody,
+        totalChars: expectedTotalChars,
+        truncated: true,
+      });
+      expect(new TextEncoder().encode(result.body).byteLength).toBeLessThanOrEqual(
+        maxBytes,
+      );
+    },
+  );
+
+  it("keeps valid UTF-8 unchanged when it ends exactly at the byte cap", async () => {
+    const result = await readCappedText(
+      new Response(new TextEncoder().encode("éé")),
+      4,
+    );
+
+    expect(result).toEqual({
+      body: "éé",
+      totalChars: 2,
+      truncated: false,
+    });
+    expect(new TextEncoder().encode(result.body)).toHaveLength(4);
+  });
 });
 
 describe("proxyFetch", () => {
