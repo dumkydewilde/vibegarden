@@ -75,10 +75,12 @@ function AgentTable({
   agents,
   clubSlug,
   emptyMessage,
+  linkToRun = false,
 }: {
   agents: Agent[];
   clubSlug: string;
   emptyMessage: string;
+  linkToRun?: boolean;
 }) {
   if (agents.length === 0) {
     return <p className="px-5 py-8 text-sm text-muted-foreground">{emptyMessage}</p>;
@@ -101,7 +103,7 @@ function AgentTable({
                 <Link
                   to={clubPath(
                     clubSlug,
-                    `garden/agents/${encodeURIComponent(agent.id)}`,
+                    `garden/agents/${encodeURIComponent(agent.id)}${linkToRun ? "/run" : ""}`,
                   )}
                   className="underline-offset-4 hover:text-primary hover:underline"
                 >
@@ -159,6 +161,7 @@ export default function Agents({ loaderData, actionData, params }: Route.Compone
               agents={loaderData.shared}
               clubSlug={params.clubSlug}
               emptyMessage="No one has shared an agent yet."
+              linkToRun
             />
           </Card>
         </div>

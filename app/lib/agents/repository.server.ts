@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, ne, sql } from "drizzle-orm";
 
 import {
   agents,
@@ -223,6 +223,54 @@ export async function getAgentForUser(
   }
 
   return { agent, version, definition: parsed.value };
+}
+
+export async function setAgentSharing(
+  db: Db,
+  scope: AgentScope,
+  agentId: string,
+  share: boolean,
+): Promise<Agent | null> {
+  const result = await db
+    .update(agents)
+    .set(
+      share
+        ? {
+            visibility: "club",
+            sharedVersionId: sql`${agents.latestVersionId}`,
+            updatedAt: nowSeconds(),
+          }
+        : {
+            visibility: "private",
+            sharedVersionId: null,
+            updatedAt: nowSeconds(),
+          },
+    )
+    .where(
+      and(
+        eq(agents.id, agentId),
+        eq(agents.clubId, scope.clubId),
+        eq(agents.ownerId, scope.userId),
+        isNull(agents.deletedAt),
+        ...(share ? [isNotNull(agents.latestVersionId)] : []),
+      ),
+    )
+    .run();
+  if (result.meta.changes === 0) return null;
+
+  const rows = await db
+    .select()
+    .from(agents)
+    .where(
+      and(
+        eq(agents.id, agentId),
+        eq(agents.clubId, scope.clubId),
+        eq(agents.ownerId, scope.userId),
+        isNull(agents.deletedAt),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function deleteAgent(

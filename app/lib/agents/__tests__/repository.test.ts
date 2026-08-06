@@ -9,6 +9,7 @@ import {
   getAgentForUser,
   listAgents,
   saveAgentVersion,
+  setAgentSharing,
   type AgentScope,
 } from "../repository.server";
 
@@ -178,6 +179,147 @@ describe("agents repository", () => {
       latestVersionId: draft.id,
     });
     expect(ownerShared?.version.id).toBe(created.version.id);
+  });
+
+  it("pins the latest version on share and moves the pin only on re-share", async () => {
+    const db = getDb({ DB: env.DB } as Env);
+    const created = await createAgent(db, ownerScope, {
+      name: "Pinned helper",
+      description: "Version one",
+      definition: definition("Shared version one"),
+    });
+
+    const firstShare = await setAgentSharing(
+      db,
+      ownerScope,
+      created.agent.id,
+      true,
+    );
+    const draft = await saveAgentVersion(db, ownerScope, created.agent.id, {
+      name: "Pinned helper",
+      description: "Version two",
+      definition: definition("Private version two"),
+    });
+    const afterDraft = await getAgentForUser(db, memberScope, created.agent.id);
+    const secondShare = await setAgentSharing(
+      db,
+      ownerScope,
+      created.agent.id,
+      true,
+    );
+    const afterReshare = await getAgentForUser(
+      db,
+      memberScope,
+      created.agent.id,
+    );
+
+    expect(firstShare).toMatchObject({
+      visibility: "club",
+      latestVersionId: created.version.id,
+      sharedVersionId: created.version.id,
+    });
+    expect(afterDraft?.version.id).toBe(created.version.id);
+    expect(afterDraft?.definition.systemPrompt).toBe("Shared version one");
+    expect(secondShare).toMatchObject({
+      visibility: "club",
+      latestVersionId: draft.id,
+      sharedVersionId: draft.id,
+    });
+    expect(afterReshare?.version.id).toBe(draft.id);
+    expect(afterReshare?.definition.systemPrompt).toBe("Private version two");
+  });
+
+  it("allows only an owner with a saved version to change sharing", async () => {
+    const db = getDb({ DB: env.DB } as Env);
+    const created = await createAgent(db, ownerScope, {
+      name: "Owner helper",
+      description: "Owner controlled",
+      definition: definition("Owner version"),
+    });
+    const versionlessAgentId = "agent_without-version";
+    await env.DB.prepare(
+      `INSERT INTO agents (
+        id, club_id, owner_id, name, description, visibility,
+        latest_version_id, shared_version_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, 'private', NULL, NULL, ?, ?)`,
+    ).bind(
+      versionlessAgentId,
+      ownerScope.clubId,
+      ownerScope.userId,
+      "Versionless",
+      "No saved version",
+      1_784_880_000,
+      1_784_880_000,
+    ).run();
+
+    await expect(
+      setAgentSharing(db, memberScope, created.agent.id, true),
+    ).resolves.toBeNull();
+    const shared = await setAgentSharing(
+      db,
+      ownerScope,
+      created.agent.id,
+      true,
+    );
+    await expect(
+      setAgentSharing(db, memberScope, created.agent.id, false),
+    ).resolves.toBeNull();
+    await expect(
+      setAgentSharing(db, ownerScope, versionlessAgentId, true),
+    ).resolves.toBeNull();
+
+    const stored = await env.DB.prepare(
+      "SELECT visibility, shared_version_id FROM agents WHERE id = ?",
+    ).bind(created.agent.id).first<{
+      visibility: string;
+      shared_version_id: string | null;
+    }>();
+    const versionlessStored = await env.DB.prepare(
+      "SELECT visibility, shared_version_id FROM agents WHERE id = ?",
+    ).bind(versionlessAgentId).first<{
+      visibility: string;
+      shared_version_id: string | null;
+    }>();
+    expect(shared).not.toBeNull();
+    expect(stored).toEqual({
+      visibility: "club",
+      shared_version_id: created.version.id,
+    });
+    expect(versionlessStored).toEqual({
+      visibility: "private",
+      shared_version_id: null,
+    });
+  });
+
+  it("unshares an agent and immediately hides it from other club members", async () => {
+    const db = getDb({ DB: env.DB } as Env);
+    const created = await createAgent(db, ownerScope, {
+      name: "Temporary share",
+      description: "Shared briefly",
+      definition: definition("Club version"),
+    });
+    await setAgentSharing(db, ownerScope, created.agent.id, true);
+
+    expect((await listAgents(db, memberScope)).shared).toHaveLength(1);
+    await expect(
+      getAgentForUser(db, memberScope, created.agent.id),
+    ).resolves.not.toBeNull();
+
+    const unshared = await setAgentSharing(
+      db,
+      ownerScope,
+      created.agent.id,
+      false,
+    );
+
+    expect(unshared).toMatchObject({
+      visibility: "private",
+      sharedVersionId: null,
+    });
+    expect((await listAgents(db, memberScope)).shared).toEqual([]);
+    await expect(
+      getAgentForUser(db, memberScope, created.agent.id),
+    ).resolves.toBeNull();
   });
 
   it("soft deletes only owned agents and hides them from reads and lists", async () => {

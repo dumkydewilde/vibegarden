@@ -1,4 +1,11 @@
-import { ArrowLeft, Bot, Sparkles, Sprout } from "lucide-react";
+import {
+  ArrowLeft,
+  Bot,
+  LockKeyhole,
+  Share2,
+  Sparkles,
+  Sprout,
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -6,7 +13,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link } from "react-router";
+import { Form, Link, useNavigation } from "react-router";
 import {
   CALL_ERROR_MAX_CHARS,
   callErrorEnvelope,
@@ -44,6 +51,7 @@ import { parseAgentDefinition } from "~/lib/agents/contracts";
 import {
   getAgentForUser,
   saveAgentVersion,
+  setAgentSharing,
 } from "~/lib/agents/repository.server";
 import { buildAgentSystemPrompt } from "~/lib/agents/prompt.server";
 import { requireUser } from "~/lib/auth.server";
@@ -60,15 +68,29 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
   const club = await requireClubContext(env, request, params.clubSlug ?? "");
+  const db = getDb(env);
+  const scope = { clubId: club.club.id, userId: user.id };
   const loaded = await getAgentForUser(
-    getDb(env),
-    { clubId: club.club.id, userId: user.id },
+    db,
+    scope,
     params.id ?? "",
   );
   if (!loaded) throw new Response("Agent not found.", { status: 404 });
 
+  const sharedVersion = loaded.agent.sharedVersionId
+    ? await getAgentForUser(
+        db,
+        scope,
+        loaded.agent.id,
+        loaded.agent.sharedVersionId,
+      )
+    : null;
+
   return {
     ...loaded,
+    ...(sharedVersion
+      ? { sharedVersionCreatedAt: sharedVersion.version.createdAt }
+      : {}),
     canEdit: loaded.agent.ownerId === user.id,
     runnerUrl: new URL("/agent-runner", env.RENDERER_ORIGIN).href,
     userId: user.id,
@@ -293,40 +315,77 @@ export function createWorkbenchWiring({
   };
 }
 
-export async function action({ request, context, params }: Route.ActionArgs) {
+type WorkbenchActionResult = {
+  source: "save" | "sharing";
+  error?: string;
+  saved?: boolean;
+};
+
+export async function action({
+  request,
+  context,
+  params,
+}: Route.ActionArgs): Promise<WorkbenchActionResult> {
   const { env } = context.get(cloudflareContext);
   const user = await requireUser(env, request);
   const club = await requireClubContext(env, request, params.clubSlug ?? "");
   const form = await request.formData();
+  const intent = String(form.get("intent") ?? "");
+  const db = getDb(env);
+  const scope = { clubId: club.club.id, userId: user.id };
 
-  if (form.get("intent") !== "save") {
-    return { error: "Unknown action." };
+  if (intent === "share" || intent === "unshare") {
+    const updated = await setAgentSharing(
+      db,
+      scope,
+      params.id ?? "",
+      intent === "share",
+    );
+    if (!updated) {
+      return {
+        source: "sharing",
+        error: "Only the agent owner can change sharing for a saved agent.",
+      };
+    }
+    return { source: "sharing" };
+  }
+
+  if (intent !== "save") {
+    return { source: "save", error: "Unknown action." };
   }
 
   const name = String(form.get("name") ?? "").trim();
-  if (!name) return { error: "Give your agent a name." };
+  if (!name) {
+    return { source: "save", error: "Give your agent a name." };
+  }
 
   let rawDefinition: unknown;
   try {
     rawDefinition = JSON.parse(String(form.get("definition") ?? ""));
   } catch {
-    return { error: "The agent definition is not valid JSON." };
+    return {
+      source: "save",
+      error: "The agent definition is not valid JSON.",
+    };
   }
   const parsed = parseAgentDefinition(rawDefinition);
-  if (parsed.error) return { error: parsed.error };
+  if (parsed.error) return { source: "save", error: parsed.error };
 
   const loaded = await getAgentForUser(
-    getDb(env),
-    { clubId: club.club.id, userId: user.id },
+    db,
+    scope,
     params.id ?? "",
   );
   if (!loaded || loaded.agent.ownerId !== user.id) {
-    return { error: "Only the agent owner can save changes." };
+    return {
+      source: "save",
+      error: "Only the agent owner can save changes.",
+    };
   }
 
   await saveAgentVersion(
-    getDb(env),
-    { clubId: club.club.id, userId: user.id },
+    db,
+    scope,
     loaded.agent.id,
     {
       name,
@@ -334,7 +393,102 @@ export async function action({ request, context, params }: Route.ActionArgs) {
       definition: parsed.value,
     },
   );
-  return { saved: true };
+  return { source: "save", saved: true };
+}
+
+function sharedVersionDate(timestamp: number): string {
+  return new Date(timestamp * 1000).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function AgentSharingControls({
+  visibility,
+  sharedVersionCreatedAt,
+  error,
+}: {
+  visibility: "private" | "club";
+  sharedVersionCreatedAt?: number;
+  error?: string;
+}) {
+  const navigation = useNavigation();
+  const sharingIntent = navigation.state === "submitting"
+    ? String(navigation.formData?.get("intent") ?? "")
+    : "";
+  const sharing = ["share", "unshare"].includes(sharingIntent);
+
+  return (
+    <div className="mb-6 rounded-xl border bg-card px-4 py-4 shadow-sm sm:flex sm:items-center sm:justify-between sm:gap-6">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+          {visibility === "club" ? (
+            <Share2 className="size-4" />
+          ) : (
+            <LockKeyhole className="size-4" />
+          )}
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-medium">Sharing</p>
+          {visibility === "club" ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              {sharedVersionCreatedAt
+                ? `Shared with the club: version from ${sharedVersionDate(sharedVersionCreatedAt)}.`
+                : "Shared with the club."}
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Private. Share the latest saved version when it is ready to try.
+            </p>
+          )}
+          {error && (
+            <p role="alert" className="mt-2 text-sm text-destructive">
+              {error}
+            </p>
+          )}
+        </div>
+      </div>
+      <Form method="post" className="mt-4 flex flex-wrap gap-2 sm:mt-0 sm:shrink-0">
+        {visibility === "club" ? (
+          <>
+            <Button
+              type="submit"
+              name="intent"
+              value="share"
+              variant="outline"
+              disabled={sharing}
+            >
+              <Share2 />
+              {sharingIntent === "share"
+                ? "Updating..."
+                : "Update shared version"}
+            </Button>
+            <Button
+              type="submit"
+              name="intent"
+              value="unshare"
+              variant="secondary"
+              disabled={sharing}
+            >
+              <LockKeyhole />
+              {sharingIntent === "unshare" ? "Unsharing..." : "Unshare"}
+            </Button>
+          </>
+        ) : (
+          <Button
+            type="submit"
+            name="intent"
+            value="share"
+            disabled={sharing}
+          >
+            <Share2 />
+            {sharing ? "Sharing..." : "Share with club"}
+          </Button>
+        )}
+      </Form>
+    </div>
+  );
 }
 
 function WorkbenchChat({
@@ -417,6 +571,9 @@ export default function AgentWorkbench({ loaderData, actionData, params }: Route
     runnerUrl,
     userId,
   } = loaderData;
+  const sharedVersionCreatedAt = "sharedVersionCreatedAt" in loaderData
+    ? loaderData.sharedVersionCreatedAt
+    : undefined;
   const gardener = useOptionalGardener();
   const [workingDefinition, setWorkingDefinition] =
     useState<AgentDefinition>(definition);
@@ -460,6 +617,14 @@ export default function AgentWorkbench({ loaderData, actionData, params }: Route
         </p>
       )}
 
+      {canEdit && (
+        <AgentSharingControls
+          visibility={agent.visibility}
+          sharedVersionCreatedAt={sharedVersionCreatedAt}
+          error={actionData?.source === "sharing" ? actionData.error : undefined}
+        />
+      )}
+
       <div className="grid gap-6 lg:grid-cols-2">
         <div>
           {canEdit ? (
@@ -467,7 +632,7 @@ export default function AgentWorkbench({ loaderData, actionData, params }: Route
               key={version.id}
               agent={agent}
               definition={definition}
-              actionData={actionData}
+              actionData={actionData?.source === "save" ? actionData : undefined}
               stagedTool={stagedTool}
               onDefinitionChange={setWorkingDefinition}
             />
