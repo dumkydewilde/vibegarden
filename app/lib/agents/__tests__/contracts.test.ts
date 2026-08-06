@@ -3,8 +3,39 @@ import {
   DEFINITION_MAX_BYTES,
   emptyDefinition,
   parseAgentDefinition,
+  parseAgentTool,
   SYSTEM_PROMPT_MAX_CHARS,
 } from "../contracts";
+
+const validTool = {
+  name: "inspect_value",
+  description: "Inspects a parameter value.",
+  parameters: { type: "object" } as Record<string, unknown>,
+  source: "return args;",
+};
+
+describe("parseAgentTool", () => {
+  it.each([
+    ["a nested non-finite number", { nested: { value: Number.NaN } }],
+    ["a typed array", { nested: new Uint8Array([1, 2, 3]) }],
+    ["a Date", { nested: new Date("2026-08-06T00:00:00Z") }],
+    ["a transforming object", { nested: { toJSON: () => "changed" } }],
+    [
+      "a non-enumerable object value",
+      {
+        nested: Object.defineProperty({ visible: true }, "hidden", {
+          value: "lost",
+        }),
+      },
+    ],
+    ["an undefined array entry", { nested: [1, undefined] }],
+  ])("rejects parameters containing %s", (_label, parameters) => {
+    const parsed = parseAgentTool({ ...validTool, parameters });
+
+    expect(parsed.value).toBeUndefined();
+    expect(parsed.error).toMatch(/JSON|serialize|loss/i);
+  });
+});
 
 describe("parseAgentDefinition", () => {
   it("accepts a minimal valid definition", () => {
@@ -28,7 +59,26 @@ describe("parseAgentDefinition", () => {
       source: "return args.html.replace(/<[^>]+>/g, ' ');",
     };
 
-    expect(parseAgentDefinition({ ...emptyDefinition(), tools: [tool] }).value).toBeDefined();
+    expect(
+      parseAgentDefinition({ ...emptyDefinition(), tools: [tool] }).value,
+    ).toBeDefined();
+  });
+
+  it("preserves valid JSON parameter keys through definition parsing", () => {
+    const parameters = JSON.parse(
+      '{"type":"object","__proto__":{"marker":"preserved"}}',
+    ) as Record<string, unknown>;
+    const result = parseAgentDefinition({
+      ...emptyDefinition(),
+      tools: [{ ...validTool, parameters }],
+    });
+
+    expect(result.error).toBeUndefined();
+    const savedParameters = result.value?.tools[0]?.parameters as
+      Record<string, unknown> | undefined;
+    expect(savedParameters && Object.hasOwn(savedParameters, "__proto__")).toBe(
+      true,
+    );
   });
 
   it("returns an error for a tool parameter that cannot be JSON serialized", () => {
@@ -70,7 +120,9 @@ describe("parseAgentDefinition", () => {
       source: "return 1;",
     };
 
-    expect(parseAgentDefinition({ ...emptyDefinition(), tools: [tool] }).error).toMatch(/tool name/i);
+    expect(
+      parseAgentDefinition({ ...emptyDefinition(), tools: [tool] }).error,
+    ).toMatch(/tool name/i);
   });
 
   it("rejects duplicate tool names", () => {
@@ -81,9 +133,9 @@ describe("parseAgentDefinition", () => {
       source: "return 1;",
     };
 
-    expect(parseAgentDefinition({ ...emptyDefinition(), tools: [tool, tool] }).error).toMatch(
-      /duplicate/i,
-    );
+    expect(
+      parseAgentDefinition({ ...emptyDefinition(), tools: [tool, tool] }).error,
+    ).toMatch(/duplicate/i);
   });
 
   it.each([
@@ -93,21 +145,18 @@ describe("parseAgentDefinition", () => {
     "use_skill",
     "query_data",
     "attach_data",
-  ])(
-    "rejects the reserved tool name %s",
-    (name) => {
-      const tool = {
-        name,
-        description: "Attempts to replace a trusted builtin.",
-        parameters: { type: "object" },
-        source: "return 1;",
-      };
+  ])("rejects the reserved tool name %s", (name) => {
+    const tool = {
+      name,
+      description: "Attempts to replace a trusted builtin.",
+      parameters: { type: "object" },
+      source: "return 1;",
+    };
 
-      expect(
-        parseAgentDefinition({ ...emptyDefinition(), tools: [tool] }).error,
-      ).toMatch(/reserved/i);
-    },
-  );
+    expect(
+      parseAgentDefinition({ ...emptyDefinition(), tools: [tool] }).error,
+    ).toMatch(/reserved/i);
+  });
 
   it("rejects an oversized system prompt", () => {
     expect(

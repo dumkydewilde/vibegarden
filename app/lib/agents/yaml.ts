@@ -4,7 +4,9 @@ import { parseAgentTool, type AgentToolDef } from "./contracts";
 
 /** Human-editable form only. Persisted definitions remain canonical JSON. */
 export function toolToYaml(tool: AgentToolDef): string {
-  return stringify(tool, { blockQuote: "literal" });
+  const parsed = parseAgentTool(tool);
+  if ("error" in parsed) throw new Error(parsed.error);
+  return stringify(parsed.value, { blockQuote: "literal" });
 }
 
 export function toolFromYaml(

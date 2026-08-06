@@ -26,8 +26,11 @@ type EditingTool = {
   initialText?: string;
 };
 
-function exampleTool(tools: AgentToolDef[]): EditingTool {
-  const names = new Set(tools.map(({ name }) => name));
+function exampleTool(
+  tools: AgentToolDef[],
+  skills: AgentDefinition["skills"],
+): EditingTool {
+  const names = new Set([...tools, ...skills].map(({ name }) => name));
   let name = "my_tool";
   let suffix = 2;
   while (names.has(name)) {
@@ -44,7 +47,7 @@ function exampleTool(tools: AgentToolDef[]): EditingTool {
     },
     source: [
       "// This code runs in the isolated browser tool runner.",
-      "return { text: String(args.text ?? \"\") };",
+      'return { text: String(args.text ?? "") };',
     ].join("\n"),
   };
   return {
@@ -80,12 +83,13 @@ export function DefinitionEditor({
 
   function applyTool(tool: AgentToolDef) {
     if (!editing) return;
-    const duplicate = draft.tools.some(
-      (candidate, index) =>
-        candidate.name === tool.name && index !== editing.index,
-    );
+    const duplicate =
+      draft.tools.some(
+        (candidate, index) =>
+          candidate.name === tool.name && index !== editing.index,
+      ) || draft.skills.some((candidate) => candidate.name === tool.name);
     if (duplicate) {
-      setToolError(`A tool named "${tool.name}" already exists.`);
+      setToolError(`A tool or skill named "${tool.name}" already exists.`);
       return;
     }
     setDraft((current) => {
@@ -117,15 +121,21 @@ export function DefinitionEditor({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="font-serif text-xl font-normal">Instructions</CardTitle>
-        <CardDescription>Give the agent a purpose, voice, and clear boundaries.</CardDescription>
+        <CardTitle className="font-serif text-xl font-normal">
+          Instructions
+        </CardTitle>
+        <CardDescription>
+          Give the agent a purpose, voice, and clear boundaries.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <Form method="post" className="space-y-6">
           <input type="hidden" name="intent" value="save" />
           <input type="hidden" name="definition" value={submittedDefinition} />
           <div className="space-y-2">
-            <label htmlFor="agent-name" className="text-sm font-medium">Name</label>
+            <label htmlFor="agent-name" className="text-sm font-medium">
+              Name
+            </label>
             <Input
               id="agent-name"
               name="name"
@@ -135,7 +145,9 @@ export function DefinitionEditor({
             />
           </div>
           <div className="space-y-2">
-            <label htmlFor="agent-description" className="text-sm font-medium">Description</label>
+            <label htmlFor="agent-description" className="text-sm font-medium">
+              Description
+            </label>
             <Textarea
               id="agent-description"
               name="description"
@@ -146,7 +158,9 @@ export function DefinitionEditor({
           </div>
           <div className="space-y-2">
             <div className="flex items-baseline justify-between gap-3">
-              <label htmlFor="system-prompt" className="text-sm font-medium">System prompt</label>
+              <label htmlFor="system-prompt" className="text-sm font-medium">
+                System prompt
+              </label>
               <span className="text-xs tabular-nums text-muted-foreground">
                 {draft.systemPrompt.length.toLocaleString()} / 8,000
               </span>
@@ -167,10 +181,16 @@ export function DefinitionEditor({
             />
           </div>
 
-          <section className="space-y-3 border-t pt-5" aria-labelledby="agent-tools-heading">
+          <section
+            className="space-y-3 border-t pt-5"
+            aria-labelledby="agent-tools-heading"
+          >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 id="agent-tools-heading" className="flex items-center gap-2 text-sm font-medium">
+                <h2
+                  id="agent-tools-heading"
+                  className="flex items-center gap-2 text-sm font-medium"
+                >
                   <Wrench className="size-4 text-muted-foreground" />
                   Tools
                 </h2>
@@ -189,7 +209,7 @@ export function DefinitionEditor({
                   disabled={draft.tools.length >= MAX_TOOLS}
                   onClick={() => {
                     setToolError(null);
-                    setEditing(exampleTool(draft.tools));
+                    setEditing(exampleTool(draft.tools, draft.skills));
                   }}
                 >
                   <Plus />
@@ -200,7 +220,8 @@ export function DefinitionEditor({
 
             {draft.tools.length === 0 ? (
               <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
-                No custom tools yet. Add one to give this agent a browser-sandboxed capability.
+                No custom tools yet. Add one to give this agent a
+                browser-sandboxed capability.
               </div>
             ) : (
               <ul className="space-y-2">
@@ -260,15 +281,21 @@ export function DefinitionEditor({
               />
             )}
             {toolError && (
-              <p role="alert" className="text-sm text-destructive">{toolError}</p>
+              <p role="alert" className="text-sm text-destructive">
+                {toolError}
+              </p>
             )}
           </section>
 
           {actionData?.error && (
-            <p role="alert" className="text-sm text-destructive">{actionData.error}</p>
+            <p role="alert" className="text-sm text-destructive">
+              {actionData.error}
+            </p>
           )}
           {actionData?.saved && (
-            <p role="status" className="text-sm text-muted-foreground">Saved as a new version.</p>
+            <p role="status" className="text-sm text-muted-foreground">
+              Saved as a new version.
+            </p>
           )}
           <Button type="submit" disabled={saving}>
             {saving ? "Saving..." : "Save new version"}
