@@ -620,6 +620,71 @@ export const artifactIdempotency = sqliteTable(
   ],
 );
 
+export const agents = sqliteTable(
+  "agents",
+  {
+    id: text("id").primaryKey(),
+    clubId: text("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    visibility: text("visibility", { enum: ["private", "club"] })
+      .notNull()
+      .default("private"),
+    // Starts null so a new agent row can exist before its first version.
+    latestVersionId: text("latest_version_id").references(
+      () => agentVersions.id,
+      { onDelete: "set null" },
+    ),
+    sharedVersionId: text("shared_version_id").references(
+      () => agentVersions.id,
+      { onDelete: "set null" },
+    ),
+    deletedAt: integer("deleted_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    check(
+      "agents_visibility_check",
+      sql`${table.visibility} in ('private', 'club')`,
+    ),
+    index("agents_owner_list_idx").on(
+      table.clubId,
+      table.ownerId,
+      table.deletedAt,
+      table.updatedAt,
+    ),
+    index("agents_shared_list_idx").on(
+      table.clubId,
+      table.visibility,
+      table.deletedAt,
+      table.updatedAt,
+    ),
+  ],
+);
+
+export const agentVersions = sqliteTable(
+  "agent_versions",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    /** Validated AgentDefinition JSON; parse with parseAgentDefinition on read. */
+    definition: text("definition").notNull(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [index("agent_versions_agent_idx").on(table.agentId, table.createdAt)],
+);
+
 export type User = typeof users.$inferSelect;
 export type Invite = typeof invites.$inferSelect;
 export type Club = typeof clubs.$inferSelect;
@@ -636,3 +701,5 @@ export type Comment = typeof comments.$inferSelect;
 export type SiteFeedback = typeof siteFeedback.$inferSelect;
 export type Artifact = typeof artifacts.$inferSelect;
 export type ArtifactVersion = typeof artifactVersions.$inferSelect;
+export type Agent = typeof agents.$inferSelect;
+export type AgentVersion = typeof agentVersions.$inferSelect;
