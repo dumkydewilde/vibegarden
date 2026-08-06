@@ -29,4 +29,54 @@ CREATE TABLE `agents` (
 );
 --> statement-breakpoint
 CREATE INDEX `agents_owner_list_idx` ON `agents` (`club_id`,`owner_id`,`deleted_at`,`updated_at`);--> statement-breakpoint
-CREATE INDEX `agents_shared_list_idx` ON `agents` (`club_id`,`visibility`,`deleted_at`,`updated_at`);
+CREATE INDEX `agents_shared_list_idx` ON `agents` (`club_id`,`visibility`,`deleted_at`,`updated_at`);--> statement-breakpoint
+CREATE TRIGGER `agent_versions_immutable`
+BEFORE UPDATE ON `agent_versions`
+FOR EACH ROW
+BEGIN
+  SELECT RAISE(ABORT, 'agent versions are immutable');
+END;
+--> statement-breakpoint
+CREATE TRIGGER `agents_latest_version_matches_on_insert`
+BEFORE INSERT ON `agents`
+FOR EACH ROW WHEN NEW.`latest_version_id` IS NOT NULL AND NOT EXISTS (
+  SELECT 1
+  FROM `agent_versions`
+  WHERE `id` = NEW.`latest_version_id` AND `agent_id` = NEW.`id`
+)
+BEGIN
+  SELECT RAISE(ABORT, 'latest version must belong to agent');
+END;
+--> statement-breakpoint
+CREATE TRIGGER `agents_latest_version_matches_on_update`
+BEFORE UPDATE OF `latest_version_id` ON `agents`
+FOR EACH ROW WHEN NEW.`latest_version_id` IS NOT NULL AND NOT EXISTS (
+  SELECT 1
+  FROM `agent_versions`
+  WHERE `id` = NEW.`latest_version_id` AND `agent_id` = NEW.`id`
+)
+BEGIN
+  SELECT RAISE(ABORT, 'latest version must belong to agent');
+END;
+--> statement-breakpoint
+CREATE TRIGGER `agents_shared_version_matches_on_insert`
+BEFORE INSERT ON `agents`
+FOR EACH ROW WHEN NEW.`shared_version_id` IS NOT NULL AND NOT EXISTS (
+  SELECT 1
+  FROM `agent_versions`
+  WHERE `id` = NEW.`shared_version_id` AND `agent_id` = NEW.`id`
+)
+BEGIN
+  SELECT RAISE(ABORT, 'shared version must belong to agent');
+END;
+--> statement-breakpoint
+CREATE TRIGGER `agents_shared_version_matches_on_update`
+BEFORE UPDATE OF `shared_version_id` ON `agents`
+FOR EACH ROW WHEN NEW.`shared_version_id` IS NOT NULL AND NOT EXISTS (
+  SELECT 1
+  FROM `agent_versions`
+  WHERE `id` = NEW.`shared_version_id` AND `agent_id` = NEW.`id`
+)
+BEGIN
+  SELECT RAISE(ABORT, 'shared version must belong to agent');
+END;

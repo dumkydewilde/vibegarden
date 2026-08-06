@@ -267,3 +267,55 @@ test("keeps slug claims consistent for direct canonical and alias writes", async
       .run(),
   ).rejects.toThrow();
 });
+
+test("enforces agent version ownership and immutability", async () => {
+  await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
+  await env.DB.batch([
+    env.DB
+      .prepare("INSERT INTO users (id, email, name, created_at) VALUES (?, ?, ?, ?)")
+      .bind("agent-owner", "agent-owner@example.com", "Agent owner", 1),
+    env.DB
+      .prepare(
+        "INSERT INTO clubs (id, name, slug, model_policy, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind("agent-club", "Agent club", "agent-club", "free_only", "active", 1, 1),
+    env.DB
+      .prepare(
+        "INSERT INTO agents (id, club_id, owner_id, name, description, visibility, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind("agent-one", "agent-club", "agent-owner", "One", "", "private", 1, 1),
+    env.DB
+      .prepare(
+        "INSERT INTO agents (id, club_id, owner_id, name, description, visibility, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind("agent-two", "agent-club", "agent-owner", "Two", "", "private", 1, 1),
+    env.DB
+      .prepare(
+        "INSERT INTO agent_versions (id, agent_id, definition, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      .bind("agent-one-version", "agent-one", "{}", "agent-owner", 1),
+    env.DB
+      .prepare(
+        "INSERT INTO agent_versions (id, agent_id, definition, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      .bind("agent-two-version", "agent-two", "{}", "agent-owner", 1),
+  ]);
+
+  await expect(
+    env.DB.prepare("UPDATE agent_versions SET definition = ? WHERE id = ?")
+      .bind('{"changed":true}', "agent-one-version")
+      .run(),
+  ).rejects.toThrow("agent versions are immutable");
+
+  await expect(
+    env.DB.prepare("UPDATE agents SET latest_version_id = ? WHERE id = ?")
+      .bind("agent-two-version", "agent-one")
+      .run(),
+  ).rejects.toThrow("latest version must belong to agent");
+
+  await expect(
+    env.DB.prepare("UPDATE agents SET shared_version_id = ? WHERE id = ?")
+      .bind("agent-two-version", "agent-one")
+      .run(),
+  ).rejects.toThrow("shared version must belong to agent");
+});
