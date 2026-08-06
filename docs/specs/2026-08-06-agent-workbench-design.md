@@ -1,7 +1,9 @@
 # Agent Workbench design
 
 Date: 2026-08-06
-Status: draft for review
+Status: approved (naming and tool-authoring decisions folded in)
+
+The feature is called the **Agent Workbench** in all copy and navigation.
 
 ## Goal
 
@@ -255,12 +257,19 @@ Routes, following existing conventions:
 
 - `/garden/agents`: list (mine + shared in club), create.
 - `/garden/agents/$id`: the workbench. Two panes:
-  - **Left, definition:** name/description; system prompt editor; tools list
-    with per-tool editor (name, description, parameters schema via a simple
-    field-list builder that generates the JSON schema, source editor); skills
-    list; builtin toggles; "what the model sees" assembled-prompt preview;
-    save (creates a version), share/unshare, remix source shown when the
-    agent was remixed.
+  - **Left, definition:** name/description; system prompt editor; tools list;
+    skills list; builtin toggles; "what the model sees" assembled-prompt
+    preview; save (creates a version), share/unshare, remix source shown when
+    the agent was remixed.
+
+    Tool authoring is Gardener-first: the expected path is asking the
+    sidekick, reviewing its `propose_tool` card, and applying it. Opening a
+    tool card shows the tool as **editable YAML** (name, description,
+    parameters, and the JS source as a block scalar) so people can make
+    their own adjustments in text rather than through form fields. YAML is
+    the editing surface only: it parses client-side (the `yaml` package) to
+    the canonical definition JSON, which remains what is validated and
+    stored. Parse errors and contract violations render inline before save.
   - **Right, test chat with trace:** the chat stream rendered from marker
     segments. Each `call` segment renders a tool-call card (tool name, args
     pretty-printed). Each `callresult` renders a result card with two tabs:
@@ -282,6 +291,10 @@ the house rule.
 
 A Gardener panel in the workbench, using the existing `/api/chat` endpoint
 with two additions:
+
+The Gardener is the primary tool-authoring path; the YAML editor exists for
+people to adjust what the Gardener produced (or to write a tool by hand once
+they outgrow the assistant).
 
 1. The current agent definition rides along as a `WireContextItem` (typed
    `agent-definition`), so "why does my tool return undefined" has context.
@@ -354,14 +367,16 @@ Each stage lands independently and is demoable:
    agent-definition context item.
 5. **Sharing.** Visibility, pinned versions, try-it route, remix.
 
+## Resolved decisions
+
+- **Naming:** "Agent Workbench" (route stays `/garden/agents`; the page
+  titles and navigation say Agent Workbench).
+- **Tool authoring:** Gardener-first via `propose_tool`; manual adjustments
+  happen in a per-tool YAML editor (no form builder). Canonical storage
+  stays JSON.
+
 ## Open questions
 
-- Naming: plain "Agents" under `/garden/agents`, or a garden-flavored name
-  for the workbench (e.g. "the potting shed")? Copy decision, not
-  structural.
-- Parameters editor: v1 could accept only flat `{name, type, description,
-  required}` fields and generate the schema, hiding raw JSON schema behind
-  an "advanced" toggle. Recommended, pending a feel check in the UI.
 - Whether stage 2's fetch proxy should also serve the Gardener's own
   toolset later (out of scope here, but the guards were written to be
   reusable).
