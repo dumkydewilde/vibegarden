@@ -1,6 +1,9 @@
 import type { ToolSpec } from "@vibegarden/agent-core";
 
-import type { AgentDefinition } from "./contracts";
+import {
+  RESERVED_TOOL_NAMES,
+  type AgentDefinition,
+} from "./contracts";
 import { checkFetchUrl } from "./fetch-guard.server";
 
 const MEMORY_KEY_MAX_CHARS = 80;
@@ -105,10 +108,39 @@ const recallSpec: ToolSpec = {
   noteFor: () => null,
 };
 
+function useSkillSpec(skills: AgentDefinition["skills"]): ToolSpec {
+  return {
+    name: "use_skill",
+    description: "Load the detailed instructions for one named skill.",
+    parameters: {
+      type: "object",
+      properties: { name: { type: "string" } },
+      required: ["name"],
+      additionalProperties: false,
+    },
+    execute: (args) => {
+      const name = typeof args.name === "string" ? args.name : "";
+      const skill = skills.find((candidate) => candidate.name === name);
+      return (
+        skill?.content ??
+        `Error: no skill named ${JSON.stringify(name)}. Available: ${skills.map((candidate) => candidate.name).join(", ")}.`
+      );
+    },
+    noteFor: (args) => ({
+      type: "note",
+      kind: "note",
+      value: `reading skill ${typeof args.name === "string" ? args.name : ""}`,
+    }),
+  };
+}
+
 export function agentToolSpecs(definition: AgentDefinition): ToolSpec[] {
   return [
-    ...definition.tools.map(userToolSpec),
+    ...definition.tools
+      .filter((tool) => !RESERVED_TOOL_NAMES.has(tool.name))
+      .map(userToolSpec),
     ...(definition.builtins.fetchPage ? [fetchPageSpec] : []),
     ...(definition.builtins.memory ? [rememberSpec, recallSpec] : []),
+    ...(definition.skills.length > 0 ? [useSkillSpec(definition.skills)] : []),
   ];
 }

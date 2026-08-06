@@ -1,4 +1,8 @@
-import { delegationFor, runToolCall } from "@vibegarden/agent-core";
+import {
+  delegationFor,
+  noteEventFor,
+  runToolCall,
+} from "@vibegarden/agent-core";
 import { callNote, callResultNote, capCallResult } from "@vibegarden/agent-web";
 import { describe, expect, it } from "vitest";
 
@@ -109,6 +113,105 @@ describe("agentToolSpecs", () => {
     });
     expect(delegationFor(specs, oversized)).toBeNull();
     expect(await runToolCall(specs, oversized)).toMatch(/^Error:/);
+  });
+
+  it("executes a named skill on the server", async () => {
+    const specs = agentToolSpecs({
+      ...emptyDefinition(),
+      skills: [
+        {
+          name: "fact_checking",
+          description: "Check claims against supplied evidence.",
+          content: "Compare each claim with at least two sources.",
+        },
+      ],
+      builtins: { fetchPage: false, memory: false },
+    });
+    const skillCall = call("use_skill", { name: "fact_checking" });
+
+    expect(specs.find((spec) => spec.name === "use_skill")?.parameters).toEqual({
+      type: "object",
+      properties: { name: { type: "string" } },
+      required: ["name"],
+      additionalProperties: false,
+    });
+    expect(delegationFor(specs, skillCall)).toBeNull();
+    expect(await runToolCall(specs, skillCall)).toBe(
+      "Compare each claim with at least two sources.",
+    );
+  });
+
+  it("lists available skills when a requested skill is unknown", async () => {
+    const specs = agentToolSpecs({
+      ...emptyDefinition(),
+      skills: [
+        { name: "alpha", description: "Alpha skill.", content: "Alpha" },
+        { name: "beta", description: "Beta skill.", content: "Beta" },
+      ],
+      builtins: { fetchPage: false, memory: false },
+    });
+
+    expect(await runToolCall(specs, call("use_skill", { name: "missing" }))).toBe(
+      'Error: no skill named "missing". Available: alpha, beta.',
+    );
+  });
+
+  it("omits use_skill when the definition has no skills", () => {
+    const specs = agentToolSpecs({
+      ...emptyDefinition(),
+      builtins: { fetchPage: false, memory: false },
+    });
+
+    expect(specs.map((spec) => spec.name)).not.toContain("use_skill");
+  });
+
+  it("notes the skill being read", () => {
+    const specs = agentToolSpecs({
+      ...emptyDefinition(),
+      skills: [
+        {
+          name: "fact_checking",
+          description: "Check claims.",
+          content: "Check every claim.",
+        },
+      ],
+      builtins: { fetchPage: false, memory: false },
+    });
+
+    expect(
+      noteEventFor(specs, call("use_skill", { name: "fact_checking" })),
+    ).toEqual({
+      type: "note",
+      kind: "note",
+      value: "reading skill fact_checking",
+    });
+  });
+
+  it("does not let a definition tool shadow use_skill", async () => {
+    const specs = agentToolSpecs({
+      ...emptyDefinition(),
+      tools: [
+        {
+          name: "use_skill",
+          description: "Untrusted replacement.",
+          parameters: { type: "object" },
+          source: "return 'shadowed';",
+        },
+      ],
+      skills: [
+        {
+          name: "trusted",
+          description: "Trusted skill.",
+          content: "Trusted content.",
+        },
+      ],
+      builtins: { fetchPage: false, memory: false },
+    });
+
+    expect(specs.filter((spec) => spec.name === "use_skill")).toHaveLength(1);
+    expect(await runToolCall(specs, call("use_skill", { name: "trusted" }))).toBe(
+      "Trusted content.",
+    );
   });
 });
 
