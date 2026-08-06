@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { callNote } from "@vibegarden/agent-web";
 
 const mocks = vi.hoisted(() => ({
   startTurn: vi.fn(),
@@ -35,7 +36,7 @@ vi.mock("~/lib/agents/repository.server", () => ({
       systemPrompt: "Be helpful.",
       tools: [],
       skills: [],
-      builtins: { fetchPage: true, memory: false },
+      builtins: { fetchPage: true, memory: true },
     },
   }),
 }));
@@ -122,7 +123,13 @@ describe("agent chat upstream failures", () => {
             versionId: "version-1",
             continuation: true,
             messages: [
-              { role: "assistant", content: "Fetching it." },
+              {
+                role: "assistant",
+                content: callNote({
+                  tool: "fetch_page",
+                  args: { url: "https://example.com" },
+                }),
+              },
               {
                 role: "data",
                 content: JSON.stringify({
@@ -151,13 +158,106 @@ describe("agent chat upstream failures", () => {
     const [config, history] = mocks.startTurn.mock.calls[0] ?? [];
     expect(config.tools.map((tool: { name: string }) => tool.name)).toEqual([
       "fetch_page",
+      "remember",
+      "recall",
     ]);
     expect(history).toEqual([
-      { role: "assistant", content: "Fetching it." },
+      {
+        role: "assistant",
+        content: '[ran fetch_page: {"url":"https://example.com"}]',
+      },
       {
         role: "user",
         content: `Tool result for fetch_page:\n${"x".repeat(4_000)}`,
       },
     ]);
+  });
+
+  it("rejects a continuation for a tool that was not offered", async () => {
+    mocks.startTurn.mockResolvedValue({
+      ok: true,
+      events: (async function* () {})(),
+    });
+    const response = await action({
+      request: new Request(
+        "https://example.com/clubs/club-1/api/agents/agent-1/chat",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            versionId: "version-1",
+            continuation: true,
+            messages: [
+              {
+                role: "assistant",
+                content: callNote({ tool: "delete_everything", args: {} }),
+              },
+              {
+                role: "data",
+                content: JSON.stringify({
+                  tool: "delete_everything",
+                  envelope: {
+                    status: "error",
+                    error: "No executor found.",
+                  },
+                }),
+              },
+            ],
+          }),
+        },
+      ),
+      context: { get: () => ({ env: {} }) },
+      params: { clubSlug: "club-1", agentId: "agent-1" },
+    } as never);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "The continuation does not match an offered tool call.",
+    });
+    expect(mocks.startTurn).not.toHaveBeenCalled();
+  });
+
+  it("rejects a continuation that mismatches the preceding call marker", async () => {
+    mocks.startTurn.mockResolvedValue({
+      ok: true,
+      events: (async function* () {})(),
+    });
+    const response = await action({
+      request: new Request(
+        "https://example.com/clubs/club-1/api/agents/agent-1/chat",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            versionId: "version-1",
+            continuation: true,
+            messages: [
+              {
+                role: "assistant",
+                content: callNote({ tool: "remember", args: {} }),
+              },
+              {
+                role: "data",
+                content: JSON.stringify({
+                  tool: "fetch_page",
+                  envelope: {
+                    status: "ok",
+                    resultText: "page text",
+                    totalChars: 9,
+                    truncated: false,
+                  },
+                }),
+              },
+            ],
+          }),
+        },
+      ),
+      context: { get: () => ({ env: {} }) },
+      params: { clubSlug: "club-1", agentId: "agent-1" },
+    } as never);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "The continuation does not match an offered tool call.",
+    });
+    expect(mocks.startTurn).not.toHaveBeenCalled();
   });
 });

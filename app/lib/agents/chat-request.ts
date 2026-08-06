@@ -14,6 +14,7 @@ export const AGENT_MESSAGE_MAX_CHARS = 8_000;
 export const AGENT_TOOL_TRANSPORT_MAX_CHARS =
   AGENT_MESSAGE_MAX_CHARS + CALL_RESULT_MAX_CHARS * 8 + 1_000;
 export const AGENT_HISTORY_LIMIT = 30;
+export const AGENT_HISTORY_INPUT_LIMIT = AGENT_HISTORY_LIMIT * 4;
 export const WORKBENCH_MAX_CONTINUATIONS = 5;
 
 export type AgentChatMessage = {
@@ -38,6 +39,51 @@ const MESSAGE_ROLES = new Set<AgentChatMessage["role"]>([
   "data",
 ]);
 
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+): boolean {
+  const keys = Object.keys(value);
+  return (
+    keys.length === expected.length &&
+    keys.every((key) => expected.includes(key))
+  );
+}
+
+function parseStrictCallResultEnvelope(raw: unknown): CallResultEnvelope | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return null;
+  }
+  const envelope = raw as Record<string, unknown>;
+  if (envelope.status === "error") {
+    if (
+      !hasExactKeys(envelope, ["status", "error"]) ||
+      typeof envelope.error !== "string"
+    ) {
+      return null;
+    }
+  } else if (envelope.status === "ok") {
+    if (
+      !hasExactKeys(envelope, [
+        "status",
+        "resultText",
+        "totalChars",
+        "truncated",
+      ]) ||
+      typeof envelope.resultText !== "string" ||
+      typeof envelope.totalChars !== "number" ||
+      !Number.isSafeInteger(envelope.totalChars) ||
+      envelope.totalChars < envelope.resultText.length ||
+      typeof envelope.truncated !== "boolean"
+    ) {
+      return null;
+    }
+  } else {
+    return null;
+  }
+  return parseCallResultEnvelope(JSON.stringify(envelope));
+}
+
 function parseContinuationResult(raw: string): ContinuationResult | null {
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
@@ -45,12 +91,13 @@ function parseContinuationResult(raw: string): ContinuationResult | null {
       typeof parsed !== "object" ||
       parsed === null ||
       Array.isArray(parsed) ||
+      !hasExactKeys(parsed, ["tool", "envelope"]) ||
       typeof parsed.tool !== "string" ||
       !TOOL_NAME_RE.test(parsed.tool)
     ) {
       return null;
     }
-    const envelope = parseCallResultEnvelope(JSON.stringify(parsed.envelope));
+    const envelope = parseStrictCallResultEnvelope(parsed.envelope);
     return envelope ? { tool: parsed.tool, envelope } : null;
   } catch {
     return null;
@@ -72,19 +119,50 @@ function contentForModel(message: AgentChatMessage): string | null {
     : message.content;
 }
 
+function isExactWorkbenchTrace(content: string): boolean {
+  let markerCount = 0;
+  let whitespaceChars = content.length;
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    whitespaceChars -= trimmed.length;
+    if (!trimmed) continue;
+    const segments = splitToolNotes(trimmed);
+    if (
+      segments.length !== 1 ||
+      (segments[0]?.type !== "call" && segments[0]?.type !== "callresult")
+    ) {
+      return false;
+    }
+    markerCount += 1;
+  }
+  return markerCount > 0 && whitespaceChars <= AGENT_MESSAGE_MAX_CHARS;
+}
+
 function isBoundedToolTransport(message: AgentChatMessage): boolean {
   if (message.content.length > AGENT_TOOL_TRANSPORT_MAX_CHARS) return false;
   if (message.role === "user") return false;
-  if (
-    message.role === "assistant" &&
-    !splitToolNotes(message.content).some(
-      (segment) => segment.type === "callresult",
-    )
-  ) {
+  if (message.role === "assistant" && !isExactWorkbenchTrace(message.content)) {
     return false;
   }
   const modelContent = contentForModel(message);
   return modelContent !== null && modelContent.length <= AGENT_MESSAGE_MAX_CHARS;
+}
+
+export function continuationMatchesOfferedTool(
+  messages: AgentChatMessage[],
+  offeredToolNames: ReadonlySet<string>,
+): boolean {
+  const dataMessage = messages.at(-1);
+  const assistantMessage = messages.at(-2);
+  if (dataMessage?.role !== "data" || assistantMessage?.role !== "assistant") {
+    return false;
+  }
+  const result = parseContinuationResult(dataMessage.content);
+  if (!result || !offeredToolNames.has(result.tool)) return false;
+  const call = splitToolNotes(assistantMessage.content)
+    .filter((segment) => segment.type === "call")
+    .at(-1);
+  return call?.type === "call" && call.tool === result.tool;
 }
 
 export function historyForModel(
@@ -116,6 +194,11 @@ export function parseAgentChatRequest(
     }
     if (!Array.isArray(candidate.messages) || candidate.messages.length === 0) {
       return { error: "messages is required." };
+    }
+    if (candidate.messages.length > AGENT_HISTORY_INPUT_LIMIT) {
+      return {
+        error: `messages must contain ${AGENT_HISTORY_INPUT_LIMIT} items or fewer.`,
+      };
     }
     if (
       candidate.continuation !== undefined &&

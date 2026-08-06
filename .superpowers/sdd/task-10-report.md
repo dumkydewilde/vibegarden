@@ -168,3 +168,58 @@ exit 0
 No follow-up blocker remains. The transport cap intentionally admits one
 worst-case capped result marker plus bounded surrounding content, not arbitrary
 expanded history.
+
+## Second P1 review follow-up
+
+The remaining continuation admission findings were fixed with stricter
+transport and endpoint checks.
+
+### Exact oversized transport shapes
+
+- Oversized assistant content is accepted only when every non-whitespace line
+  is a valid `call` or `callresult` marker. Arbitrary prose cannot use a valid
+  marker to enter the expanded transport path.
+- Whitespace around oversized trace markers is capped at the ordinary 8,000
+  character message allowance.
+- Continuation data now requires exact outer `tool` and `envelope` keys.
+- Successful envelopes require exactly `status`, `resultText`, `totalChars`,
+  and `truncated`. Error envelopes require exactly `status` and `error`.
+  Unknown and padding properties are rejected before server-side re-capping.
+- Ordinary messages keep the 8,000 character cap. The existing encoded 4,000
+  character call result path remains valid under the transport ceiling.
+- Input histories are rejected above 120 messages before per-message
+  processing. Valid histories continue to retain the newest 30 messages.
+
+### Continuation provenance
+
+After loading the AgentDefinition, the endpoint builds its ToolSpecs and
+checks every continuation before model history construction. The data tool
+must be in the offered ToolSpec names and match the last call marker in the
+immediately preceding assistant message. Unknown and mismatched tools return
+HTTP 400 without starting a model turn.
+
+### TDD evidence
+
+The five adversarial regressions failed before the implementation change:
+
+```text
+npm test -- app/lib/agents/__tests__/chat-request.test.ts 'app/routes/__tests__/api.agents.$agentId.chat.test.ts'
+Test Files  2 failed (2)
+Tests       5 failed | 12 passed (17)
+```
+
+Final verification after the fix:
+
+```text
+npm test -- app/lib/agents packages 'app/routes/__tests__/api.agents.$agentId.chat.test.ts'
+Test Files  11 passed (11)
+Tests       130 passed (130)
+
+npm run typecheck
+react-router typegen && tsc
+exit 0
+```
+
+The focused regressions cover assistant marker padding, outer and envelope
+data padding, bounded input arrays, unknown tools, preceding call mismatches,
+and the valid 4,000 character encoded result path.

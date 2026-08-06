@@ -152,6 +152,50 @@ describe("parseAgentChatRequest", () => {
     ).toBe(true);
   });
 
+  it("rejects oversized assistant prose padded with a valid call result marker", () => {
+    const marker = callResultNote(capCallResult(" \0".repeat(2_000)));
+    const content = `This prose is not part of the workbench trace.\n${marker}`;
+    expect(content.length).toBeGreaterThan(AGENT_MESSAGE_MAX_CHARS);
+
+    expect(
+      parseAgentChatRequest({
+        versionId: "agentv_1",
+        messages: [
+          { role: "assistant", content },
+          { role: "user", content: "Continue" },
+        ],
+      }),
+    ).toEqual({
+      error: `Message content must be ${AGENT_MESSAGE_MAX_CHARS} characters or fewer.`,
+    });
+  });
+
+  it("rejects oversized continuation data with padding properties", () => {
+    const envelope = capCallResult(" \0".repeat(2_000));
+    const paddedContents = [
+      JSON.stringify({
+        tool: "fetch_page",
+        envelope,
+        padding: "ignored",
+      }),
+      JSON.stringify({
+        tool: "fetch_page",
+        envelope: { ...envelope, padding: "ignored" },
+      }),
+    ];
+
+    for (const content of paddedContents) {
+      expect(content.length).toBeGreaterThan(AGENT_MESSAGE_MAX_CHARS);
+      expect(
+        parseAgentChatRequest({
+          versionId: "agentv_1",
+          continuation: true,
+          messages: [{ role: "data", content }],
+        }),
+      ).toHaveProperty("error");
+    }
+  });
+
   it("rejects compactable tool markers beyond the transport cap", () => {
     const oversizedMarker = callResultNote({
       status: "ok",
@@ -192,6 +236,23 @@ describe("parseAgentChatRequest", () => {
         versionId: "agentv_1",
         messages: messages.slice(-AGENT_HISTORY_LIMIT),
       },
+    });
+  });
+
+  it("rejects message arrays above the bounded input limit", () => {
+    const inputLimit = AGENT_HISTORY_LIMIT * 4;
+    const messages = Array.from(
+      { length: inputLimit + 1 },
+      (_, index) => ({
+        role: "user" as const,
+        content: `message-${index}`,
+      }),
+    );
+
+    expect(
+      parseAgentChatRequest({ versionId: "agentv_1", messages }),
+    ).toEqual({
+      error: `messages must contain ${inputLimit} items or fewer.`,
     });
   });
 });

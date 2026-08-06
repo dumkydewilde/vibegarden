@@ -6,6 +6,7 @@ import { apiAuthorizationError } from "~/lib/api-errors";
 import { getAgentForUser } from "~/lib/agents/repository.server";
 import { buildAgentSystemPrompt } from "~/lib/agents/prompt.server";
 import {
+  continuationMatchesOfferedTool,
   historyForModel,
   parseAgentChatRequest,
 } from "~/lib/agents/chat-request";
@@ -52,6 +53,20 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     return Response.json({ error: "Agent not found." }, { status: 404 });
   }
 
+  const tools = agentToolSpecs(loaded.definition);
+  if (
+    body.continuation &&
+    !continuationMatchesOfferedTool(
+      body.messages,
+      new Set(tools.map((tool) => tool.name)),
+    )
+  ) {
+    return Response.json(
+      { error: "The continuation does not match an offered tool call." },
+      { status: 400 },
+    );
+  }
+
   const model = resolveClubModel(
     club.club.modelPolicy,
     undefined,
@@ -67,7 +82,6 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     );
   }
 
-  const tools = agentToolSpecs(loaded.definition);
   const history = historyForModel(body.messages);
 
   const turnConfig = {
