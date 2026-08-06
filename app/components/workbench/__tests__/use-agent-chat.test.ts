@@ -39,6 +39,7 @@ describe("useAgentChat", () => {
         clubSlug: "garden-club",
         agentId: "agent-1",
         versionId: "version-1",
+        offeredToolNames: [],
       }),
     );
 
@@ -79,6 +80,7 @@ describe("useAgentChat", () => {
         clubSlug: "garden-club",
         agentId: "agent-1",
         versionId: "version-1",
+        offeredToolNames: [],
       }),
     );
 
@@ -92,6 +94,36 @@ describe("useAgentChat", () => {
       }),
     ]);
     expect(result.current.busy).toBe(false);
+  });
+
+  it("shows the stale-version conflict returned by the chat endpoint", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json(
+          { error: "This agent version changed. Reload before continuing." },
+          { status: 409 },
+        ),
+      ),
+    );
+    const { result } = renderHook(() =>
+      useAgentChat({
+        clubSlug: "garden-club",
+        agentId: "agent-1",
+        versionId: "version-1",
+        offeredToolNames: [],
+      }),
+    );
+
+    await act(async () => result.current.send("Continue"));
+
+    expect(result.current.entries).toEqual([
+      { role: "user", content: "Continue" },
+      {
+        role: "assistant",
+        content: "This agent version changed. Reload before continuing.",
+      },
+    ]);
   });
 
   it("executes a terminal tool call and streams its continuation into the same trace", async () => {
@@ -133,6 +165,7 @@ describe("useAgentChat", () => {
         clubSlug: "garden-club",
         agentId: "agent-1",
         versionId: "version-1",
+        offeredToolNames: ["fetch_page"],
         executors: { fetch_page: executor },
         fallbackExecutor,
       }),
@@ -193,6 +226,8 @@ describe("useAgentChat", () => {
         clubSlug: "garden-club",
         agentId: "agent-1",
         versionId: "version-1",
+        offeredToolNames: ["extract_title"],
+        fallbackToolNames: ["extract_title"],
         fallbackExecutor,
       }),
     );
@@ -255,6 +290,7 @@ describe("useAgentChat", () => {
         clubSlug: "garden-club",
         agentId: "agent-1",
         versionId: "version-1",
+        offeredToolNames: ["fetch_page"],
         executors: { fetch_page: executor },
       }),
     );
@@ -335,6 +371,7 @@ describe("useAgentChat", () => {
         clubSlug: "garden-club",
         agentId: "agent-1",
         versionId: "version-1",
+        offeredToolNames: ["fetch_page"],
         executors: { fetch_page: executor },
       }),
     );
@@ -363,5 +400,82 @@ describe("useAgentChat", () => {
       }),
     ).toHaveProperty("value");
     expect(result.current.rawResults).toEqual(new Map());
+  });
+
+  it("does not execute a terminal call for a tool disabled in the loaded version", async () => {
+    const marker = callNote({
+      tool: "fetch_page",
+      args: { url: "https://example.com/disabled" },
+    });
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(marker));
+    vi.stubGlobal("fetch", fetchMock);
+    const executor = vi.fn().mockResolvedValue({
+      raw: "must not be fetched",
+      envelope: capCallResult("must not be fetched"),
+    });
+    const { result } = renderHook(() =>
+      useAgentChat({
+        clubSlug: "garden-club",
+        agentId: "agent-1",
+        versionId: "version-1",
+        offeredToolNames: [],
+        executors: { fetch_page: executor },
+      }),
+    );
+
+    await act(async () => result.current.send("Fetch a page"));
+
+    expect(executor).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.current.entries[1]?.content).toContain(marker);
+    expect(result.current.entries[1]?.content).toContain(
+      "not enabled for this agent version",
+    );
+    expect(result.current.rawResults).toEqual(new Map());
+  });
+
+  it("does not use the fallback executor unless that offered tool is enabled for it", async () => {
+    const marker = callNote({ tool: "use_skill", args: { name: "voice" } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(new Response(marker)));
+    const fallbackExecutor = vi.fn();
+    const { result } = renderHook(() =>
+      useAgentChat({
+        clubSlug: "garden-club",
+        agentId: "agent-1",
+        versionId: "version-1",
+        offeredToolNames: ["use_skill"],
+        fallbackToolNames: [],
+        fallbackExecutor,
+      }),
+    );
+
+    await act(async () => result.current.send("Read the skill"));
+
+    expect(fallbackExecutor).not.toHaveBeenCalled();
+    expect(result.current.entries[1]?.content).toContain(
+      "not enabled for this agent version",
+    );
+  });
+
+  it("does not admit an offered user tool before its runner executor is ready", async () => {
+    const marker = callNote({ tool: "extract_title", args: {} });
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(marker));
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() =>
+      useAgentChat({
+        clubSlug: "garden-club",
+        agentId: "agent-1",
+        versionId: "version-1",
+        offeredToolNames: ["extract_title"],
+        fallbackToolNames: ["extract_title"],
+      }),
+    );
+
+    await act(async () => result.current.send("Extract the title"));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.current.entries[1]?.content).toContain(
+      "not enabled for this agent version",
+    );
   });
 });

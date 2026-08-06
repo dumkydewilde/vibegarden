@@ -44,6 +44,7 @@ describe("Agent Workbench server rendering", () => {
       canEdit: false,
       runnerUrl: "https://usercontent.vibegarden.club/agent-runner",
       userId: "user-1",
+      offeredToolNames: ["fetch_page", "remember", "recall"],
       modelPrompt: "Model prompt",
     };
 

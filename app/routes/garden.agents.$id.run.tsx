@@ -30,6 +30,7 @@ import {
 } from "~/components/ui/card";
 import type { AgentDefinition } from "~/lib/agents/contracts";
 import { getAgentForUser, remixAgent } from "~/lib/agents/repository.server";
+import { agentToolSpecs } from "~/lib/agents/tools.server";
 import { toolToYaml } from "~/lib/agents/yaml";
 import { requireUser } from "~/lib/auth.server";
 import { clubPath } from "~/lib/club-path";
@@ -76,6 +77,9 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     builder: builder?.name || builder?.email || "A club member",
     runnerUrl: new URL("/agent-runner", env.RENDERER_ORIGIN).href,
     userId: user.id,
+    offeredToolNames: agentToolSpecs(loaded.definition).map(
+      (tool) => tool.name,
+    ),
   };
 }
 
@@ -109,6 +113,7 @@ function SharedAgentChat({
   agentId,
   versionId,
   definition,
+  offeredToolNames,
   runnerUrl,
   userId,
 }: {
@@ -116,6 +121,7 @@ function SharedAgentChat({
   agentId: string;
   versionId: string;
   definition: AgentDefinition;
+  offeredToolNames: string[];
   runnerUrl: string;
   userId: string;
 }) {
@@ -160,7 +166,9 @@ function SharedAgentChat({
     clubSlug,
     agentId,
     versionId,
+    offeredToolNames,
     executors: wiring?.executors,
+    fallbackToolNames: definition.tools.map((tool) => tool.name),
     fallbackExecutor: wiring?.fallbackExecutor,
   });
 
@@ -386,6 +394,7 @@ export default function RunSharedAgent({
           agentId={loaderData.agent.id}
           versionId={loaderData.version.id}
           definition={loaderData.definition}
+          offeredToolNames={loaderData.offeredToolNames}
           runnerUrl={loaderData.runnerUrl}
           userId={loaderData.userId}
         />

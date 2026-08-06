@@ -1,4 +1,4 @@
-import { RotateCcw, Send } from "lucide-react";
+import { Activity, RotateCcw, Send } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import Markdown from "react-markdown";
 import { splitToolNotes } from "@vibegarden/agent-web";
@@ -116,6 +116,20 @@ export function TraceChat({
                                 {segment.text}
                               </Markdown>
                             </div>
+                          </div>
+                        );
+                      }
+                      if (segment.type === "tool") {
+                        return (
+                          <div
+                            key={segmentIndex}
+                            className="flex max-w-full items-start gap-2 rounded-lg border border-primary/15 bg-primary/[0.04] px-3 py-2 text-xs text-muted-foreground"
+                            aria-label="Agent activity"
+                          >
+                            <Activity className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                            <span className="break-words font-mono">
+                              {segment.value}
+                            </span>
                           </div>
                         );
                       }

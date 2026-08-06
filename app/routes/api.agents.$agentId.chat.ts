@@ -47,10 +47,15 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     db,
     { clubId: club.club.id, userId: user.id },
     params.agentId ?? "",
-    body.versionId,
   );
   if (!loaded) {
     return Response.json({ error: "Agent not found." }, { status: 404 });
+  }
+  if (loaded.version.id !== body.versionId) {
+    return Response.json(
+      { error: "This agent version changed. Reload before continuing." },
+      { status: 409 },
+    );
   }
 
   const tools = agentToolSpecs(loaded.definition);

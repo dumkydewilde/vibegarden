@@ -94,6 +94,90 @@ function applyProposal(agentId: string) {
 }
 
 describe("DefinitionEditor", () => {
+  it("stages added, edited, and removed skills in the canonical definition JSON", () => {
+    renderEditor();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add skill" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Skill name" }), {
+      target: { value: "editorial_voice" },
+    });
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Skill description" }),
+      { target: { value: "A concise editorial style." } },
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Skill content" }), {
+      target: { value: "Prefer short sentences and concrete verbs." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply skill" }));
+
+    expect(screen.getByText("editorial_voice")).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit editorial_voice" }),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Skill content" }), {
+      target: { value: "Prefer direct sentences and concrete verbs." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply skill" }));
+
+    let saved = JSON.parse(
+      (document.querySelector('input[name="definition"]') as HTMLInputElement)
+        .value,
+    ) as AgentDefinition;
+    expect(saved.skills).toEqual([
+      {
+        name: "editorial_voice",
+        description: "A concise editorial style.",
+        content: "Prefer direct sentences and concrete verbs.",
+      },
+    ]);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove editorial_voice" }),
+    );
+    saved = JSON.parse(
+      (document.querySelector('input[name="definition"]') as HTMLInputElement)
+        .value,
+    ) as AgentDefinition;
+    expect(saved.skills).toEqual([]);
+  });
+
+  it("rejects skill names that collide with a custom tool", () => {
+    renderEditor();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add skill" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Skill name" }), {
+      target: { value: "word_count" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply skill" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /word_count.*already exists/i,
+    );
+    const saved = JSON.parse(
+      (document.querySelector('input[name="definition"]') as HTMLInputElement)
+        .value,
+    ) as AgentDefinition;
+    expect(saved.skills).toEqual([]);
+  });
+
+  it("stages explicit fetch and memory builtin toggles", () => {
+    renderEditor();
+
+    const fetchPage = screen.getByRole("switch", { name: "Fetch pages" });
+    const memory = screen.getByRole("switch", { name: "Memory" });
+    expect(fetchPage).toBeChecked();
+    expect(memory).toBeChecked();
+
+    fireEvent.click(fetchPage);
+    fireEvent.click(memory);
+
+    const saved = JSON.parse(
+      (document.querySelector('input[name="definition"]') as HTMLInputElement)
+        .value,
+    ) as AgentDefinition;
+    expect(saved.builtins).toEqual({ fetchPage: false, memory: false });
+  });
+
   it("stages added and removed tools in the canonical definition JSON", () => {
     renderEditor();
 

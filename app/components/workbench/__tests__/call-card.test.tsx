@@ -5,6 +5,7 @@ import {
   callNote,
   callResultNote,
   capCallResult,
+  toolNote,
 } from "@vibegarden/agent-web";
 
 import { CallCard } from "../call-card";
@@ -12,6 +13,26 @@ import { TraceChat } from "../trace-chat";
 import { rawResultKey } from "../use-agent-chat";
 
 describe("CallCard", () => {
+  it("renders generic tool notes in the workbench trace", () => {
+    render(
+      <TraceChat
+        entries={[
+          {
+            role: "assistant",
+            content: `${toolNote("note", "reading skill fact_checking")}\n\nChecking the claims now.`,
+          },
+        ]}
+        rawResults={new Map()}
+        busy={false}
+        send={async () => {}}
+        reset={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("reading skill fact_checking")).toBeVisible();
+    expect(screen.getByText("Checking the claims now.")).toBeVisible();
+  });
+
   it("renders a tool call name and its formatted arguments", () => {
     render(
       <CallCard

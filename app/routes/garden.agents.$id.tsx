@@ -53,7 +53,7 @@ import {
   saveAgentVersion,
   setAgentSharing,
 } from "~/lib/agents/repository.server";
-import { buildAgentSystemPrompt } from "~/lib/agents/prompt.server";
+import { buildAgentPromptPreview } from "~/lib/agents/preview.server";
 import { requireUser } from "~/lib/auth.server";
 import { clubPath } from "~/lib/club-path";
 import { requireClubContext } from "~/lib/clubs.server";
@@ -85,6 +85,10 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
         loaded.agent.sharedVersionId,
       )
     : null;
+  const preview = buildAgentPromptPreview(
+    loaded.definition,
+    club.club.name,
+  );
 
   return {
     ...loaded,
@@ -94,11 +98,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     canEdit: loaded.agent.ownerId === user.id,
     runnerUrl: new URL("/agent-runner", env.RENDERER_ORIGIN).href,
     userId: user.id,
-    modelPrompt: buildAgentSystemPrompt(
-      loaded.definition,
-      club.club.name,
-      [],
-    ),
+    ...preview,
   };
 }
 
@@ -310,7 +310,12 @@ export function createWorkbenchWiring({
       memorySet: memory.set,
       memoryList: memory.list,
     },
-    executors: { fetch_page: fetchPageExecutor, remember, recall },
+    executors: {
+      ...(definition.builtins.fetchPage
+        ? { fetch_page: fetchPageExecutor }
+        : {}),
+      ...(definition.builtins.memory ? { remember, recall } : {}),
+    },
     fallbackExecutor,
   };
 }
@@ -496,6 +501,7 @@ function WorkbenchChat({
   agentId,
   versionId,
   definition,
+  offeredToolNames,
   runnerUrl,
   userId,
 }: {
@@ -503,6 +509,7 @@ function WorkbenchChat({
   agentId: string;
   versionId: string;
   definition: AgentDefinition;
+  offeredToolNames: string[];
   runnerUrl: string;
   userId: string;
 }) {
@@ -546,7 +553,9 @@ function WorkbenchChat({
     clubSlug,
     agentId,
     versionId,
+    offeredToolNames,
     executors: wiring?.executors,
+    fallbackToolNames: definition.tools.map((tool) => tool.name),
     fallbackExecutor: wiring?.fallbackExecutor,
   });
 
@@ -568,6 +577,7 @@ export default function AgentWorkbench({ loaderData, actionData, params }: Route
     definition,
     canEdit,
     modelPrompt,
+    offeredToolNames,
     runnerUrl,
     userId,
   } = loaderData;
@@ -690,6 +700,7 @@ export default function AgentWorkbench({ loaderData, actionData, params }: Route
             agentId={agent.id}
             versionId={version.id}
             definition={definition}
+            offeredToolNames={offeredToolNames}
             runnerUrl={runnerUrl}
             userId={userId}
           />

@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import {
+  CALL_ERROR_MAX_CHARS,
   CALL_RESULT_MAX_CHARS,
   callNote,
   callErrorEnvelope,
@@ -35,19 +36,41 @@ type UseAgentChatOptions = {
   clubSlug: string;
   agentId: string;
   versionId: string;
+  offeredToolNames: readonly string[];
   executors?: Record<string, ToolExecutor>;
+  fallbackToolNames?: readonly string[];
   fallbackExecutor?: ToolExecutor;
 };
 
 const NOT_REACHABLE = "The language model is not reachable right now.";
 const EMPTY_EXECUTORS: Record<string, ToolExecutor> = {};
-const DEFAULT_FALLBACK_EXECUTOR: ToolExecutor = async () => ({
-  envelope: callErrorEnvelope("No executor for this tool yet."),
-});
 const UNSAFE_CONTINUATION =
   "The tool finished, but this trace could not be continued safely.";
 const UNSAFE_TOOL_CALL =
   "The tool was not run because its result could not be continued safely.";
+const TOOL_NOT_ENABLED =
+  "The tool was not run because it is not enabled for this agent version.";
+
+class SafeChatResponseError extends Error {}
+
+async function chatResponseError(response: Response): Promise<Error> {
+  if (response.status < 400 || response.status >= 500) {
+    return new Error(NOT_REACHABLE);
+  }
+  const payload: unknown = await response.json().catch(() => null);
+  if (
+    payload &&
+    typeof payload === "object" &&
+    !Array.isArray(payload) &&
+    typeof (payload as { error?: unknown }).error === "string"
+  ) {
+    const message = (payload as { error: string }).error
+      .trim()
+      .slice(0, CALL_ERROR_MAX_CHARS);
+    if (message) return new SafeChatResponseError(message);
+  }
+  return new Error(NOT_REACHABLE);
+}
 // U+0800 uses the largest URI encoding per JavaScript character. Proving this
 // envelope fits guarantees every capped successful result will fit too.
 const MAX_CONTINUATION_ENVELOPE: CallResultEnvelope = {
@@ -169,8 +192,10 @@ export function useAgentChat({
   clubSlug,
   agentId,
   versionId,
+  offeredToolNames,
   executors = EMPTY_EXECUTORS,
-  fallbackExecutor = DEFAULT_FALLBACK_EXECUTOR,
+  fallbackToolNames = [],
+  fallbackExecutor,
 }: UseAgentChatOptions): {
   entries: ChatEntry[];
   send: (text: string) => Promise<void>;
@@ -229,7 +254,8 @@ export function useAgentChat({
             }),
           },
         );
-        if (!response.ok || !response.body) throw new Error(NOT_REACHABLE);
+        if (!response.ok) throw await chatResponseError(response);
+        if (!response.body) throw new Error(NOT_REACHABLE);
 
         if (!assistantAdded) {
           assistantAdded = true;
@@ -297,6 +323,20 @@ export function useAgentChat({
           const last = splitToolNotes(assistantText).at(-1);
           if (last?.type !== "call") break;
 
+          const offered = offeredToolNames.includes(last.tool);
+          const directExecutor = executors[last.tool];
+          const fallbackEnabled = fallbackToolNames.includes(last.tool);
+          const executor = offered
+            ? directExecutor ?? (fallbackEnabled ? fallbackExecutor : null)
+            : null;
+          if (!executor) {
+            const envelope = callErrorEnvelope(TOOL_NOT_ENABLED);
+            appendAssistant(
+              `\n\n${callResultNote(envelope)}\n\n${TOOL_NOT_ENABLED}`,
+            );
+            break;
+          }
+
           if (callCount < WORKBENCH_MAX_CONTINUATIONS) {
             const preflight = continuationMessages(
               `${assistantText}\n\n${callResultNote(MAX_CONTINUATION_ENVELOPE)}`,
@@ -312,7 +352,6 @@ export function useAgentChat({
             }
           }
 
-          const executor = executors[last.tool] ?? fallbackExecutor;
           let execution: Awaited<ReturnType<ToolExecutor>>;
           try {
             execution = await executor({
@@ -355,15 +394,19 @@ export function useAgentChat({
 
           await streamTurn(messages, true);
         }
-      } catch {
+      } catch (error) {
+        const message =
+          error instanceof SafeChatResponseError
+            ? error.message
+            : NOT_REACHABLE;
         if (assistantAdded) {
           appendAssistant(
-            `${assistantText.endsWith("\n\n") ? "" : "\n\n"}${NOT_REACHABLE}`,
+            `${assistantText.endsWith("\n\n") ? "" : "\n\n"}${message}`,
           );
         } else {
           setEntries((current) => [
             ...current,
-            { role: "assistant", content: NOT_REACHABLE },
+            { role: "assistant", content: message },
           ]);
         }
       } finally {
@@ -377,6 +420,8 @@ export function useAgentChat({
       entries,
       executors,
       fallbackExecutor,
+      fallbackToolNames,
+      offeredToolNames,
       versionId,
     ],
   );

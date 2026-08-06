@@ -4,6 +4,7 @@ import { callNote } from "@vibegarden/agent-web";
 const mocks = vi.hoisted(() => ({
   startTurn: vi.fn(),
   buildAgentSystemPrompt: vi.fn(),
+  getAgentForUser: vi.fn(),
 }));
 
 vi.mock("@vibegarden/agent-core", () => ({
@@ -30,15 +31,7 @@ vi.mock("~/lib/models", () => ({
 }));
 vi.mock("~/lib/db.server", () => ({ getDb: vi.fn().mockReturnValue({}) }));
 vi.mock("~/lib/agents/repository.server", () => ({
-  getAgentForUser: vi.fn().mockResolvedValue({
-    definition: {
-      version: 1,
-      systemPrompt: "Be helpful.",
-      tools: [],
-      skills: [],
-      builtins: { fetchPage: true, memory: true },
-    },
-  }),
+  getAgentForUser: mocks.getAgentForUser,
 }));
 vi.mock("~/lib/agents/prompt.server", () => ({
   buildAgentSystemPrompt: mocks.buildAgentSystemPrompt,
@@ -50,6 +43,66 @@ describe("agent chat upstream failures", () => {
   beforeEach(() => {
     mocks.startTurn.mockReset();
     mocks.buildAgentSystemPrompt.mockReset().mockReturnValue("system");
+    mocks.getAgentForUser.mockReset().mockResolvedValue({
+      agent: {
+        ownerId: "user-1",
+        latestVersionId: "version-1",
+        sharedVersionId: null,
+      },
+      version: { id: "version-1" },
+      definition: {
+        version: 1,
+        systemPrompt: "Be helpful.",
+        tools: [],
+        skills: [],
+        builtins: { fetchPage: true, memory: true },
+      },
+    });
+  });
+
+  it("rejects a stale shared version after re-share before contacting the model", async () => {
+    mocks.getAgentForUser.mockResolvedValueOnce({
+      agent: {
+        ownerId: "owner-2",
+        latestVersionId: "version-3",
+        sharedVersionId: "version-3",
+      },
+      version: { id: "version-3" },
+      definition: {
+        version: 1,
+        systemPrompt: "Current shared instructions.",
+        tools: [],
+        skills: [],
+        builtins: { fetchPage: false, memory: false },
+      },
+    });
+
+    const response = await action({
+      request: new Request(
+        "https://example.com/clubs/club-1/api/agents/agent-1/chat",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            versionId: "version-2",
+            messages: [{ role: "user", content: "hello" }],
+          }),
+        },
+      ),
+      context: { get: () => ({ env: {} }) },
+      params: { clubSlug: "club-1", agentId: "agent-1" },
+    } as never);
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "This agent version changed. Reload before continuing.",
+    });
+    expect(mocks.getAgentForUser).toHaveBeenCalledWith(
+      {},
+      { clubId: "club-1", userId: "user-1" },
+      "agent-1",
+    );
+    expect(mocks.buildAgentSystemPrompt).not.toHaveBeenCalled();
+    expect(mocks.startTurn).not.toHaveBeenCalled();
   });
 
   it("returns 502 when starting the initial model request rejects", async () => {
