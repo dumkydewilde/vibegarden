@@ -144,7 +144,9 @@ describe("owned MCP D1 queries", () => {
       await searchOwnedProjects(env, "user-a", query, 20);
       await searchOwnedThreads(env, "user-a", query, 20);
 
-      expect(recordedBindings.flat().filter((binding) => binding === expectedTerm)).toHaveLength(4);
+      // Once per searched column: project title, one-liner, and notes, then
+      // both thread columns.
+      expect(recordedBindings.flat().filter((binding) => binding === expectedTerm)).toHaveLength(5);
     },
   );
 });

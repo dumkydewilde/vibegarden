@@ -1,0 +1,80 @@
+---
+title: "Calling an API for real: keys, limits, and reading the docs"
+description: "You know what an API is. This is the practical half: where the key goes, what the status codes are telling you, and why you verify one real request before wiring anything up."
+category: Building
+level: hands-on
+order: 9
+---
+
+[What is an API? What is MCP?](/learning/what-is-an-api-what-is-mcp) covers the idea: a service offers a set of doors, and your program knocks. This is the part that comes after, when you have picked a service, opened its documentation, and need your project to actually talk to it without leaking your key or getting throttled at the worst moment.
+
+Your assistant will write the request for you. Your job is the three decisions it cannot make: which docs are real, where the secret lives, and what should happen when the answer is not the happy one.
+
+## Read exactly three things in the docs
+
+Documentation is long and you need very little of it to start.
+
+1. **One complete example request.** Every decent API shows one, usually as a `curl` line. It tells you the base URL, the method, and the shape of the body in one glance.
+2. **How authentication rides along.** Almost always a header (`Authorization: Bearer sk-...`), sometimes a query parameter, occasionally a signed request. This is the part people guess wrong.
+3. **Limits and price.** Requests per minute, size caps, and what a call costs. Find this before you build, not after a surprising invoice.
+
+Copy that example request into your assistant along with what you want. "Here is their example, adapt it to fetch the last 20 items and print the titles" gets you working code. "Write me code for the Notion API" gets you a confident invention, because a model's memory of an API is a snapshot from training and endpoints move.
+
+## The anatomy, once
+
+A request has four parts: the **method** (`GET` to read, `POST` to create, `PUT` or `PATCH` to change, `DELETE` to remove), the **URL** including any query parameters, the **headers** including your key and usually `Content-Type: application/json`, and for the writing methods a **body**, normally JSON.
+
+The response has a status code, and reading it correctly saves hours:
+
+| Code | Means | What to do |
+| --- | --- | --- |
+| 200, 201 | It worked | Nothing. 201 usually means something was created |
+| 400 | Your request is malformed | Read the error body, it almost always names the offending field |
+| 401 | The key is missing, wrong, or expired | Check how the key is being sent, not just the key itself |
+| 403 | The key is valid but not allowed to do this | Missing permission or scope on the token, not a typo |
+| 404 | Wrong URL, or the thing does not exist | Compare against the docs example character by character |
+| 429 | You are going too fast | Slow down and retry later, see below |
+| 500, 502, 503 | Their problem, not yours | Retry a couple of times with a pause, then report it |
+
+The other habit worth having: read the error **body**, not just the code. Most services put a plain sentence in there explaining exactly what is wrong, and most people never look.
+
+## Verify one real request before wiring anything
+
+Before the API goes anywhere near your app, make exactly one successful call, on its own, and look at the response. A `curl` line in a terminal or a five-line script is enough. This separates two failures that look identical from inside a half-built app: "my code is wrong" and "I misunderstood the API".
+
+Once one real response is in front of you, you also know the actual shape of the data, which is frequently not what the docs implied.
+
+## Keys are passwords
+
+An API key is a password that can spend your money. Two rules cover almost everything:
+
+**It never goes in anything the browser downloads.** Not in the JavaScript, not in the HTML, not in a config file the page fetches. "Nobody will look" is false: people look, and so do automated scanners. If your project is a static site, a paid API means adding one small function to hold the key, exactly as [Hosting your app](/learning/hosting-your-app) describes.
+
+**It never goes in git.** Keep it in an environment variable or your host's secret store, and keep the file that holds it locally (usually `.env`) out of the repository. If a key does get committed or pasted somewhere public, do not reason about the odds: rotate it in the service's dashboard, which takes a minute and makes the leaked one worthless.
+
+While you are at it, prefer a key with the narrowest permissions the service offers, and a spending cap if it has one.
+
+## Going too fast, and what to do about it
+
+`429` is the most common wall a working integration hits, usually the first time you loop over a list. The fixes, in order of how often they are the right one:
+
+- **Wait and retry, with growing pauses.** One second, then two, then four. This is called backoff and it is three lines of code. Respect the `Retry-After` header when they send one.
+- **Cache.** If you ask for the same thing twice, ask once and keep the answer. The best request is the one you did not make.
+- **Batch.** Many APIs take 100 items in one call. One call beats 100 calls, always.
+- **Slow down on purpose.** A small pause inside a loop over 500 rows costs you a minute and saves you a block.
+
+Also expect **pagination**: a list endpoint gives you the first 20 or 100 items plus a cursor or page number for the rest. If your result count is suspiciously round, you are looking at page one and there is more.
+
+## The direction you forget: they call you
+
+Polling ("has anything changed?" every minute) is fine and simple. When you need to know immediately, some services offer **webhooks**: you give them a URL, and they send you a request when something happens. That is your app being the API for once, which needs a dynamic host and a check that the caller is really who they claim to be, usually a shared secret or a signature.
+
+And when the caller is an AI assistant rather than your code, the modern version of all this is MCP, which is why Vibe Garden itself has an MCP server: same idea, doors offered to an assistant instead of to a program you wrote.
+
+## Try it
+
+Twenty minutes, in two halves. First call something keyless from a terminal and look at raw JSON: `curl https://api.github.com/repos/duckdb/duckdb` prints more about a repository than any page would. Then take a service you actually want, get a key, put it in an environment variable, and make one call that uses it. When that response appears, ask your assistant to turn it into the small piece your project needs, and paste the docs example alongside.
+
+## Where to go next
+
+[What is an API? What is MCP?](/learning/what-is-an-api-what-is-mcp) if the concepts still feel loose, [Hosting your app](/learning/hosting-your-app) for where a key-holding function lives, and [Automate and schedule](/learning/automate-and-schedule) for when the call should happen every morning without you. The [API connection](/garden/modules/api-connection) block is the short version to plant in a project.

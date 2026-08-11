@@ -3,17 +3,21 @@ import { z } from "zod";
 import {
   createArtifactInput,
   createArtifactVersionInput,
+  createProjectInput,
   fetchInput,
   freshReadsInput,
   getConversationInput,
   getProjectInput,
+  guidanceInput,
   listLearningContentInput,
   listProjectConversationsInput,
   listProjectsInput,
   MCP_SCOPES,
+  planBuildPromptInput,
   searchInput,
   shareArtifactInput,
   slugInput,
+  updateProjectInput,
   type McpScope,
 } from "../app/lib/mcp/contracts";
 import { McpPublicError, toMcpErrorResult } from "../app/lib/mcp/errors.server";
@@ -37,9 +41,12 @@ const toolRequirements = {
   list_learning_content: { schema: listLearningContentInput, scope: "content:read" },
   read_article: { schema: slugInput, scope: "content:read" },
   read_module: { schema: slugInput, scope: "content:read" },
+  get_guidance: { schema: guidanceInput, scope: "content:read" },
   fresh_reads: { schema: freshReadsInput, scope: "content:read" },
   search: { schema: searchInput, scope: ["projects:read", "content:read"] },
   fetch: { schema: fetchInput, scope: ["projects:read", "content:read"] },
+  create_project: { schema: createProjectInput, scope: "projects:write" },
+  update_project: { schema: updateProjectInput, scope: "projects:write" },
   create_artifact: { schema: createArtifactInput, scope: "artifacts:write" },
   create_artifact_version: { schema: createArtifactVersionInput, scope: "artifacts:write" },
   share_artifact: { schema: shareArtifactInput, scope: "artifacts:publish" },
@@ -90,15 +97,21 @@ function insufficientScopeResponse(
 function scopeForResource(uri: unknown): McpScope | undefined {
   if (typeof uri !== "string") return undefined;
   if (/^vibegarden:\/\/(?:project|conversation)\//.test(uri)) return "projects:read";
-  if (/^vibegarden:\/\/(?:article|module)\//.test(uri) || uri === "vibegarden://guide/gardener") {
+  if (/^vibegarden:\/\/(?:article|module)\//.test(uri)
+    || /^vibegarden:\/\/guide\//.test(uri)) {
     return "content:read";
   }
   return undefined;
 }
 
-const continueProjectPromptInput = z.object({
-  project_id: z.string().min(1).max(200),
-}).strict();
+/** Each prompt carries its own arguments and its own scope. */
+const promptRequirements = {
+  continue_project: {
+    schema: z.object({ project_id: z.string().min(1).max(200) }).strict(),
+    scope: "projects:read",
+  },
+  plan_build: { schema: planBuildPromptInput, scope: "content:read" },
+} as const satisfies Record<string, { schema: z.ZodTypeAny; scope: McpScope }>;
 
 function requestId(request: Request): Promise<RpcEnvelope["id"]> {
   return request.clone().json()
@@ -199,10 +212,15 @@ async function preflightMcpRequest(request: Request, env: Env, ctx: ExecutionCon
   } else if (envelope.method === "resources/read") {
     required = scopeForResource(envelope.params?.uri);
   } else if (envelope.method === "prompts/get") {
-    if (!continueProjectPromptInput.safeParse(envelope.params?.arguments).success) {
-      return response(envelope.id, new McpPublicError("invalid_input", "The tool input is invalid."));
+    const name = typeof envelope.params?.name === "string" ? envelope.params.name : "";
+    const prompt = promptRequirements[name as keyof typeof promptRequirements];
+    // An unknown prompt name falls through to the SDK's own not-found error.
+    if (prompt) {
+      if (!prompt.schema.safeParse(envelope.params?.arguments).success) {
+        return response(envelope.id, new McpPublicError("invalid_input", "The tool input is invalid."));
+      }
+      required = prompt.scope;
     }
-    required = "projects:read";
   }
 
   if (required && !hasRequiredScope(principalScopes(ctx), required)) {

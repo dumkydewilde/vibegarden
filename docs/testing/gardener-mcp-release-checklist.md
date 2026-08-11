@@ -52,16 +52,18 @@ copy tokens into this checklist.
 | Check | Expected result | Status / redacted evidence |
 | --- | --- | --- |
 | Initialize metadata | Server is `vibe-garden` version `1.0.0`; instructions are operational and do not set host personality. | `PENDING` |
-| Ordered discovery | `list_projects`, `get_project`, `list_project_conversations`, `get_conversation`, `list_learning_content`, `read_article`, `read_module`, optional `fresh_reads`, `search`, `fetch`. | `PENDING` |
+| Ordered discovery | `list_projects`, `get_project`, `list_project_conversations`, `get_conversation`, `list_learning_content`, `read_article`, `read_module`, `get_guidance`, optional `fresh_reads`, `search`, `fetch`, `create_project`, `update_project`, `create_artifact`, `create_artifact_version`, `share_artifact`. | `PENDING` |
 | DCR and S256 PKCE | Dynamic registration, protected-resource discovery, authorization code, S256 PKCE, and exact `/mcp` resource binding complete. | `PENDING` |
-| Scopes | `projects:read` and `content:read` appear in consent and discovery metadata; insufficient scope returns its OAuth challenge before execution. | `PENDING` |
+| Scopes | `projects:read`, `projects:write`, `content:read`, `artifacts:write`, and `artifacts:publish` appear in consent and discovery metadata; insufficient scope returns its OAuth challenge before execution. | `PENDING` |
+| Project writes | `create_project` plants one project and a repeated idempotency key replays it; `update_project` changes only the fields sent, rejects an empty change set and unknown building blocks, and returns `not_found` for another club's project. No delete tool exists. | `PENDING` |
+| Build guidance | `get_guidance` answers hosting, file-storage, API, and coding-agent questions from the library with matching-section excerpts and `related` entries; an unmatchable question returns no items and still offers related entries; `vibegarden://guide/library` and `plan_build` require `content:read`. | `PENDING` |
 | Every tool | Exercise each discovered tool with valid input and confirm read-only schemas/metadata. | `PENDING` |
 | Optional MotherDuck | Without a token, `fresh_reads` is absent from discovery; with a configured read-only backend, it returns bounded results. | `PENDING` |
 | Pagination and invalid cursor | Project, project-conversation, conversation, and learning lists paginate; malformed/expired/wrong-kind cursors return `invalid_cursor`. | `PENDING` |
-| Resources | Read project, conversation, article, module, and `vibegarden://guide/gardener`; check scope and ownership enforcement. | `PENDING` |
-| Prompt | `continue_project` only on explicit invocation; it supplies user-authored context, a brief restatement, smallest next step, and one question. | `PENDING` |
+| Resources | Read project, conversation, article, module, `vibegarden://guide/gardener`, and `vibegarden://guide/library`; check scope and ownership enforcement. | `PENDING` |
+| Prompts | `continue_project` and `plan_build` only on explicit invocation; each supplies its material, a smallest next step, and one question, and neither claims to be the server or The Gardener. | `PENDING` |
 | Refresh and reconnect | Refresh rotates; expired tokens fail; revocation removes access and reconnect requests authorization again. | `PENDING` |
-| No optional analysis | `fresh_reads` is absent without a token; no analysis, artifact, or write tool is exposed. | `PENDING` |
+| No optional analysis | `fresh_reads` is absent without a token; no server-side analysis tool is exposed. | `PENDING` |
 
 ## Claude custom connector (staging)
 
@@ -95,6 +97,7 @@ read-only MotherDuck token; otherwise execute the unavailable row.
 | Claude | `list_learning_content` | Published content and valid pagination are returned. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | Claude | `read_article` | A published article is returned with its canonical HTTPS URL. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | Claude | `read_module` | A published module is returned with its canonical HTTPS URL. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
+| Claude | `get_guidance` | A build question returns matching articles or blocks with excerpts of the relevant sections and canonical HTTPS URLs. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | Claude | `fresh_reads` when configured | With the read-only MotherDuck token, bounded results and source URLs are returned. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | Claude | `fresh_reads` when unavailable | Without the token, `fresh_reads` is absent from `tools/list`; no backend error is exposed. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | Claude | `search` | Company-knowledge result IDs and canonical HTTPS citations are returned without private data. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
@@ -105,12 +108,14 @@ read-only MotherDuck token; otherwise execute the unavailable row.
 | Claude | `resources/read` article | A published `vibegarden://article/{slug}` resource is readable. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | Claude | `resources/read` module | A published `vibegarden://module/{slug}` resource is readable. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | Claude | `resources/read` gardener guide | `vibegarden://guide/gardener` is readable with content scope. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
+| Claude | `resources/read` library guide | `vibegarden://guide/library` lists every article and block, grouped by category, with content scope. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | Claude | `continue_project` | Only explicit invocation returns user-authored context, a brief restatement, smallest next step, and one question. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
+| Claude | `plan_build` | Only explicit invocation returns the matched library material, the building blocks needed, a smallest first step, and one question. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | Claude | Missing and malformed Bearer credentials | Exact `/mcp` requests return 401 with the protected-resource `WWW-Authenticate` challenge and no validation detail. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | Claude | Exact endpoint routing | `/mcp` alone is protected; `/mcp/...`, `/mcp-not-an-endpoint`, and unrelated website routes do not receive an MCP challenge. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | Claude | Protected-resource metadata, DCR, S256 PKCE, resource binding | Metadata names exact staging `/mcp`; registration and OAuth succeed only with approved redirect URI, S256, and resource. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | Claude | Scope challenge and invalid input/cursor | Insufficient scope challenges before execution; invalid input and malformed/expired/wrong-kind cursors are stable public errors. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
-| Claude | Origin and read-only discovery boundaries | Disallowed browser origins are rejected; origin-less clients work; no write, analysis, or artifact tool appears. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
+| Claude | Origin and discovery boundaries | Disallowed browser origins are rejected; origin-less clients work; no analysis tool appears; project and artifact writes appear only with their own scopes. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | Claude | Refresh, expiry, revocation, reconnect | Refresh rotates; expiry/revocation return 401; reconnect requests scopes again. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | Claude | Rate limiting | General and history limits return the stable public rate-limit error without private data. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | Claude | Cross-user `get_project` | Reviewer B's project ID returns `not_found`; no title, body, count, or timing distinction. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
@@ -146,6 +151,7 @@ read-only MotherDuck token; otherwise execute the unavailable row.
 | ChatGPT | `list_learning_content` | Published content and valid pagination are returned. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | ChatGPT | `read_article` | A published article is returned with its canonical HTTPS URL. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | ChatGPT | `read_module` | A published module is returned with its canonical HTTPS URL. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
+| ChatGPT | `get_guidance` | A build question returns matching articles or blocks with excerpts of the relevant sections and canonical HTTPS URLs. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | ChatGPT | `fresh_reads` when configured | With the read-only MotherDuck token, bounded results and source URLs are returned. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | ChatGPT | `fresh_reads` when unavailable | Without the token, `fresh_reads` is absent from `tools/list`; no backend error is exposed. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | ChatGPT | `search` | Accepted as a company-knowledge shape; result IDs and canonical HTTPS citations contain no private data. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
@@ -156,12 +162,14 @@ read-only MotherDuck token; otherwise execute the unavailable row.
 | ChatGPT | `resources/read` article | A published `vibegarden://article/{slug}` resource is readable. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | ChatGPT | `resources/read` module | A published `vibegarden://module/{slug}` resource is readable. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | ChatGPT | `resources/read` gardener guide | `vibegarden://guide/gardener` is readable with content scope. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
+| ChatGPT | `resources/read` library guide | `vibegarden://guide/library` lists every article and block, grouped by category, with content scope. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | ChatGPT | `continue_project` | Only explicit invocation returns user-authored context, a brief restatement, smallest next step, and one question. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
+| ChatGPT | `plan_build` | Only explicit invocation returns the matched library material, the building blocks needed, a smallest first step, and one question. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | ChatGPT | Missing and malformed Bearer credentials | Exact `/mcp` requests return 401 with the protected-resource `WWW-Authenticate` challenge and no validation detail. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | ChatGPT | Exact endpoint routing | `/mcp` alone is protected; `/mcp/...`, `/mcp-not-an-endpoint`, and unrelated website routes do not receive an MCP challenge. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | ChatGPT | Protected-resource metadata, DCR, S256 PKCE, resource binding | Metadata names exact staging `/mcp`; registration and OAuth succeed only with approved redirect URI, S256, and resource. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | ChatGPT | Scope challenge and invalid input/cursor | Insufficient scope challenges before execution; invalid input and malformed/expired/wrong-kind cursors are stable public errors. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
-| ChatGPT | Origin and read-only discovery boundaries | Disallowed browser origins are rejected; origin-less clients work; no write, analysis, or artifact tool appears. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
+| ChatGPT | Origin and discovery boundaries | Disallowed browser origins are rejected; origin-less clients work; no analysis tool appears; project and artifact writes appear only with their own scopes. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | ChatGPT | Linking and UI | Linking UI follows resource/security metadata plus the runtime challenge; no MCP App component is requested or rendered. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | ChatGPT | Refresh, expiry, revocation, reconnect | Refresh rotates; expiry/revocation return 401; reconnect requests scopes again. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |
 | ChatGPT | Rate limiting | General and history limits return the stable public rate-limit error without private data. | **PENDING — RELEASE-BLOCKING** | `PENDING — redacted at collection` |

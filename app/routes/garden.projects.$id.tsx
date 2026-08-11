@@ -40,7 +40,8 @@ import {
   ProjectDeleteConflictError,
   updateProject,
 } from "~/lib/projects.server";
-import { statusLabel } from "~/lib/project-status";
+import { PROJECT_LIMITS } from "~/lib/project-limits";
+import { PROJECT_STATUSES, statusLabel } from "~/lib/project-status";
 import { listProjectThreads } from "~/lib/threads.server";
 import { listOwnedProjectArtifacts } from "~/lib/artifacts/service.server";
 import { cn } from "~/lib/utils";
@@ -87,6 +88,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     await updateProject(env, scope, params.id, {
       title: String(form.get("title") ?? ""),
       oneLiner: String(form.get("oneLiner") ?? ""),
+      notes: String(form.get("notes") ?? ""),
       status: String(form.get("status") ?? ""),
       modules: form.getAll("modules").map(String),
     });
@@ -96,7 +98,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   return { saved: false };
 }
 
-const statuses = ["seed", "growing", "bloomed"] as const;
+const statuses = PROJECT_STATUSES;
 
 export default function ProjectDetail({
   loaderData,
@@ -161,6 +163,7 @@ export default function ProjectDetail({
               content: [
                 `Project: ${project.title}`,
                 project.oneLiner ? `Idea: ${project.oneLiner}` : null,
+                project.notes ? `Notes: ${project.notes}` : null,
                 project.moduleList.length > 0
                   ? `Building blocks: ${project.moduleList.join(", ")}`
                   : null,
@@ -200,6 +203,18 @@ export default function ProjectDetail({
                 rows={2}
                 defaultValue={project.oneLiner ?? ""}
                 placeholder="What should it do?"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm text-muted-foreground">
+                Notes
+              </label>
+              <Textarea
+                name="notes"
+                rows={6}
+                defaultValue={project.notes ?? ""}
+                maxLength={PROJECT_LIMITS.notesChars}
+                placeholder="What you built, decided, or tried. Your own Claude or ChatGPT can write here too."
               />
             </div>
             <div>

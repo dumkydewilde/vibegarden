@@ -15,7 +15,10 @@ describe("MCP public documentation", () => {
     expect(page).toContain("Developer Mode");
     expect(page).toContain("Settings → Apps → Advanced Settings");
     expect(page).toContain("projects:read");
+    expect(page).toContain("projects:write");
+    expect(page).toContain("Never delete one.");
     expect(page).toContain("content:read");
+    expect(page).toContain("build guidance");
     expect(page).toContain("artifacts:write");
     expect(page).toContain("artifacts:publish");
     expect(page).toContain("100 files");
@@ -28,11 +31,12 @@ describe("MCP public documentation", () => {
 
   it("publishes data-use and revocation disclosures", () => {
     const page = renderToStaticMarkup(<Privacy />);
-    expect(page).toContain("id, title, one_liner, status, building_blocks, updated_at, and url");
+    expect(page).toContain("id, title, one_liner, notes, status, building_blocks, updated_at, and url");
     expect(page).toContain("conversation id, title, updated_at, message_count, url, message role, content, user-authored context label and source, and created_at");
     expect(page).toContain("Articles return kind, slug, title, description, category, level, url, and body");
     expect(page).toContain("Modules return kind, slug, title, description, category, url, and body");
     expect(page).toContain("Fresh reads return title, summary, content_type, source_url, and optional key_insight");
+    expect(page).toContain("your question itself is used only to pick and excerpt that material");
     expect(page).toContain("tool name, outcome, latency");
     expect(page).toContain("does not receive your surrounding Claude or ChatGPT conversation");
     expect(page).toContain("explicit tool arguments");

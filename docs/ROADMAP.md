@@ -159,6 +159,31 @@ Core landed 2026-07-14, see `docs/plans/2026-07-14-gardener-tools.md`.
       during any brainstorm.
 - [ ] Inspiration: move curated cards to content files (content-managed)
 
+## Gardener MCP server
+
+Spec: `docs/specs/2026-07-18-gardener-mcp-server-design.md`. Release evidence
+lives in `docs/testing/gardener-mcp-release-checklist.md`; the staging host
+rows there remain the launch gate.
+
+- [x] Project writes over MCP (2026-08-11, plan:
+      `2026-08-11-mcp-project-writes.md`): new additive `projects:write` scope
+      with `create_project` and `update_project`, so someone can plant and keep
+      a project current from their own Claude or ChatGPT. Creates are
+      idempotent on a caller key, updates touch only the fields sent, and there
+      is deliberately no delete tool. Projects gained a `notes` field, the
+      long-form write-up of what was built, decided, or tried: editable on the
+      project page, returned by the read tools, and searched by `search`.
+- [x] Build guidance over MCP (2026-08-11, plan:
+      `2026-08-11-mcp-build-guidance.md`): `get_guidance(question)` answers a
+      how-to question from the library in one call, ranked with rarity-weighted
+      terms and excerpting the sections that actually match, plus `related`
+      entries to drill into. Adds the `vibegarden://guide/library` resource (the
+      whole library as markdown) and the `plan_build(goal)` prompt. No new
+      scope: everything is `content:read`. Server instructions and the MCP guide
+      now send how-to questions to the library before general recollection.
+- [ ] Reauthorize existing connections to pick up `projects:write`, and
+      re-run the checklist's Inspector and staging-host rows for the new tools.
+
 ## Content (ongoing)
 
 - [x] Batch 1 (2026-07-14): 8 new learning articles. Foundations: tokens/
@@ -189,6 +214,16 @@ Core landed 2026-07-14, see `docs/plans/2026-07-14-gardener-tools.md`.
       section; new Building article "Hosting your app" (static vs dynamic,
       field guide table: GitHub Pages, Cloudflare, Vercel, Netlify,
       Fly.io/Railway, Hetzner), cross-linked both ways
+- [x] Batch 5 (2026-08-11): the three gaps the MCP guidance work exposed.
+      Building: "Vibe coding: how to work with a coding agent" (small steps,
+      saying what done looks like, a symptom-to-move table for when it loops,
+      reading the diff), "Where your files and images live" (rows versus files,
+      public versus signed URLs, bucket field guide, the signed-upload pattern),
+      "Calling an API for real" (three things to read in any docs page, status
+      code table, keys as passwords, 429 and backoff, pagination, webhooks).
+      Two new blocks: File and image store, API connection. Cross-linked from
+      "What is an API? What is MCP?", "Storing your data", "Hosting your app",
+      and "Creating the right context"
 - [ ] Later ideas: prompting basics, cost and budgets, privacy and
       personal data
 

@@ -12,6 +12,7 @@ describe("MCP project presenters", () => {
       userId: "user-secret",
       title: "A useful project",
       oneLiner: "One line",
+      notes: "Built the first chart from a Goodreads export.",
       status: "growing",
       moduleList: ["Dashboard"],
       threadId: "thread-1",
@@ -21,6 +22,7 @@ describe("MCP project presenters", () => {
     });
     expect(result).toMatchObject({
       id: "project-1",
+      notes: "Built the first chart from a Goodreads export.",
       url: "https://vibegarden.test/clubs/wotf/garden/projects/project-1",
     });
     expect(JSON.stringify(result)).not.toContain("user-secret");
@@ -52,6 +54,7 @@ describe("MCP project presenters", () => {
       id,
       title: "Project",
       oneLiner: null,
+      notes: "x".repeat(BODY_MAX_CHARS + 1),
       status: "seed",
       moduleList: [],
       updatedAt: 1,
@@ -67,6 +70,7 @@ describe("MCP project presenters", () => {
     });
 
     expect(project.url).toBe("https://vibegarden.test/clubs/club%20%2F%3F/garden/projects/project%20%2F%3F");
+    expect(project.notes).toHaveLength(BODY_MAX_CHARS);
     expect(conversation.conversation.url).toBe("https://vibegarden.test/clubs/club%20%2F%3F/garden/conversations/project%20%2F%3F");
     expect(conversation.messages[0].content).toHaveLength(BODY_MAX_CHARS);
   });

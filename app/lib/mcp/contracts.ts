@@ -1,8 +1,11 @@
 import { z } from "zod";
 import { ARTIFACT_LIMITS } from "~/lib/artifacts/contracts";
+import { PROJECT_LIMITS } from "~/lib/project-limits";
+import { PROJECT_STATUSES } from "~/lib/project-status";
 
 export const MCP_SCOPES = [
-  "projects:read", "content:read", "artifacts:write", "artifacts:publish",
+  "projects:read", "projects:write", "content:read",
+  "artifacts:write", "artifacts:publish",
 ] as const;
 export type McpScope = (typeof MCP_SCOPES)[number];
 export type McpPrincipal = {
@@ -28,19 +31,54 @@ export const MCP_TOOL_ORDER = [
   "list_learning_content",
   "read_article",
   "read_module",
+  "get_guidance",
   "fresh_reads",
   "search",
   "fetch",
+  "create_project",
+  "update_project",
   "create_artifact",
   "create_artifact_version",
   "share_artifact",
 ] as const;
 
 export const listProjectsInput = z.object({
-  status: z.enum(["seed", "growing", "bloomed"]).optional(),
+  status: z.enum(PROJECT_STATUSES).optional(),
   cursor: z.string().max(2_000).optional(),
   page_size: z.number().int().positive().optional(),
 }).strict();
+
+const projectTitleInput = z.string().min(1).max(PROJECT_LIMITS.titleChars);
+const projectOneLinerInput = z.string().max(PROJECT_LIMITS.oneLinerChars);
+const projectNotesInput = z.string().max(PROJECT_LIMITS.notesChars);
+/** A module display title or content slug; the server resolves either. */
+const buildingBlocksInput = z
+  .array(z.string().min(1).max(120))
+  .max(PROJECT_LIMITS.buildingBlocks);
+
+export const createProjectInput = z.object({
+  title: projectTitleInput,
+  one_liner: projectOneLinerInput.optional(),
+  notes: projectNotesInput.optional(),
+  building_blocks: buildingBlocksInput.optional(),
+  idempotency_key: z.string().min(1).max(256),
+}).strict();
+
+export const UPDATE_PROJECT_FIELDS = [
+  "title", "one_liner", "notes", "building_blocks", "status",
+] as const;
+
+export const updateProjectInput = z.object({
+  project_id: z.string().min(1).max(200),
+  title: projectTitleInput.optional(),
+  one_liner: projectOneLinerInput.optional(),
+  notes: projectNotesInput.optional(),
+  building_blocks: buildingBlocksInput.optional(),
+  status: z.enum(PROJECT_STATUSES).optional(),
+}).strict().refine(
+  (input) => UPDATE_PROJECT_FIELDS.some((field) => input[field] !== undefined),
+  { message: "Provide at least one field to change." },
+);
 
 export const getProjectInput = z.object({
   project_id: z.string().min(1).max(200),
@@ -67,6 +105,18 @@ export const listLearningContentInput = z.object({
 }).strict();
 
 export const slugInput = z.object({ slug: z.string().min(1).max(200) }).strict();
+
+export const GUIDANCE_QUESTION_MAX = 300;
+
+export const guidanceInput = z.object({
+  question: z.string().min(3).max(GUIDANCE_QUESTION_MAX),
+  kind: z.enum(["article", "module"]).optional(),
+  max_items: z.number().int().positive().optional(),
+}).strict();
+
+export const planBuildPromptInput = z.object({
+  goal: z.string().min(3).max(GUIDANCE_QUESTION_MAX),
+}).strict();
 
 export const freshReadsInput = z.object({
   topic: z.string().max(80).optional(),
@@ -116,11 +166,14 @@ const projectOutput = z.object({
   id: z.string(),
   title: z.string(),
   one_liner: z.string().nullable(),
-  status: z.enum(["seed", "growing", "bloomed"]),
+  notes: z.string().nullable(),
+  status: z.enum(PROJECT_STATUSES),
   building_blocks: z.array(z.string()),
   updated_at: z.number(),
   url: z.string().url(),
 }).strict();
+
+export const projectMutationOutput = projectOutput;
 
 export const listProjectsOutput = z.object({
   projects: z.array(projectOutput),
@@ -168,6 +221,11 @@ const learningItemOutput = z.object({
 export const listLearningContentOutput = z.object({
   items: z.array(learningItemOutput),
   next_cursor: z.string().optional(),
+}).strict();
+
+export const guidanceOutput = z.object({
+  items: z.array(learningItemOutput.extend({ excerpt: z.string() }).strict()),
+  related: z.array(learningItemOutput),
 }).strict();
 
 export const articleOutput = learningItemOutput.extend({

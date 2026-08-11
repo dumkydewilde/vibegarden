@@ -1,0 +1,77 @@
+---
+title: "Where your files and images live: buckets, without the jargon"
+description: "Databases store facts, buckets store files. The distinction nobody explains, what public really means, and how to let people upload without handing out your keys."
+category: Building
+level: hands-on
+order: 8
+---
+
+Your app has two kinds of stuff, and they live in different places. There are the facts: an expense of 12.40 on Tuesday, a member named Ines, a score of 8. Those go in a sheet or a database, which is the story [Storing your data](/learning/store-data-sheets-vs-database) tells. Then there are the files: photos, PDFs, audio recordings, a 40 MB CSV, the illustration on your landing page. Those go in a bucket.
+
+Almost every "where do I put this?" confusion comes from mixing the two up.
+
+## Rows versus files
+
+A database is built for many small facts you slice and search: give me every expense in March. It is genuinely bad at holding a 4 MB photo. The photo makes the database bigger, slower, and more expensive to back up, and you cannot serve it to a browser quickly, because every view means a query.
+
+Object storage, a bucket, is built for exactly the opposite: relatively few, relatively large things that you hand out whole. You put a file in under a name (`photos/2026/ines.jpg`), and you get it back by that name, fast, from somewhere near the visitor.
+
+The pattern that virtually every real app uses: **the file goes in the bucket, its address goes in the database.** One row holds the description, the date, who uploaded it, and the path to the file. Get that habit and this whole topic is solved.
+
+## A bucket is not a folder, quite
+
+It looks like a folder and it mostly behaves like one, with two differences worth knowing.
+
+There are no real directories. `photos/2026/ines.jpg` is just a long name that contains slashes, which is why nothing gets slow when you have 50,000 of them in the "same folder".
+
+And every object has a visibility. Public means anyone with the link can fetch it, forever, without logging in, whether or not the link is listed anywhere. Private means only your code can read it, and when a visitor needs to see it, your code hands out a **signed URL**: a normal-looking link with a signature and an expiry glued on, good for the next few minutes.
+
+Choose deliberately. Illustrations on a landing page: public, obviously. Scans of member passports: private, obviously. Photos in a members-only gallery: private with signed URLs, because "the link is hard to guess" is not a permission system.
+
+## The field guide
+
+| Option | What it is | Great for | Watch out for |
+| --- | --- | --- | --- |
+| Your repository's own files | Images committed next to the code, served by the host | Logos, icons, a handful of illustrations that never change | Anything users upload, anything large, anything private. Git hates big binaries |
+| [Cloudflare R2](https://developers.cloudflare.com/r2/) | S3-compatible bucket with no charge for bandwidth out | Default choice for a project on Cloudflare, generous free tier | You still wire up your own upload and access rules |
+| [Amazon S3](https://aws.amazon.com/s3/) | The original object store that every tool speaks to | Anything, at any scale, with every guide on the internet written for it | AWS permissions are their own hobby, and bandwidth out is billed |
+| [Supabase Storage](https://supabase.com/docs/guides/storage) | Buckets bundled with the database and login you may already use | Projects that already use Supabase: uploads, permissions, and rows in one place | Ties the project further into one service |
+| [Cloudinary](https://cloudinary.com) or [Cloudflare Images](https://developers.cloudflare.com/images/) | Storage plus resizing, cropping, and format conversion on the fly | Photo-heavy projects, avatars, anything that needs thumbnails | Per-image pricing, and a URL format you will not easily leave |
+| Google Drive or Dropbox | Consumer file sync with sharing links | Handing files to humans, and as a place your workflow reads from | Not a website host: rate limits, redirects, and links that change |
+
+For a workshop project the honest answer is usually R2 or Supabase Storage if you already have a Supabase database, and "just commit the three illustrations" if that is genuinely all you have.
+
+## Three questions that pick one for you
+
+1. **Does anything need to be private?** If no, almost any option works. If yes, you need one that does signed URLs, which is all of the real buckets and none of the "commit it to the repo" approaches.
+2. **Do other people upload?** Then you need a small piece of server code (see below), which rules out a purely static site.
+3. **How big and how many?** Under a few hundred small files that you control: your repository is fine. Beyond that, or anything user-generated, use a bucket.
+
+## Letting people upload without handing out your keys
+
+The tempting shortcut is to put your bucket key in the page's JavaScript so the browser can upload directly. Never do this. Anything in a page is public, so that key would let a stranger fill your bucket, or empty it.
+
+The standard pattern is one small dynamic function, exactly the kind [Hosting your app](/learning/hosting-your-app) describes:
+
+1. The browser asks your function: "I want to upload `holiday.jpg`, 2 MB, image/jpeg."
+2. The function checks that this person is allowed to, checks the size and type, and asks the bucket for a signed upload URL that works once, for a few minutes, for that one path.
+3. The browser uploads straight to the bucket using that URL. Your server never touches the bytes.
+4. The browser tells your function it worked, and the function writes the row: path, uploader, date, description.
+
+Ask your assistant for "a signed upload URL endpoint for R2 with a size and MIME type check" and you will get this in a few minutes. Do keep the check: without it, "upload a profile picture" quietly becomes "host anything at all for free".
+
+## Be kind to phones
+
+A photo straight off a phone is 4 to 12 MB, which is a slow page and, on a metered connection, a rude one. Resize on the way in, or serve resized versions: 1600 pixels wide is plenty for a full-screen photo, 400 for a card, and WebP or AVIF instead of JPEG cuts the size again. This is what the image services in the table sell, and it is also five lines of code if you would rather not pay for it.
+
+## Data files live in buckets too
+
+A bucket is not only for images. Parquet and CSV files are perfectly happy there, and modern query tools can read them **where they lie**, without loading them into a database first. That is how a 200 MB dataset becomes a chart on a static page: the file sits in a bucket, the browser or a function queries it directly. If your project is more "analyze this" than "collect this", start with the [CSV file](/garden/modules/csv-file) block and a bucket, and skip the database entirely.
+
+## Try it
+
+Twenty minutes. Make a bucket on R2 or Supabase, drag in one image, and get its public URL to load in a browser tab. Then make a second object private and ask your assistant for a signed URL for it, and watch the link stop working after it expires. That is the whole mental model, and you now have it.
+
+## Where to go next
+
+[Hosting your app](/learning/hosting-your-app) covers the static and dynamic split that the upload pattern relies on. [Storing your data](/learning/store-data-sheets-vs-database) covers the other half, the rows. [Calling an API for real](/learning/calling-an-api) covers the keys and secrets that any of this needs, and the [File and image store](/garden/modules/file-store) block is the short version to plant in your project.

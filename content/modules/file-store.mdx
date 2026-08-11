@@ -1,0 +1,34 @@
+---
+title: File and image store
+description: "A bucket for the things that are not rows: photos, PDFs, audio, big data files. The file lives there, its address lives in your database."
+category: Storing things
+order: 12
+---
+
+## What it is
+
+Object storage, usually called a bucket, is a place to put whole files and get them back by name, quickly, from anywhere. It is the counterpart to a [database](/garden/modules/database): the database holds the facts about a thing, the bucket holds the thing itself. One row says "holiday photo, uploaded by Ines on 3 March", and it points at `photos/2026/ines-holiday.jpg` in the bucket.
+
+Every object is either public, meaning anyone with the link can fetch it forever, or private, meaning your code hands out a signed link that expires in a few minutes.
+
+## When to use it
+
+- **Your project has files, not just values**: images, PDFs, audio, video, scans.
+- **People upload things.** Anything user-generated needs a bucket; it cannot live in your repository.
+- **A data file is too big to paste or commit**, like a 200 MB Parquet or CSV export. Query tools can read it straight from the bucket.
+
+If all you have is a logo and three illustrations that never change, skip this block: commit them next to your code and move on. And if you are storing values rather than files, you want a [Google Sheet](/garden/modules/google-sheet) or a [database](/garden/modules/database) instead.
+
+## Setup steps
+
+1. Create a bucket. [Cloudflare R2](https://developers.cloudflare.com/r2/) is the default pick, or [Supabase Storage](https://supabase.com/docs/guides/storage) if your project already uses Supabase.
+2. Decide public or private per kind of file, before you upload anything. Public for page illustrations, private for anything about a person.
+3. Choose a naming pattern and stick to it: `kind/year/short-name.ext`. Future you will thank present you.
+4. For uploads, ask your assistant for a signed upload URL endpoint that checks size and file type. Your bucket key stays on the server, never in the page.
+5. Store the path in your database alongside who uploaded it and when. The file and the fact belong together.
+
+## Options and costs
+
+Free at workshop scale. R2 gives 10 GB of storage free and charges nothing for bandwidth out, which is the charge that surprises people on other providers. Supabase Storage includes a free gigabyte alongside its database. Image services like [Cloudinary](https://cloudinary.com) and [Cloudflare Images](https://developers.cloudflare.com/images/) cost more but resize and convert for you, which is worth it for a photo-heavy project and pointless for six illustrations.
+
+The real cost is discipline: resize photos on the way in rather than serving 8 MB straight from a phone, and never let an upload endpoint accept anything of any size. [Where your files and images live](/learning/hosting-files-and-assets) walks through both.

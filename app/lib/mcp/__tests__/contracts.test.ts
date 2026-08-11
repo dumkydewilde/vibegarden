@@ -13,9 +13,11 @@ import {
 describe("MCP contracts", () => {
   it("keeps scopes and discovery order stable", () => {
     expect(MCP_SCOPES).toEqual([
-      "projects:read", "content:read", "artifacts:write", "artifacts:publish",
+      "projects:read", "projects:write", "content:read",
+      "artifacts:write", "artifacts:publish",
     ]);
-    expect(MCP_TOOL_ORDER.slice(-3)).toEqual([
+    expect(MCP_TOOL_ORDER.slice(-5)).toEqual([
+      "create_project", "update_project",
       "create_artifact", "create_artifact_version", "share_artifact",
     ]);
   });

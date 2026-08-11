@@ -6,8 +6,10 @@ import { runWithMcpRequestProps } from "~/lib/mcp/request-context.server";
 import { createGardenerMcpServer } from "~/lib/mcp/server.server";
 
 vi.mock("~/lib/projects.server", () => ({
+  createProject: vi.fn(),
   getProject: vi.fn(),
   listProjectsPage: vi.fn(),
+  updateProject: vi.fn(),
 }));
 
 vi.mock("~/lib/threads.server", () => ({
@@ -91,14 +93,61 @@ describe("Gardener MCP tool registration", () => {
         securitySchemes: [expect.objectContaining({ type: "oauth2" })],
       });
     }
+    const mutations = [
+      "create_project",
+      "update_project",
+      "create_artifact",
+      "create_artifact_version",
+      "share_artifact",
+    ];
     for (const name of MCP_TOOL_ORDER.filter((name) => (
-      name !== "fresh_reads"
-      && name !== "create_artifact"
-      && name !== "create_artifact_version"
-      && name !== "share_artifact"
+      name !== "fresh_reads" && !mutations.includes(name)
     ))) {
       expect(tool(tools, name).annotations).toMatchObject({ readOnlyHint: true });
     }
+  });
+
+  it("marks project writes as bounded, idempotent, and non-destructive", async () => {
+    const tools = await listTools(createGardenerMcpServer(env()));
+    const create = tool(tools, "create_project");
+    const update = tool(tools, "update_project");
+
+    for (const item of [create, update]) {
+      expect(item.annotations).toEqual({
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      });
+      expect(item._meta).toMatchObject({
+        securitySchemes: [expect.objectContaining({ scopes: ["projects:write"] })],
+      });
+    }
+    expect(create.description).toMatch(/idempotency key/i);
+    expect(create.description).toMatch(/only when the person asks/i);
+    expect(update.description).toMatch(/omitted fields/i);
+    expect(tools.map((item) => item.name)).not.toContain("delete_project");
+  });
+
+  it("keeps project write inputs bounded and closed", async () => {
+    const tools = await listTools(createGardenerMcpServer(env()));
+
+    expect(tool(tools, "create_project").inputSchema).toMatchObject({
+      type: "object",
+      required: ["title", "idempotency_key"],
+      additionalProperties: false,
+      properties: {
+        title: { maxLength: 120 },
+        one_liner: { maxLength: 300 },
+        notes: { maxLength: 4_000 },
+      },
+    });
+    expect(tool(tools, "update_project").inputSchema).toMatchObject({
+      type: "object",
+      required: ["project_id"],
+      additionalProperties: false,
+      properties: { status: { enum: ["seed", "growing", "bloomed"] } },
+    });
   });
 
   it("marks artifact mutations accurately and gives safe package guidance", async () => {

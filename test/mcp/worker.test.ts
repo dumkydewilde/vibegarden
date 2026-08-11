@@ -236,7 +236,8 @@ describe("Gardener MCP Worker", () => {
       authorization_servers: ["https://vibegarden.test"],
     });
     expect(resourceMetadata.scopes_supported).toEqual([
-      "projects:read", "content:read", "artifacts:write", "artifacts:publish",
+      "projects:read", "projects:write", "content:read",
+      "artifacts:write", "artifacts:publish",
     ]);
     const authorization = await SELF.fetch("https://vibegarden.test/.well-known/oauth-authorization-server");
     await expect(authorization.json()).resolves.toMatchObject({
@@ -398,6 +399,83 @@ describe("Gardener MCP Worker", () => {
       id: privateRecords.projectId,
       title: privateRecords.projectTitle,
       one_liner: privateRecords.messageBody,
+    });
+  });
+
+  it("answers a build question and serves the library over the HTTP MCP transport", async () => {
+    const contentToken = await accessTokenFor("guidance-user", "content:read");
+
+    const guidance = await mcpRpc(contentToken, "tools/call", {
+      name: "get_guidance",
+      arguments: { question: "how do I store the files people upload?" },
+    });
+    expect(guidance.status).toBe(200);
+    const guidanceBody = await mcpJson(guidance);
+    expect(guidanceBody).toMatchObject({
+      result: {
+        structuredContent: {
+          items: expect.arrayContaining([expect.objectContaining({
+            excerpt: expect.any(String),
+          })]),
+          related: expect.any(Array),
+        },
+      },
+    });
+    expect(JSON.stringify(guidanceBody)).toContain("hosting-files-and-assets");
+
+    const library = await mcpRpc(contentToken, "resources/read", {
+      uri: "vibegarden://guide/library",
+    });
+    expect(library.status).toBe(200);
+    await expect(mcpJson(library)).resolves.toMatchObject({
+      result: {
+        contents: [expect.objectContaining({
+          uri: "vibegarden://guide/library",
+          mimeType: "text/markdown",
+        })],
+      },
+    });
+
+    const plan = await mcpRpc(contentToken, "prompts/get", {
+      name: "plan_build",
+      arguments: { goal: "a small dashboard from a CSV" },
+    });
+    expect(plan.status).toBe(200);
+    await expect(mcpJson(plan)).resolves.toMatchObject({
+      result: { messages: expect.any(Array) },
+    });
+  });
+
+  it("challenges guidance, the library, and plan_build without content:read", async () => {
+    const projectsToken = await accessTokenFor("guidance-scope-user", "projects:read");
+
+    const guidance = await mcpRpc(projectsToken, "tools/call", {
+      name: "get_guidance",
+      arguments: { question: "how do I host my data?" },
+    });
+    expect(guidance.status).toBe(403);
+    expect(guidance.headers.get("WWW-Authenticate")).toContain("content:read");
+
+    const library = await mcpRpc(projectsToken, "resources/read", {
+      uri: "vibegarden://guide/library",
+    });
+    expect(library.status).toBe(403);
+    expect(library.headers.get("WWW-Authenticate")).toContain("content:read");
+
+    const plan = await mcpRpc(projectsToken, "prompts/get", {
+      name: "plan_build",
+      arguments: { goal: "anything at all" },
+    });
+    expect(plan.status).toBe(403);
+    expect(plan.headers.get("WWW-Authenticate")).toContain("content:read");
+
+    const malformed = await mcpRpc(
+      await accessTokenFor("guidance-input-user", "content:read"),
+      "prompts/get",
+      { name: "plan_build", arguments: { goal: "" } },
+    );
+    await expect(mcpJson(malformed)).resolves.toMatchObject({
+      result: { isError: true },
     });
   });
 
