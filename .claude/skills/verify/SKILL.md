@@ -27,6 +27,30 @@ description: Build, run, and drive Vibe Garden locally to verify a change end-to
    done
    ```
 
+If the OTP POST returns a bare `403 Forbidden`, that is the write-origin
+check: `WEB_ALLOWED_ORIGINS` in `wrangler.jsonc` lists production origins
+only, so `http://localhost:5173` is rejected. Fastest way in is the
+`/dev/login?token=...` route: append `DEV_LOGIN_TOKEN=<something>` to
+`.dev.vars` (mind the missing trailing newline in that file, and remove
+the line when you are done), wait for the dev server to reload, then hit
+`/dev/login?token=<something>`.
+
+## A club to land in
+
+A fresh worktree has an empty local D1, so `/` returns 404 after login
+(no active membership) and `/admin/clubs` needs super-admin. Seed one
+directly, then use `/clubs/<slug>/...` paths:
+
+```bash
+DB=$(find .wrangler/state -path '*d1*' -name '*.sqlite' | grep -v metadata)
+NOW=$(python3 -c 'import time;print(int(time.time()*1000))')
+USERID=$(sqlite3 "$DB" "select id from users limit 1")
+sqlite3 "$DB" "INSERT INTO clubs (id,name,slug,created_by,created_at,updated_at) VALUES ('club-local','Local Garden','local','${USERID}',${NOW},${NOW}); INSERT INTO club_memberships (club_id,user_id,role,onboarding_stage,joined_at,updated_at) VALUES ('club-local','${USERID}','owner','active',${NOW},${NOW});"
+```
+
+`onboarding_stage` must not stay `invited` or the layout bounces you to
+`/welcome`.
+
 ## Flows worth driving
 
 - Articles: `/learning/<slug>`; building blocks: `/garden/modules/<slug>`.

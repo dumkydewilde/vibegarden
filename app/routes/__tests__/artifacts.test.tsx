@@ -22,7 +22,9 @@ const artifacts = projects.map((project, index) => ({
   url: `/artifacts/artifact-${index + 1}`,
 }));
 
-function renderArtifacts(data = { artifacts, projects }) {
+const mcpUrl = "https://vibegarden.club/mcp";
+
+function renderArtifacts(data = { artifacts, projects, mcpUrl }) {
   const Stub = createRoutesStub([
     { path: "/artifacts", Component: Artifacts, loader: () => data },
   ]);
@@ -44,8 +46,18 @@ describe("Artifacts", () => {
   });
 
   it("enables upload from the empty state", async () => {
-    renderArtifacts({ artifacts: [], projects: [] });
+    renderArtifacts({ artifacts: [], projects: [], mcpUrl });
     expect((await screen.findAllByRole("button", { name: /upload artifact/i }))[0]).toBeEnabled();
+  });
+
+  it("shows MCP setup above the artifact list and when it is empty", async () => {
+    renderArtifacts();
+    expect(await screen.findByText(mcpUrl)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /full setup for claude, chatgpt, and gemini/i }))
+      .toHaveAttribute("href", "/connect");
+
+    renderArtifacts({ artifacts: [], projects: [], mcpUrl });
+    expect((await screen.findAllByText(mcpUrl)).length).toBeGreaterThan(0);
   });
 });
 
