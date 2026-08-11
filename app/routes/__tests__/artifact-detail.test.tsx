@@ -42,7 +42,7 @@ function renderDetail(data: unknown) {
 }
 
 describe("Artifact detail", () => {
-  it("shows owner controls and allowed origins before the external preview link", async () => {
+  it("shows owner controls and allowed origins at the bottom of the detail page", async () => {
     renderDetail(owner);
 
     expect(await screen.findByText("Allowed data origins")).toBeInTheDocument();
@@ -52,6 +52,33 @@ describe("Artifact detail", () => {
     expect(screen.getByRole("button", { name: /remove from gallery/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /delete artifact/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open external link/i })).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getAllByRole("region").at(-1)).toHaveAccessibleName("Allowed data origins");
+  });
+
+  it("hides allowed data origins when the current version declares none", async () => {
+    renderDetail({
+      ...owner,
+      artifact: { ...owner.artifact, version: { ...version, allowedDataOrigins: [] } },
+    });
+
+    expect(await screen.findByRole("heading", { name: "Artifact" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Allowed data origins" })).not.toBeInTheDocument();
+  });
+
+  it("places the primary fullscreen control in the artifact header", async () => {
+    renderDetail({
+      access: "gallery",
+      artifact: {
+        ...owner.artifact,
+        type: "html",
+        version: { ...version, entryPath: "index.html", externalUrl: null },
+      },
+    });
+
+    const artifactHeading = await screen.findByRole("heading", { name: "Artifact" });
+    const fullscreenLink = screen.getByRole("link", { name: "Open fullscreen" });
+    expect(fullscreenLink).toHaveAttribute("data-variant", "default");
+    expect(artifactHeading.parentElement).toContainElement(fullscreenLink);
   });
 
   it("keeps gallery readers out of owner controls and does not embed files inline", async () => {
