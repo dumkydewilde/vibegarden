@@ -25,9 +25,10 @@ npm run typecheck  # react-router typegen + tsc
 
 ## MCP connection
 
-Vibe Garden exposes a read-only remote MCP server at
-`https://vibegarden.club/mcp`. Setup details are public at `/connect` and
-data-use information at `/privacy/mcp`. People can revoke a connected app from
+Vibe Garden exposes an OAuth-protected remote MCP server at
+`https://vibegarden.club/mcp`. Public setup instructions for Claude, eligible
+Gemini Spark accounts, and ChatGPT Developer Mode are at `/connect`; data-use
+information is at `/privacy/mcp`. People can revoke a connected app from
 `/settings` after signing in, then open a club's **Connected apps** page.
 
 For local OAuth development, put these overrides and the normal session secret

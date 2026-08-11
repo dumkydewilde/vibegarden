@@ -8,7 +8,12 @@ describe("MCP public documentation", () => {
     const page = renderToStaticMarkup(<Connect />);
     expect(page).toContain("https://vibegarden.club/mcp");
     expect(page).toContain("Claude");
+    expect(page).toContain("Gemini");
     expect(page).toContain("ChatGPT");
+    expect(page).toContain("Add custom connector");
+    expect(page).toContain("Gemini Spark");
+    expect(page).toContain("Developer Mode");
+    expect(page).toContain("Settings → Apps → Advanced Settings");
     expect(page).toContain("projects:read");
     expect(page).toContain("content:read");
     expect(page).toContain("artifacts:write");

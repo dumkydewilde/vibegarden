@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  defaultModel,
   defaultFreeModel,
   freeModels,
   models,
@@ -8,6 +9,16 @@ import {
 } from "~/lib/models";
 
 describe("club model policy", () => {
+  it("uses GPT-5.6 Luna as the default for all-model clubs", () => {
+    expect(defaultModel).toMatchObject({
+      id: "openai/gpt-5.6-luna",
+      label: "GPT-5.6 Luna",
+      tools: true,
+    });
+    expect(models[0]).toBe(defaultModel);
+    expect(resolveClubModel("all_models")).toBe(defaultModel);
+  });
+
   it("limits free-only clubs to curated free models", () => {
     expect(freeModels).not.toHaveLength(0);
     expect(freeModels.every((model) => model.id.endsWith(":free"))).toBe(true);
