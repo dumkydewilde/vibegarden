@@ -200,7 +200,18 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const narrateOnly =
     continuation && (envelope?.status === "ok" || attachEnvelope?.status === "ok");
   const toolsAllowed = model.tools && !narrateOnly;
-  const toolConfig = gardenerToolsConfig(env);
+  const agentContextItem = contextItems.find(
+    (item) =>
+      item.kind === "agent-definition" &&
+      typeof item.agentId === "string" &&
+      item.agentId.length > 0 &&
+      item.agentId.length <= 128,
+  );
+  const toolConfig = gardenerToolsConfig(env, {
+    agentContext: agentContextItem
+      ? { agentId: agentContextItem.agentId! }
+      : undefined,
+  });
   const offeredTools = toolsAllowed
     ? offeredGardenerTools(toolConfig)
     : [];
@@ -276,7 +287,8 @@ export async function action({ request, context, params }: Route.ActionArgs) {
             break;
           case "note":
           case "diagram":
-          case "articles": {
+          case "articles":
+          case "proposal": {
             const marker = markerForEvent(event);
             if (marker) emitMarker(marker, true);
             break;

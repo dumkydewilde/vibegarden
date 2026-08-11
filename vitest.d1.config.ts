@@ -24,7 +24,10 @@ export default defineConfig({
     })),
   ],
   test: {
-    include: ["test/d1/**/*.worker.test.ts"],
+    include: [
+      "test/d1/**/*.worker.test.ts",
+      "app/lib/agents/__tests__/repository.test.ts",
+    ],
     exclude: ["test/d1/migration.worker.test.ts"],
     setupFiles: ["./test/d1/apply-migrations.ts"],
   },

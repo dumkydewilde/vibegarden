@@ -30,11 +30,20 @@ export type ContextItem = {
   label: string;
   /** What gets sent to the model: page content, a paragraph, etc. */
   content: string;
-  kind: "page" | "article" | "module" | "paragraph" | "project" | "dataset";
+  kind:
+    | "page"
+    | "article"
+    | "module"
+    | "paragraph"
+    | "project"
+    | "dataset"
+    | "agent-definition";
   /** For project context: ties the conversation to that project. */
   projectId?: string;
   /** For dataset context: removing the chip also drops the DuckDB view. */
   datasetName?: string;
+  /** Stable identity when this context belongs to one Workbench agent. */
+  agentId?: string;
 };
 
 /** Context that was attached to a sent message, for display. */
@@ -42,6 +51,7 @@ export type ContextSnapshot = {
   kind: ContextItem["kind"];
   label: string;
   content: string;
+  agentId?: string;
 };
 
 export type ChatMessage = {
@@ -60,6 +70,7 @@ export type GardenerState = {
   contextItems: ContextItem[];
   addContext: (item: Omit<ContextItem, "id">) => void;
   removeContext: (id: string) => void;
+  removeAgentContext: (agentId: string) => void;
   ask: (question: string) => void;
   /** Like ask, but in a brand-new conversation (the old one is kept). */
   askFresh: (
@@ -218,7 +229,11 @@ export function GardenerProvider({
   const addContext = useCallback((item: Omit<ContextItem, "id">) => {
     // One chip per source; re-adding the same label replaces it. The ref is
     // synced now (not on the next render) so an immediate ask() sees it.
-    const rest = contextRef.current.filter((i) => i.label !== item.label);
+    const rest = contextRef.current.filter((current) =>
+      item.kind === "agent-definition"
+        ? current.kind !== "agent-definition"
+        : current.label !== item.label,
+    );
     const next = [...rest, { ...item, id: uid() }];
     contextRef.current = next;
     setContextItems(next);
@@ -243,10 +258,21 @@ export function GardenerProvider({
         removeDataset(item.datasetName);
         return;
       }
-      setContextItems((items) => items.filter((i) => i.id !== id));
+      const next = contextRef.current.filter((i) => i.id !== id);
+      contextRef.current = next;
+      setContextItems(next);
     },
     [removeDataset],
   );
+
+  const removeAgentContext = useCallback((agentId: string) => {
+    const next = contextRef.current.filter(
+      (item) =>
+        item.kind !== "agent-definition" || item.agentId !== agentId,
+    );
+    contextRef.current = next;
+    setContextItems(next);
+  }, []);
 
   /** Datasets belong to one conversation; a fresh one starts clean. */
   const clearDatasets = useCallback(() => {
@@ -338,7 +364,12 @@ export function GardenerProvider({
 
   const ask = useCallback(async (question: string) => {
     const sentContext = contextRef.current.map(
-      ({ kind, label, content }) => ({ kind, label, content }),
+      ({ kind, label, content, agentId }) => ({
+        kind,
+        label,
+        content,
+        ...(agentId ? { agentId } : {}),
+      }),
     );
     const projectId = contextRef.current.find((i) => i.projectId)?.projectId;
     const userMsg: ChatMessage = {
@@ -356,6 +387,7 @@ export function GardenerProvider({
         content: m.text,
       }));
 
+    contextRef.current = [];
     setContextItems([]);
     setMessages((m) => [
       ...m,
@@ -595,6 +627,7 @@ export function GardenerProvider({
       contextItems,
       addContext,
       removeContext,
+      removeAgentContext,
       ask,
       askFresh,
       clearConversation,
@@ -618,6 +651,7 @@ export function GardenerProvider({
       contextItems,
       addContext,
       removeContext,
+      removeAgentContext,
       ask,
       askFresh,
       clearConversation,

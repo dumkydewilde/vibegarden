@@ -10,10 +10,17 @@
  * carries the capped result the browser produced, appended right after it.
  * Model-initiated data attachments work the same way: `[[tool:attach:...]]`
  * carries the URL the browser should load, `[[tool:attachresult:...]]` what
- * came of it.
+ * came of it. Workbench tools use the general `[[tool:call:...]]` and
+ * `[[tool:callresult:...]]` pair.
  */
 
 import type { AgentEvent } from "@vibegarden/agent-core";
+import {
+  callSummaryLine,
+  parseCallResultEnvelope,
+  type CallRequest,
+  type CallResultEnvelope,
+} from "./call";
 import {
   attachSummaryLine,
   envelopeSummaryLine,
@@ -49,6 +56,15 @@ export function markerForEvent(
       return diagramNote({ title: event.title, diagram: event.diagram });
     case "articles":
       return articlesNote({ slugs: event.slugs });
+    case "proposal":
+      return proposalNote({
+        agentId: event.agentId,
+        name: event.name,
+        description: event.description,
+        parameters: event.parameters,
+        source: event.source,
+        rationale: event.rationale,
+      });
     case "delegated-call": {
       if (event.tool === "query_data") {
         const payload = event.payload as { sql?: unknown; chart?: unknown };
@@ -64,7 +80,8 @@ export function markerForEvent(
           ? attachNote({ url: payload.url })
           : null;
       }
-      return null;
+      const args = event.payload as Record<string, unknown>;
+      return callNote({ tool: event.tool, args: args ?? {} });
     }
     default:
       return null;
@@ -93,6 +110,20 @@ export type AttachPayload = {
   url: string;
 };
 
+export type CallPayload = CallRequest & {
+  version: 1;
+};
+
+export type ProposalPayload = {
+  version: 1;
+  agentId: string;
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  source: string;
+  rationale: string;
+};
+
 export type ToolNoteSegment =
   | { type: "text"; text: string }
   | { type: "tool"; kind: ToolNoteKind; value: string }
@@ -101,7 +132,18 @@ export type ToolNoteSegment =
   | { type: "query"; sql: string; chart?: ChartSpec }
   | { type: "queryresult"; result: QueryResultEnvelope }
   | { type: "attach"; url: string }
-  | { type: "attachresult"; result: AttachResultEnvelope };
+  | { type: "attachresult"; result: AttachResultEnvelope }
+  | { type: "call"; tool: string; args: Record<string, unknown> }
+  | { type: "callresult"; result: CallResultEnvelope }
+  | {
+      type: "proposal";
+      agentId: string;
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+      source: string;
+      rationale: string;
+    };
 
 const NOTE_LINE = /^\[\[tool:(article|module|web|note):(.+?)\]\]$/;
 const ARTICLES_LINE = /^\[\[tool:articles:(.+?)\]\]$/;
@@ -110,6 +152,9 @@ const QUERY_LINE = /^\[\[tool:query:(.+?)\]\]$/;
 const QUERY_RESULT_LINE = /^\[\[tool:queryresult:(.+?)\]\]$/;
 const ATTACH_LINE = /^\[\[tool:attach:(.+?)\]\]$/;
 const ATTACH_RESULT_LINE = /^\[\[tool:attachresult:(.+?)\]\]$/;
+const CALL_LINE = /^\[\[tool:call:(.+?)\]\]$/;
+const CALL_RESULT_LINE = /^\[\[tool:callresult:(.+?)\]\]$/;
+const PROPOSAL_LINE = /^\[\[tool:proposal:(.+?)\]\]$/;
 
 export function toolNote(kind: ToolNoteKind, value: string): string {
   return `[[tool:${kind}:${value}]]`;
@@ -149,6 +194,24 @@ export function attachNote(payload: Omit<AttachPayload, "version">): string {
 
 export function attachResultNote(result: AttachResultEnvelope): string {
   return `[[tool:attachresult:${encodeURIComponent(JSON.stringify(result))}]]`;
+}
+
+export function callNote(payload: Omit<CallPayload, "version">): string {
+  return `[[tool:call:${encodeURIComponent(
+    JSON.stringify({ version: 1, ...payload } satisfies CallPayload),
+  )}]]`;
+}
+
+export function callResultNote(result: CallResultEnvelope): string {
+  return `[[tool:callresult:${encodeURIComponent(JSON.stringify(result))}]]`;
+}
+
+export function proposalNote(
+  payload: Omit<ProposalPayload, "version">,
+): string {
+  return `[[tool:proposal:${encodeURIComponent(
+    JSON.stringify({ version: 1, ...payload } satisfies ProposalPayload),
+  )}]]`;
 }
 
 function decodeDiagram(value: string): DiagramPayload | null {
@@ -243,6 +306,102 @@ function decodeQueryResult(value: string): QueryResultEnvelope | null {
   }
 }
 
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+): boolean {
+  const keys = Object.keys(value);
+  return (
+    keys.length === expected.length &&
+    keys.every((key) => expected.includes(key))
+  );
+}
+
+function decodeCall(value: string): CallPayload | null {
+  try {
+    const parsed = JSON.parse(decodeURIComponent(value)) as Partial<CallPayload>;
+    if (
+      !hasExactKeys(parsed as Record<string, unknown>, [
+        "version",
+        "tool",
+        "args",
+      ]) ||
+      parsed.version !== 1 ||
+      typeof parsed.tool !== "string" ||
+      !parsed.tool ||
+      typeof parsed.args !== "object" ||
+      parsed.args === null ||
+      Array.isArray(parsed.args)
+    ) {
+      return null;
+    }
+    return {
+      version: 1,
+      tool: parsed.tool,
+      args: parsed.args as Record<string, unknown>,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function decodeCallResult(value: string): CallResultEnvelope | null {
+  try {
+    return parseCallResultEnvelope(decodeURIComponent(value));
+  } catch {
+    return null;
+  }
+}
+
+function decodeProposal(value: string): ProposalPayload | null {
+  try {
+    const parsed = JSON.parse(
+      decodeURIComponent(value),
+    ) as Partial<ProposalPayload>;
+    if (
+      !hasExactKeys(parsed as Record<string, unknown>, [
+        "version",
+        "agentId",
+        "name",
+        "description",
+        "parameters",
+        "source",
+        "rationale",
+      ]) ||
+      parsed.version !== 1 ||
+      typeof parsed.agentId !== "string" ||
+      parsed.agentId.length < 1 ||
+      parsed.agentId.length > 128 ||
+      typeof parsed.name !== "string" ||
+      !/^[a-z][a-z0-9_]{1,39}$/.test(parsed.name) ||
+      typeof parsed.description !== "string" ||
+      parsed.description.length < 1 ||
+      parsed.description.length > 400 ||
+      typeof parsed.parameters !== "object" ||
+      parsed.parameters === null ||
+      Array.isArray(parsed.parameters) ||
+      typeof parsed.source !== "string" ||
+      parsed.source.length < 1 ||
+      parsed.source.length > 16_000 ||
+      typeof parsed.rationale !== "string" ||
+      parsed.rationale.length > 500
+    ) {
+      return null;
+    }
+    return {
+      version: 1,
+      agentId: parsed.agentId,
+      name: parsed.name,
+      description: parsed.description,
+      parameters: parsed.parameters as Record<string, unknown>,
+      source: parsed.source,
+      rationale: parsed.rationale,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Break message text into text chunks and tool notes, in stream order. */
 export function splitToolNotes(text: string): ToolNoteSegment[] {
   const segments: ToolNoteSegment[] = [];
@@ -254,6 +413,25 @@ export function splitToolNotes(text: string): ToolNoteSegment[] {
   };
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
+    const proposalMatch = trimmed.match(PROPOSAL_LINE);
+    if (proposalMatch) {
+      const payload = decodeProposal(proposalMatch[1]);
+      if (payload) {
+        flush();
+        segments.push({
+          type: "proposal",
+          agentId: payload.agentId,
+          name: payload.name,
+          description: payload.description,
+          parameters: payload.parameters,
+          source: payload.source,
+          rationale: payload.rationale,
+        });
+      } else {
+        buffer.push(line);
+      }
+      continue;
+    }
     const articlesMatch = trimmed.match(ARTICLES_LINE);
     if (articlesMatch) {
       const payload = decodeArticles(articlesMatch[1]);
@@ -304,6 +482,34 @@ export function splitToolNotes(text: string): ToolNoteSegment[] {
       if (payload) {
         flush();
         segments.push({ type: "queryresult", result: payload });
+      } else {
+        buffer.push(line);
+      }
+      continue;
+    }
+
+    const callMatch = trimmed.match(CALL_LINE);
+    if (callMatch) {
+      const payload = decodeCall(callMatch[1]);
+      if (payload) {
+        flush();
+        segments.push({
+          type: "call",
+          tool: payload.tool,
+          args: payload.args,
+        });
+      } else {
+        buffer.push(line);
+      }
+      continue;
+    }
+
+    const callResultMatch = trimmed.match(CALL_RESULT_LINE);
+    if (callResultMatch) {
+      const payload = decodeCallResult(callResultMatch[1]);
+      if (payload) {
+        flush();
+        segments.push({ type: "callresult", result: payload });
       } else {
         buffer.push(line);
       }
@@ -379,28 +585,38 @@ export function stripToolEcho(text: string): string {
 
 /**
  * Message text for model-bound history: plain text kept, activity notes and
- * diagrams dropped, query markers compacted to one-liners so the model
- * remembers what SQL ran and what came back without re-reading full results.
+ * diagrams dropped, query and call markers compacted to one-liners so the
+ * model remembers what ran and what came back without re-reading full results.
  */
 export function toModelText(text: string): string {
-  return splitToolNotes(text)
-    .map((s) => {
-      if (s.type === "text") {
-        const clean = stripToolEcho(s.text);
-        return clean || null;
-      }
-      if (s.type === "query") {
-        const chart = s.chart ? `; chart ${JSON.stringify(s.chart)}` : "";
-        const sql = s.sql.replace(/\s+/g, " ").slice(0, 300);
-        return `[ran query_data: ${sql}${chart}]`;
-      }
-      if (s.type === "queryresult") return envelopeSummaryLine(s.result);
-      if (s.type === "attach") {
-        return `[ran attach_data: ${s.url.slice(0, 300)}]`;
-      }
-      if (s.type === "attachresult") return attachSummaryLine(s.result);
-      return null;
-    })
-    .filter(Boolean)
-    .join("\n\n");
+  const compacted: string[] = [];
+  let lastCallTool = "tool";
+  for (const segment of splitToolNotes(text)) {
+    if (segment.type === "text") {
+      const clean = stripToolEcho(segment.text);
+      if (clean) compacted.push(clean);
+    } else if (segment.type === "query") {
+      const chart = segment.chart
+        ? `; chart ${JSON.stringify(segment.chart)}`
+        : "";
+      const sql = segment.sql.replace(/\s+/g, " ").slice(0, 300);
+      compacted.push(`[ran query_data: ${sql}${chart}]`);
+    } else if (segment.type === "queryresult") {
+      compacted.push(envelopeSummaryLine(segment.result));
+    } else if (segment.type === "attach") {
+      compacted.push(`[ran attach_data: ${segment.url.slice(0, 300)}]`);
+    } else if (segment.type === "attachresult") {
+      compacted.push(attachSummaryLine(segment.result));
+    } else if (segment.type === "call") {
+      lastCallTool = segment.tool;
+      const args = JSON.stringify(segment.args).slice(0, 300);
+      compacted.push(`[ran ${segment.tool}: ${args}]`);
+    } else if (segment.type === "callresult") {
+      compacted.push(callSummaryLine(lastCallTool, segment.result));
+      lastCallTool = "tool";
+    } else if (segment.type === "proposal") {
+      compacted.push(`[proposed tool ${segment.name}]`);
+    }
+  }
+  return compacted.join("\n\n");
 }

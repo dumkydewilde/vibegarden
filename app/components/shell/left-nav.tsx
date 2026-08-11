@@ -67,7 +67,7 @@ export function LeftNav({ current, clubs }: Pick<ClubSwitcherProps, "current" | 
           {items.map((item) => {
             const to = clubPath(clubSlug ?? "", item.to);
             const isActive =
-              item.to === ""
+              item.to === "" || item.to === "garden"
                 ? pathname === to
                 : pathname.startsWith(to);
             return (

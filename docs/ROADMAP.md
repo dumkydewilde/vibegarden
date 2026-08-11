@@ -265,6 +265,19 @@ Goal: one harness, many surfaces (web, docs site, Signal bot, MCP server).
        image rendering for diagrams/charts, server-side query_data)
 - [ ] Phase 5: docs-site deployment (own plan, public hardening)
 
+## Phase 7: Agent Workbench (in progress, 2026-08-06)
+
+Members build, test, and share their own agents (prompt, browser-executed JS
+tools, skills, memory) in a glass-box UI. Spec:
+`docs/specs/2026-08-06-agent-workbench-design.md`, plan:
+`docs/plans/2026-08-06-agent-workbench.md`.
+
+- [x] Stage 1: schema, CRUD, prompt-only agents in the workbench
+- [x] Stage 2: fetch_page via SSRF-guarded proxy + raw vs sent-to-model trace
+- [x] Stage 3: sandboxed runner (usercontent origin), user JS tools, memory
+- [x] Stage 4: skills (use_skill) + Gardener propose_tool sidekick
+- [x] Stage 5: club sharing with pinned versions, try-it, remix
+
 ## Later / ideas
 
 - Gardener as MCP server (continue projects in Claude Code/Codex):

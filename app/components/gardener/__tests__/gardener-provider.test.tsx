@@ -48,6 +48,39 @@ function Probe() {
   );
 }
 
+function AgentContextProbe() {
+  const { addContext, ask, contextItems, removeAgentContext } = useGardener();
+  const attach = (agentId: string, label: string) =>
+    addContext({
+      kind: "agent-definition",
+      agentId,
+      label,
+      content: JSON.stringify({ version: 1, systemPrompt: label }),
+    });
+  return (
+    <>
+      <button type="button" onClick={() => attach("agent-a", "Agent A")}>
+        Attach A
+      </button>
+      <button type="button" onClick={() => attach("agent-b", "Agent B")}>
+        Attach B
+      </button>
+      <button type="button" onClick={() => ask("Build a tool.")}>
+        Ask
+      </button>
+      <button type="button" onClick={() => removeAgentContext("agent-a")}>
+        Leave A
+      </button>
+      <output data-testid="agent-contexts">
+        {contextItems
+          .filter((item) => item.kind === "agent-definition")
+          .map((item) => `${item.agentId}:${item.label}`)
+          .join(",")}
+      </output>
+    </>
+  );
+}
+
 function renderHarness(
   context?: Omit<ContextItem, "id">[],
   apiBase?: string,
@@ -77,6 +110,23 @@ function renderProvider() {
           element={
             <GardenerProvider>
               <Probe />
+            </GardenerProvider>
+          }
+        />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+function renderAgentContextProbe() {
+  return render(
+    <MemoryRouter initialEntries={["/clubs/wotf/garden/agents/agent-a"]}>
+      <Routes>
+        <Route
+          path="/clubs/:clubSlug/*"
+          element={
+            <GardenerProvider>
+              <AgentContextProbe />
             </GardenerProvider>
           }
         />
@@ -193,6 +243,49 @@ describe("GardenerProvider askFresh", () => {
 
     expect(await screen.findByText("The Gardener could not answer just now.")).toBeTruthy();
     expect(screen.queryByText("[object Object]")).toBeNull();
+  });
+});
+
+describe("GardenerProvider agent context identity", () => {
+  it("removes only the context owned by a departed agent route", () => {
+    renderAgentContextProbe();
+
+    fireEvent.click(screen.getByRole("button", { name: "Attach A" }));
+    expect(screen.getByTestId("agent-contexts")).toHaveTextContent("agent-a");
+    fireEvent.click(screen.getByRole("button", { name: "Leave A" }));
+    expect(screen.getByTestId("agent-contexts")).toBeEmptyDOMElement();
+  });
+
+  it("replaces a prior agent definition and sends the current agent id", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response("I can help with that.", {
+        status: 200,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    renderAgentContextProbe();
+
+    fireEvent.click(screen.getByRole("button", { name: "Attach A" }));
+    fireEvent.click(screen.getByRole("button", { name: "Attach B" }));
+
+    expect(screen.getByTestId("agent-contexts")).toHaveTextContent(
+      "agent-b:Agent B",
+    );
+    expect(screen.getByTestId("agent-contexts")).not.toHaveTextContent(
+      "agent-a",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const options = fetchMock.mock.calls[0][1] as RequestInit;
+    const body = JSON.parse(String(options.body)) as {
+      context: Array<{ agentId?: string; label: string }>;
+    };
+    expect(body.context).toEqual([
+      expect.objectContaining({ agentId: "agent-b", label: "Agent B" }),
+    ]);
+    expect(screen.getByTestId("agent-contexts")).toBeEmptyDOMElement();
   });
 });
 

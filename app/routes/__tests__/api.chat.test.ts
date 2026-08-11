@@ -130,6 +130,75 @@ describe("chat upstream failures", () => {
     expect(text).toContain("These are two useful starting points.");
   });
 
+  it("scopes a streamed workbench proposal to its agent context", async () => {
+    vi.mocked(resolveClubModel).mockReturnValueOnce({
+      id: "model:free",
+      label: "Tool model",
+      note: "free",
+      tools: true,
+    });
+    mocks.fetch
+      .mockResolvedValueOnce(
+        sseResponse([
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_proposal",
+                  function: {
+                    name: "propose_tool",
+                    arguments: JSON.stringify({
+                      name: "extract_article_text",
+                      description: "Extract article text.",
+                      parameters: { type: "object", properties: {} },
+                      source: "return String(args.html ?? '');",
+                      rationale: "Keep the transform focused.",
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+          { delta: {}, finish_reason: "tool_calls" },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([
+          { delta: { content: "I put the proposal in a review card." } },
+          { delta: {}, finish_reason: "stop" },
+        ]),
+      );
+
+    const response = await action({
+      request: new Request("https://example.com/clubs/club-1/api/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "Build a tool." }],
+          context: [
+            {
+              kind: "agent-definition",
+              agentId: "agent-current",
+              label: "Current agent",
+              content: '{"version":1}',
+            },
+          ],
+        }),
+      }),
+      context: { get: () => ({ env: {} as Env }) },
+      params: { clubSlug: "club-1" },
+    } as never);
+
+    const proposal = splitToolNotes(await response.text()).find(
+      (segment) => segment.type === "proposal",
+    );
+    expect(proposal).toMatchObject({
+      type: "proposal",
+      agentId: "agent-current",
+      name: "extract_article_text",
+    });
+  });
+
   it("inherits the failed query's chart when corrected SQL omits it", async () => {
     vi.mocked(resolveClubModel).mockReturnValueOnce({
       id: "model:free",

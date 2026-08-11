@@ -1,5 +1,6 @@
 import {
   Apple,
+  Bot,
   Flower2,
   Home,
   Images,
@@ -19,6 +20,7 @@ export type NavItem = {
 export const navItems: NavItem[] = [
   { to: "", label: "Home", icon: Home },
   { to: "garden", label: "Idea Garden", icon: Sprout },
+  { to: "garden/agents", label: "Agent Workbench", icon: Bot },
   { to: "learning", label: "Learning", icon: TreeDeciduous },
   { to: "artifacts", label: "Artifacts", icon: Apple },
   { to: "gallery", label: "Gallery", icon: Images },

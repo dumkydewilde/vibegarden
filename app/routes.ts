@@ -11,6 +11,11 @@ export default [
   route("join/:token", "routes/join.tsx"),
   route("clubs/:clubSlug/welcome", "routes/welcome.tsx"),
   route("clubs/:clubSlug/api/chat", "routes/api.chat.ts"),
+  route(
+    "clubs/:clubSlug/api/agents/:agentId/chat",
+    "routes/api.agents.$agentId.chat.ts",
+  ),
+  route("clubs/:clubSlug/api/fetch-proxy", "routes/api.fetch-proxy.ts"),
   route("clubs/:clubSlug/api/thread", "routes/api.thread.ts"),
   route("clubs/:clubSlug/api/feedback", "routes/api.feedback.ts"),
   route("clubs/:clubSlug", "routes/app-layout.tsx", [
@@ -22,6 +27,9 @@ export default [
     ),
     route("garden/projects/:id", "routes/garden.projects.$id.tsx"),
     route("garden/modules/:slug", "routes/garden.modules.$slug.tsx"),
+    route("garden/agents", "routes/garden.agents.tsx"),
+    route("garden/agents/:id/run", "routes/garden.agents.$id.run.tsx"),
+    route("garden/agents/:id", "routes/garden.agents.$id.tsx"),
     route("learning", "routes/learning.tsx"),
     route("learning/:slug", "routes/learning.$slug.tsx"),
     route("artifacts", "routes/artifacts.tsx"),

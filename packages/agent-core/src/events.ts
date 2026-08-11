@@ -13,6 +13,16 @@ export type AgentEvent =
   | { type: "diagram"; title: string; diagram: string }
   /** Known learning articles the surface should present as recommendations. */
   | { type: "articles"; slugs: string[] }
+  /** A browser tool proposal the builder can inspect and choose to stage. */
+  | {
+      type: "proposal";
+      agentId: string;
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+      source: string;
+      rationale: string;
+    }
   /**
    * A tool call the surface must fulfill itself (e.g. run SQL in the
    * browser). The turn ends here; the surface resumes the conversation
