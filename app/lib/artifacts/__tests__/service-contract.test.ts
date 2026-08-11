@@ -17,7 +17,7 @@ async function expectCode(action: () => Promise<unknown>, code: string) {
 describe("artifact service contract", () => {
   it("rejects caller-controlled identities, versions, storage keys, sources, and visibility before persistence", async () => {
     await expectCode(
-      () => createUploadSession(unavailableEnv, userId, {
+      () => createUploadSession(unavailableEnv, { userId, clubId: "club-a" }, {
         project: { projectId: "project-a" },
         type: "html",
         title: "Landing page",
@@ -47,7 +47,7 @@ describe("artifact service contract", () => {
 
   it("rejects unsafe links before looking up storage or projects", async () => {
     await expectCode(
-      () => createLinkArtifact(unavailableEnv, userId, {
+      () => createLinkArtifact(unavailableEnv, { userId, clubId: "club-a" }, {
         project: { projectId: "project-a" },
         title: "Insecure link",
         url: "http://example.com",

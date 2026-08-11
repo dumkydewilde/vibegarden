@@ -20,6 +20,7 @@ function messageFor(error: unknown): string {
 }
 
 export function ArtifactUploadDialog({
+  clubId,
   projects,
   defaultProjectId,
   artifactId,
@@ -31,6 +32,7 @@ export function ArtifactUploadDialog({
   onCreated,
   onRefresh,
 }: {
+  clubId: string;
   projects: ArtifactProject[];
   defaultProjectId?: string;
   artifactId?: string;
@@ -115,7 +117,7 @@ export function ArtifactUploadDialog({
         const response = await fetch(artifactId ? `/api/artifacts/${encodeURIComponent(artifactId)}/link-version` : "/api/artifacts/links", {
           method: "POST",
           credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-Vibe-Garden-Club": clubId },
           body: JSON.stringify(artifactId
             ? { url: url.trim(), allowedDataOrigins: chosenOrigins, idempotencyKey: idempotencyKey() }
             : { project: selectedProject, title: title.trim(), ...(description.trim() ? { description: description.trim() } : {}), url: url.trim(), allowedDataOrigins: chosenOrigins, idempotencyKey: idempotencyKey() }),
@@ -132,6 +134,7 @@ export function ArtifactUploadDialog({
       if (!file) return;
       const prepared = await prepareArtifactSelection(file);
       const result = await uploadPreparedPackage(prepared, {
+        clubId,
         project: selectedProject,
         title: title.trim(),
         ...(description.trim() ? { description: description.trim() } : {}),

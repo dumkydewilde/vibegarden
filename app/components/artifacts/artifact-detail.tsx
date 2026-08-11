@@ -47,12 +47,14 @@ async function artifactMutation(url: string, method: string, body?: unknown) {
 export function ArtifactDetail({
   artifact,
   access,
+  clubId,
   versions = [],
   onRefresh,
   onDeleted,
 }: {
   artifact: ArtifactDetailData;
   access: "owner" | "gallery";
+  clubId?: string;
   versions?: ArtifactVersion[];
   onRefresh?: () => void;
   onDeleted?: () => void;
@@ -77,7 +79,7 @@ export function ArtifactDetail({
       <Link to="/artifacts" className="text-sm text-muted-foreground hover:text-foreground">← Artifacts</Link>
       <div className="mt-4 flex flex-wrap items-start justify-between gap-4 border-b pb-5">
         <div><p className="text-sm text-muted-foreground">{artifact.project.title}</p><h1 className="font-serif text-3xl">{artifact.title}</h1>{artifact.description && <p className="mt-2 max-w-2xl text-muted-foreground">{artifact.description}</p>}</div>
-        {owner && <ArtifactUploadDialog projects={[artifact.project]} defaultProjectId={artifact.project.id} artifactId={artifact.id} artifactType={artifact.type} defaultTitle={artifact.title} defaultDescription={artifact.description ?? ""} triggerLabel="New version" onRefresh={onRefresh} />}
+        {owner && clubId && <ArtifactUploadDialog clubId={clubId} projects={[artifact.project]} defaultProjectId={artifact.project.id} artifactId={artifact.id} artifactType={artifact.type} defaultTitle={artifact.title} defaultDescription={artifact.description ?? ""} triggerLabel="New version" onRefresh={onRefresh} />}
       </div>
 
       <section className="mt-6 rounded-lg border p-4" aria-labelledby="artifact-content-heading">

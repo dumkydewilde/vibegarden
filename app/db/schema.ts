@@ -531,6 +531,8 @@ export const artifactUploads = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     artifactId: text("artifact_id").notNull(),
     versionId: text("version_id").notNull(),
+    /** The authenticated club that owns a pending draft project. */
+    clubId: text("club_id").references(() => clubs.id, { onDelete: "restrict" }),
     projectId: text("project_id").references(() => projects.id, {
       onDelete: "restrict",
     }),

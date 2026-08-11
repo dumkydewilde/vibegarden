@@ -32,6 +32,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   ]);
   const projectIds = new Set(ownedProjects.map((project) => project.id));
   return {
+    clubId: club.club.id,
     mcpUrl: mcpServerUrl(env.APP_ORIGIN),
     artifacts: ownedArtifacts
       .filter((artifact) => projectIds.has(artifact.projectId))
@@ -44,7 +45,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
 }
 
 export default function Artifacts({ loaderData }: Route.ComponentProps) {
-  const { artifacts, projects, mcpUrl } = loaderData;
+  const { artifacts, projects, mcpUrl, clubId } = loaderData;
   const [showAll, setShowAll] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -69,7 +70,7 @@ export default function Artifacts({ loaderData }: Route.ComponentProps) {
         title="Artifacts"
         description="Everything you make and upload: pages, prototypes, files, and experiments."
       >
-        <ArtifactUploadDialog projects={projects} defaultProjectId={defaultProjectId} defaultOpen={searchParams.get("upload") === "1"} onCreated={(id) => navigate(artifactPath(id))} onRefresh={() => revalidator.revalidate()} />
+        <ArtifactUploadDialog clubId={clubId} projects={projects} defaultProjectId={defaultProjectId} defaultOpen={searchParams.get("upload") === "1"} onCreated={(id) => navigate(artifactPath(id))} onRefresh={() => revalidator.revalidate()} />
       </PageHeader>
 
       <McpConnectCard
@@ -81,7 +82,7 @@ export default function Artifacts({ loaderData }: Route.ComponentProps) {
       />
 
       {groups.length === 0 ? <EmptyState icon={Apple} title="No artifacts yet" description="When you build something in a project, or upload a file, it lands here. You decide what stays private and what goes to the gallery.">
-        <ArtifactUploadDialog projects={projects} defaultProjectId={defaultProjectId} defaultOpen={searchParams.get("upload") === "1"} onCreated={(id) => navigate(artifactPath(id))} onRefresh={() => revalidator.revalidate()} />
+        <ArtifactUploadDialog clubId={clubId} projects={projects} defaultProjectId={defaultProjectId} defaultOpen={searchParams.get("upload") === "1"} onCreated={(id) => navigate(artifactPath(id))} onRefresh={() => revalidator.revalidate()} />
       </EmptyState> : <div className="space-y-8">
         {visibleGroups.map((group) => <section key={group.id} aria-labelledby={`artifact-project-${group.id}`}>
           <div className="mb-3 flex items-baseline justify-between gap-3"><h2 id={`artifact-project-${group.id}`} className="font-serif text-xl">{group.title}</h2><span className="text-xs text-muted-foreground">{group.artifacts.length} {group.artifacts.length === 1 ? "artifact" : "artifacts"}</span></div>

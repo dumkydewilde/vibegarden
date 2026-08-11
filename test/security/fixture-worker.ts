@@ -173,19 +173,25 @@ async function clearFixtureState(env: SecurityFixtureEnv): Promise<void> {
     env.DB.prepare("DELETE FROM artifact_idempotency"), env.DB.prepare("DELETE FROM artifact_object_leases"),
     env.DB.prepare("DELETE FROM artifact_upload_files"), env.DB.prepare("DELETE FROM artifact_uploads"),
     env.DB.prepare("DELETE FROM artifact_files"), env.DB.prepare("DELETE FROM artifact_versions"),
-    env.DB.prepare("DELETE FROM artifacts"), env.DB.prepare("DELETE FROM projects"), env.DB.prepare("DELETE FROM users"),
+    env.DB.prepare("DELETE FROM artifacts"), env.DB.prepare("DELETE FROM projects"), env.DB.prepare("DELETE FROM club_memberships"), env.DB.prepare("DELETE FROM clubs"), env.DB.prepare("DELETE FROM users"),
     env.DB.prepare("INSERT INTO users (id, email, name, created_at) VALUES ('user-a', 'a@example.test', 'Fixture owner', ?)").bind(Date.now()),
     env.DB.prepare("INSERT INTO users (id, email, name, created_at) VALUES ('user-b', 'b@example.test', 'Fixture reader', ?)").bind(Date.now()),
-    env.DB.prepare("INSERT INTO projects (id, user_id, title, status, created_at, updated_at) VALUES ('existing-project', 'user-a', 'Existing project', 'seed', ?, ?)").bind(Date.now(), Date.now()),
-    env.DB.prepare("INSERT INTO projects (id, user_id, title, status, created_at, updated_at) VALUES ('seed-project', 'user-a', 'Seed project', 'seed', ?, ?)").bind(Date.now(), Date.now()),
+    env.DB.prepare("INSERT INTO clubs (id, name, slug, created_at, updated_at) VALUES ('fixture-club', 'Fixture Club', 'fixture-club', ?, ?)").bind(Date.now(), Date.now()),
+    env.DB.prepare("INSERT INTO club_memberships (club_id, user_id, role, onboarding_stage, joined_at, updated_at) VALUES ('fixture-club', 'user-a', 'member', 'active', ?, ?)").bind(Date.now(), Date.now()),
+    env.DB.prepare("INSERT INTO projects (id, user_id, club_id, title, status, created_at, updated_at) VALUES ('existing-project', 'user-a', 'fixture-club', 'Existing project', 'seed', ?, ?)").bind(Date.now(), Date.now()),
+    env.DB.prepare("INSERT INTO projects (id, user_id, club_id, title, status, created_at, updated_at) VALUES ('seed-project', 'user-a', 'fixture-club', 'Seed project', 'seed', ?, ?)").bind(Date.now(), Date.now()),
   ]);
+}
+
+function artifactScope(userId: string) {
+  return { userId, clubId: "fixture-club" };
 }
 
 async function uploadTextVersion(env: Env, userId: string, input: { artifactId?: string; projectId: string; type: "html" | "file"; title: string; key: string; content: string }): Promise<{ artifactId: string; versionId: string }> {
   const path = input.type === "html" ? "index.html" : "download.txt";
   const mimeType = input.type === "html" ? "text/html" : "text/plain";
   const body = new TextEncoder().encode(input.content);
-  const session = await createUploadSession(env, userId, {
+  const session = await createUploadSession(env, artifactScope(userId), {
     project: { projectId: input.projectId }, type: input.type, title: input.title, idempotencyKey: input.key,
     ...(input.artifactId ? { artifactId: input.artifactId } : {}),
   });
@@ -200,11 +206,11 @@ async function flow(request: Request, env: SecurityFixtureEnv): Promise<Response
   if (body.action === "reset") { await clearFixtureState(env); return Response.json({ ok: true, backend: "artifact-service" }); }
   if (body.action === "create") {
     let mutation: { artifactId: string; versionId: string };
-    if (body.source === "https_link") mutation = await createLinkArtifact(appEnv, actor, { project: { projectId: body.projectId ?? "seed-project" }, title: body.title ?? "HTTPS link", url: "https://example.test/reference", idempotencyKey: crypto.randomUUID() });
+    if (body.source === "https_link") mutation = await createLinkArtifact(appEnv, artifactScope(actor), { project: { projectId: body.projectId ?? "seed-project" }, title: body.title ?? "HTTPS link", url: "https://example.test/reference", idempotencyKey: crypto.randomUUID() });
     else if (body.source === "inline_seed") {
       const content = "<!doctype html><title>inline seed</title><p>inline seed</p>";
       const bytes = new TextEncoder().encode(content);
-      const session = await createUploadSession(appEnv, actor, { project: { projectDraft: { title: "Inline fixture project" } }, type: "html", title: "Inline seed", idempotencyKey: crypto.randomUUID() });
+      const session = await createUploadSession(appEnv, artifactScope(actor), { project: { projectDraft: { title: "Inline fixture project" } }, type: "html", title: "Inline seed", idempotencyKey: crypto.randomUUID() });
       await putUploadFile(appEnv, actor, session.uploadId, { path: "index.html", mimeType: "text/html", byteSize: bytes.byteLength, sha256: await checksum(content) }, bytes.buffer);
       mutation = await finalizeUpload(appEnv, actor, session.uploadId);
     } else mutation = await uploadTextVersion(appEnv, actor, { projectId: body.projectId ?? "seed-project", type: body.source === "safe_file" ? "file" : "html", title: body.title ?? body.source ?? "Artifact", key: crypto.randomUUID(), content: body.source === "safe_file" ? "safe attachment" : "<!doctype html><title>artifact</title><p>artifact</p>" });

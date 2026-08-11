@@ -18,7 +18,9 @@ export async function action({ request, context }: Route.ActionArgs) {
   return artifactJsonAction(async () => {
     const input = await readArtifactJson(request);
     if (!input || typeof input !== "object" || Array.isArray(input) || "userId" in input) throw new ArtifactError("invalid_input");
-    const session = await createUploadSession(env, user.id, input as never);
+    const clubId = request.headers.get("X-Vibe-Garden-Club");
+    if (!clubId) throw new ArtifactError("invalid_input");
+    const session = await createUploadSession(env, { userId: user.id, clubId }, input as never);
     return artifactJson(session, { status: 201 });
   });
 }
