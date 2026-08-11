@@ -97,6 +97,17 @@ function artifactInput(projectId: string, idempotencyKey: string, files = [
   };
 }
 
+function linkInput(projectId: string, idempotencyKey: string, url = "https://example.test/dive-gallery/embed/night-sky-atlas/") {
+  return {
+    project_id: projectId,
+    type: "link",
+    title: "Night sky atlas",
+    description: "A page worth keeping",
+    url,
+    idempotency_key: idempotencyKey,
+  };
+}
+
 async function seedTwoClubProjects() {
   const suffix = crypto.randomUUID();
   const userId = `artifact-user-${suffix}`;
@@ -183,6 +194,75 @@ describe("MCP artifact writes", () => {
     })).body);
     expect(shared).toMatchObject({ artifact_id: first.artifact_id, version_id: first.version_id, visibility: "gallery" });
     await expect(env.DB.prepare("SELECT visibility, gallery_version_id FROM artifacts WHERE id = ?").bind(first.artifact_id).first()).resolves.toEqual({ visibility: "gallery", gallery_version_id: first.version_id });
+  });
+
+  it("creates a private link artifact that stores its url and no files", async () => {
+    const seeded = await seedTwoClubProjects();
+    const token = await accessTokenFor(seeded.userId, seeded.firstClub.id);
+    const input = linkInput(seeded.firstClub.projectId, "atlas-link-v1");
+    const { response, body } = await mcpCall(token, "create_artifact", input);
+
+    expect(response.status).toBe(200);
+    const result = mutation(body);
+    expect(result).toMatchObject({
+      visibility: "private",
+      url: `${ORIGIN}/clubs/${seeded.firstClub.slug}/artifacts/${result.artifact_id}`,
+    });
+    await expect(env.DB.prepare("SELECT type, project_id, visibility FROM artifacts WHERE id = ?").bind(result.artifact_id).first())
+      .resolves.toEqual({ type: "link", project_id: seeded.firstClub.projectId, visibility: "private" });
+    await expect(env.DB.prepare("SELECT source, entry_path, external_url, file_count FROM artifact_versions WHERE id = ?").bind(result.version_id).first())
+      .resolves.toEqual({ source: "mcp", entry_path: null, external_url: input.url, file_count: 0 });
+    await expect(env.ARTIFACTS.list({ prefix: `artifacts/${result.artifact_id}/` })).resolves.toMatchObject({ objects: [] });
+
+    const retry = mutation((await mcpCall(token, "create_artifact", input)).body);
+    expect(retry).toMatchObject({ artifact_id: result.artifact_id, version_id: result.version_id });
+    const conflict = await mcpCall(token, "create_artifact", linkInput(seeded.firstClub.projectId, "atlas-link-v1", "https://example.test/other/"));
+    expect(serialized(conflict.body)).toContain("invalid_input");
+
+    const version = mutation((await mcpCall(token, "create_artifact_version", {
+      artifact_id: result.artifact_id,
+      url: "https://example.test/dive-gallery/embed/night-sky-atlas/v2/",
+      idempotency_key: "atlas-link-v2",
+    })).body);
+    expect(version.version_id).not.toBe(result.version_id);
+    await expect(env.DB.prepare("SELECT external_url, version_number FROM artifact_versions WHERE id = ?").bind(version.version_id).first())
+      .resolves.toEqual({ external_url: "https://example.test/dive-gallery/embed/night-sky-atlas/v2/", version_number: 2 });
+
+    const shared = mutation((await mcpCall(token, "share_artifact", {
+      artifact_id: result.artifact_id,
+      version_id: version.version_id,
+      confirm: true,
+    })).body);
+    expect(shared).toMatchObject({ visibility: "gallery" });
+    await expect(env.DB.prepare("SELECT visibility, gallery_version_id FROM artifacts WHERE id = ?").bind(result.artifact_id).first())
+      .resolves.toEqual({ visibility: "gallery", gallery_version_id: version.version_id });
+  });
+
+  it("rejects links outside the granted club, without https, or mixed with a package", async () => {
+    const seeded = await seedTwoClubProjects();
+    const token = await accessTokenFor(seeded.userId, seeded.firstClub.id);
+
+    const crossClub = await mcpCall(token, "create_artifact", linkInput(seeded.secondClub.projectId, "cross-club-link"));
+    expect(serialized(crossClub.body)).toContain("not_found");
+
+    for (const invalid of [
+      linkInput(seeded.firstClub.projectId, "insecure-link", "http://example.test/atlas/"),
+      { ...linkInput(seeded.firstClub.projectId, "mixed-link"), files: [{ path: "index.html", content: "<!doctype html>" }] },
+      { ...linkInput(seeded.firstClub.projectId, "kindless-link"), type: undefined },
+    ]) {
+      const failed = await mcpCall(token, "create_artifact", invalid);
+      expect(failed.response.status).toBe(200);
+      expect(serialized(failed.body)).toContain("invalid");
+    }
+
+    const html = mutation((await mcpCall(token, "create_artifact", artifactInput(seeded.firstClub.projectId, "package-then-link"))).body);
+    const wrongKind = await mcpCall(token, "create_artifact_version", {
+      artifact_id: html.artifact_id,
+      url: "https://example.test/atlas/",
+      idempotency_key: "package-to-link",
+    });
+    expect(serialized(wrongKind.body)).toContain("not_found");
+    await expect(env.DB.prepare("SELECT COUNT(*) AS count FROM artifacts WHERE user_id = ?").bind(seeded.userId).first()).resolves.toEqual({ count: 1 });
   });
 
   it("returns the same completed artifact for concurrent identical MCP creates", async () => {

@@ -185,6 +185,14 @@ rows there remain the launch gate.
       whole library as markdown) and the `plan_build(goal)` prompt. No new
       scope: everything is `content:read`. Server instructions and the MCP guide
       now send how-to questions to the library before general recollection.
+- [x] Link artifacts over MCP (2026-08-11): `create_artifact` takes a `type`
+      of `html` (default, unchanged) or `link`; a link sends an https `url`
+      instead of `files`, and `create_artifact_version` points an existing link
+      at a new address the same way. Previously links were browser-only, so a
+      connected assistant could not keep an external page on a project even
+      though the gallery already opens link cards at their URL. MCP links are
+      club-scoped like packages, cannot plant a project draft, and record
+      `source = 'mcp'` on the version.
 - [ ] Reauthorize existing connections to pick up `projects:write`, and
       re-run the checklist's Inspector and staging-host rows for the new tools.
 

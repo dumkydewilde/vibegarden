@@ -8,6 +8,7 @@ export const ARTIFACT_LIMITS = {
   segmentBytes: 255,
   titleChars: 120,
   descriptionChars: 1000,
+  linkChars: 8_192,
   origins: 20,
   uploadTtlMs: 24 * 60 * 60 * 1000,
   capabilityTtlSeconds: 300,

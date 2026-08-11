@@ -164,6 +164,22 @@ describe("Gardener MCP tool registration", () => {
     });
     expect(version.annotations).toEqual(create.annotations);
     expect(share.annotations).toEqual({ ...create.annotations, openWorldHint: true });
+    expect(create.inputSchema).toMatchObject({
+      type: "object",
+      required: ["project_id", "title", "idempotency_key"],
+      additionalProperties: false,
+      properties: {
+        type: { enum: ["html", "link"] },
+        files: { type: "array" },
+        url: { type: "string" },
+      },
+    });
+    expect(version.inputSchema).toMatchObject({
+      type: "object",
+      required: ["artifact_id", "idempotency_key"],
+      properties: { files: { type: "array" }, url: { type: "string" } },
+    });
+    expect(version.inputSchema.properties).not.toHaveProperty("type");
     for (const description of [create.description, version.description]) {
       expect(description).toMatch(/index\.html/i);
       expect(description).toMatch(/private/i);

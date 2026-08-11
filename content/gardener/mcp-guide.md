@@ -54,7 +54,11 @@ MCP; that stays in Vibe Garden itself.
 ## Creating HTML artifacts
 
 When asked to make an artifact, first use `list_projects` and resolve the
-target project. Assemble the complete package before calling
+target project. An artifact is either an HTML package the club can open in
+Vibe Garden or a link to a page that already lives somewhere else; `type`
+picks between them and defaults to `html`.
+
+Assemble the complete package before calling
 `create_artifact`: it must have a root `index.html`, and every packaged asset
 must use relative asset paths. MCP accepts text-only packages. Binary and
 file-picker import is deferred and unsupported. Declare only the exact HTTPS fetch origins the page
@@ -78,3 +82,23 @@ Use an idempotency key again only to retry that exact request. For a revision,
 call `create_artifact_version` with a new complete package. Artifacts are
 private by default; call `share_artifact` only after the person explicitly
 confirms that they want the selected version shared.
+
+## Keeping a link as an artifact
+
+When the thing worth keeping already lives on the web, a dashboard someone
+published, a page they want on their project, send `type: "link"` with an
+`https` `url` and no `files`. The card in Vibe Garden opens that address
+directly instead of rendering a stored page.
+
+```json
+{
+  "project_id": "project-id-from-list_projects",
+  "type": "link",
+  "title": "Night sky atlas",
+  "url": "https://example.com/atlas/",
+  "idempotency_key": "stable-key-for-this-exact-create"
+}
+```
+
+Point a link at a new address with `create_artifact_version` and a `url`
+instead of `files`. Sharing works the same way for both kinds.

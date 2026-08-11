@@ -10,6 +10,8 @@ import {
   updateProject,
 } from "~/lib/projects.server";
 import {
+  createLinkArtifactForScope,
+  createLinkArtifactVersionForScope,
   createTextArtifact,
   createTextArtifactVersion,
   shareArtifactVersionForScope,
@@ -64,7 +66,7 @@ import { McpPublicError } from "~/lib/mcp/errors.server";
 import { presentConversationPage, presentConversationSummary, presentProject } from "~/lib/mcp/project-presenter.server";
 import { getThreadPage, listProjectThreadsPage } from "~/lib/threads.server";
 
-const MCP_INSTRUCTIONS = "Vibe Garden stores club-scoped projects, learning content, and HTML artifacts. Use supplied tools only for the connected club. For any how-to question about building, hosting data or files, calling APIs, or working with a coding agent, call get_guidance with the user's own question before answering from general recollection, then read_article or read_module for a whole piece. Create or update a project only when the user asks, list first to resolve an unknown project, and keep project notes to what the user would recognize as their own account of the work. Assemble complete root-index.html packages, use relative assets and exact HTTPS data origins, retry identical input with the same idempotency key, and create versions for revisions. Keep artifacts private unless the user explicitly asks to share. The connected host remains the speaking assistant; this server does not run or select a model.";
+const MCP_INSTRUCTIONS = "Vibe Garden stores club-scoped projects, learning content, HTML artifacts, and saved links. Use supplied tools only for the connected club. For any how-to question about building, hosting data or files, calling APIs, or working with a coding agent, call get_guidance with the user's own question before answering from general recollection, then read_article or read_module for a whole piece. Create or update a project only when the user asks, list first to resolve an unknown project, and keep project notes to what the user would recognize as their own account of the work. Assemble complete root-index.html packages, use relative assets and exact HTTPS data origins, retry identical input with the same idempotency key, and create versions for revisions. To keep an external page instead of a package, call create_artifact with type \"link\" and its https url. Keep artifacts private unless the user explicitly asks to share. The connected host remains the speaking assistant; this server does not run or select a model.";
 
 const securitySchemes = (scope: McpScope | McpScope[]) => [{
   type: "oauth2",
@@ -773,26 +775,36 @@ function registerTools(server: McpServer, env: Env) {
 
   server.registerTool("create_artifact", {
     title: "Create artifact",
-    description: "Create a private HTML artifact package with a root index.html. Use relative assets and exact HTTPS data origins; retry only identical input with the same idempotency key.",
+    description: "Create a private artifact: type \"html\" packages files with a root index.html and relative assets, type \"link\" keeps an external https page as url instead of files. Declare exact HTTPS data origins; retry only identical input with the same idempotency key.",
     inputSchema: createArtifactInput,
     outputSchema: artifactMutationOutput,
     ...mutationMetadata("artifacts:write"),
   }, async (input, extra) => run(env, "create_artifact", "artifacts:write", "general", extra.requestId, async (principal) => {
+    const scope = { userId: principal.userId, clubId: principal.clubId };
     let result;
     try {
-      result = await createTextArtifact(env, { userId: principal.userId, clubId: principal.clubId }, {
-        projectId: input.project_id,
-        type: "html",
-        title: input.title,
-        ...(input.description === undefined ? {} : { description: input.description }),
-        ...(input.allowed_data_origins === undefined ? {} : { allowedDataOrigins: input.allowed_data_origins }),
-        idempotencyKey: input.idempotency_key,
-        files: input.files.map(({ path, content, mime_type }) => ({
-          path,
-          content,
-          ...(mime_type === undefined ? {} : { mimeType: mime_type }),
-        })),
-      });
+      result = input.type === "link"
+        ? await createLinkArtifactForScope(env, scope, {
+          project: { projectId: input.project_id },
+          title: input.title,
+          ...(input.description === undefined ? {} : { description: input.description }),
+          url: input.url!,
+          ...(input.allowed_data_origins === undefined ? {} : { allowedDataOrigins: input.allowed_data_origins }),
+          idempotencyKey: input.idempotency_key,
+        })
+        : await createTextArtifact(env, scope, {
+          projectId: input.project_id,
+          type: "html",
+          title: input.title,
+          ...(input.description === undefined ? {} : { description: input.description }),
+          ...(input.allowed_data_origins === undefined ? {} : { allowedDataOrigins: input.allowed_data_origins }),
+          idempotencyKey: input.idempotency_key,
+          files: input.files!.map(({ path, content, mime_type }) => ({
+            path,
+            content,
+            ...(mime_type === undefined ? {} : { mimeType: mime_type }),
+          })),
+        });
     } catch (error) {
       throw toMcpArtifactError(error);
     }
@@ -802,23 +814,31 @@ function registerTools(server: McpServer, env: Env) {
 
   server.registerTool("create_artifact_version", {
     title: "Create artifact version",
-    description: "Create a private revision package with a root index.html. Use relative assets and exact HTTPS data origins; retry only identical input with the same idempotency key.",
+    description: "Create a private revision: send a complete replacement package with a root index.html and relative assets, or a new url for a link artifact. Declare exact HTTPS data origins; retry only identical input with the same idempotency key.",
     inputSchema: createArtifactVersionInput,
     outputSchema: artifactMutationOutput,
     ...mutationMetadata("artifacts:write"),
   }, async (input, extra) => run(env, "create_artifact_version", "artifacts:write", "general", extra.requestId, async (principal) => {
+    const scope = { userId: principal.userId, clubId: principal.clubId };
     let result;
     try {
-      result = await createTextArtifactVersion(env, { userId: principal.userId, clubId: principal.clubId }, {
-        artifactId: input.artifact_id,
-        ...(input.allowed_data_origins === undefined ? {} : { allowedDataOrigins: input.allowed_data_origins }),
-        idempotencyKey: input.idempotency_key,
-        files: input.files.map(({ path, content, mime_type }) => ({
-          path,
-          content,
-          ...(mime_type === undefined ? {} : { mimeType: mime_type }),
-        })),
-      });
+      result = input.url === undefined
+        ? await createTextArtifactVersion(env, scope, {
+          artifactId: input.artifact_id,
+          ...(input.allowed_data_origins === undefined ? {} : { allowedDataOrigins: input.allowed_data_origins }),
+          idempotencyKey: input.idempotency_key,
+          files: input.files!.map(({ path, content, mime_type }) => ({
+            path,
+            content,
+            ...(mime_type === undefined ? {} : { mimeType: mime_type }),
+          })),
+        })
+        : await createLinkArtifactVersionForScope(env, scope, {
+          artifactId: input.artifact_id,
+          url: input.url,
+          ...(input.allowed_data_origins === undefined ? {} : { allowedDataOrigins: input.allowed_data_origins }),
+          idempotencyKey: input.idempotency_key,
+        });
     } catch (error) {
       throw toMcpArtifactError(error);
     }

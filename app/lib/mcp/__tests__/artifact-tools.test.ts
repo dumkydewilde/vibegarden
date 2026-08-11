@@ -2,6 +2,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createLinkArtifactForScope,
+  createLinkArtifactVersionForScope,
   createTextArtifact,
   createTextArtifactVersion,
   shareArtifactVersionForScope,
@@ -10,6 +12,8 @@ import { runWithMcpRequestProps } from "~/lib/mcp/request-context.server";
 import { createGardenerMcpServer } from "~/lib/mcp/server.server";
 
 vi.mock("~/lib/artifacts/service.server", () => ({
+  createLinkArtifactForScope: vi.fn(),
+  createLinkArtifactVersionForScope: vi.fn(),
   createTextArtifact: vi.fn(),
   createTextArtifactVersion: vi.fn(),
   shareArtifactVersionForScope: vi.fn(),
@@ -85,6 +89,62 @@ describe("MCP artifact tools", () => {
     });
     expect(result.structuredContent).toEqual(expected);
     expect(JSON.parse(result.content[0].text)).toEqual(expected);
+  });
+
+  it("creates a private link artifact from a url instead of a package", async () => {
+    vi.mocked(createLinkArtifactForScope).mockResolvedValue({ artifactId: "artifact-1", versionId: "version-1" });
+
+    const result = await callTool("create_artifact", {
+      project_id: "project-1",
+      type: "link",
+      title: "Night sky atlas",
+      description: "Someone else's page",
+      idempotency_key: "create-link-1",
+      url: "https://example.com/atlas/",
+    }, ["artifacts:write"]);
+
+    expect(createLinkArtifactForScope).toHaveBeenCalledWith(expect.anything(), scope, {
+      project: { projectId: "project-1" },
+      title: "Night sky atlas",
+      description: "Someone else's page",
+      url: "https://example.com/atlas/",
+      idempotencyKey: "create-link-1",
+    });
+    expect(createTextArtifact).not.toHaveBeenCalled();
+    expect(result.structuredContent).toEqual(expected);
+  });
+
+  it("refuses a create that mixes a package with a link", async () => {
+    const result = await callTool("create_artifact", {
+      project_id: "project-1",
+      type: "link",
+      title: "Night sky atlas",
+      idempotency_key: "create-mixed-1",
+      url: "https://example.com/atlas/",
+      files: [{ path: "index.html", content: "<h1>Hello</h1>" }],
+    }, ["artifacts:write"]);
+
+    expect(result.isError).toBe(true);
+    expect(createLinkArtifactForScope).not.toHaveBeenCalled();
+    expect(createTextArtifact).not.toHaveBeenCalled();
+  });
+
+  it("points a link artifact at a new url through a version", async () => {
+    vi.mocked(createLinkArtifactVersionForScope).mockResolvedValue({ artifactId: "artifact-1", versionId: "version-1" });
+
+    const result = await callTool("create_artifact_version", {
+      artifact_id: "artifact-1",
+      idempotency_key: "link-version-2",
+      url: "https://example.com/atlas/v2/",
+    }, ["artifacts:write"]);
+
+    expect(createLinkArtifactVersionForScope).toHaveBeenCalledWith(expect.anything(), scope, {
+      artifactId: "artifact-1",
+      url: "https://example.com/atlas/v2/",
+      idempotencyKey: "link-version-2",
+    });
+    expect(createTextArtifactVersion).not.toHaveBeenCalled();
+    expect(result.structuredContent).toEqual(expected);
   });
 
   it("creates a version without mutable creation fields", async () => {

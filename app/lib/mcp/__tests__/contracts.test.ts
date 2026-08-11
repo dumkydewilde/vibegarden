@@ -31,7 +31,8 @@ describe("MCP contracts", () => {
     };
 
     expect(createArtifactInput.safeParse(input).success).toBe(true);
-    expect(createArtifactInput.safeParse({ ...input, type: "html" }).success).toBe(false);
+    expect(createArtifactInput.safeParse({ ...input, type: "html" }).success).toBe(true);
+    expect(createArtifactInput.safeParse({ ...input, type: "file" }).success).toBe(false);
     expect(createArtifactInput.safeParse({ ...input, user_id: "user-1" }).success).toBe(false);
     expect(createArtifactInput.safeParse({ ...input, club_id: "club-1" }).success).toBe(false);
     expect(createArtifactInput.safeParse({ ...input, files: [{ ...input.files[0], extra: true }] }).success).toBe(false);
@@ -39,6 +40,46 @@ describe("MCP contracts", () => {
       { length: ARTIFACT_LIMITS.mcpFiles + 1 },
       (_, index) => ({ path: `${index}.html`, content: "" }),
     ) }).success).toBe(false);
+  });
+
+  it("accepts a link artifact only as an https url without files", () => {
+    const link = {
+      project_id: "project-1",
+      type: "link",
+      title: "Night sky atlas",
+      url: "https://example.com/atlas/",
+      idempotency_key: "create-link-1",
+    };
+
+    expect(createArtifactInput.safeParse(link).success).toBe(true);
+    expect(createArtifactInput.safeParse({ ...link, description: "Someone else's page" }).success).toBe(true);
+    expect(createArtifactInput.safeParse({ ...link, url: undefined }).success).toBe(false);
+    expect(createArtifactInput.safeParse({ ...link, url: "http://example.com/atlas/" }).success).toBe(false);
+    expect(createArtifactInput.safeParse({ ...link, url: "example.com/atlas/" }).success).toBe(false);
+    expect(createArtifactInput.safeParse({ ...link, url: `https://example.com/${"a".repeat(ARTIFACT_LIMITS.linkChars)}` }).success).toBe(false);
+    expect(createArtifactInput.safeParse({
+      ...link,
+      files: [{ path: "index.html", content: "<h1>Hello</h1>" }],
+    }).success).toBe(false);
+    expect(createArtifactInput.safeParse({
+      project_id: "project-1",
+      title: "Night sky atlas",
+      url: "https://example.com/atlas/",
+      idempotency_key: "create-link-2",
+    }).success).toBe(false);
+  });
+
+  it("recognizes a link revision by its url and a package revision by its files", () => {
+    const version = { artifact_id: "artifact-1", idempotency_key: "revision-1" };
+
+    expect(createArtifactVersionInput.safeParse({ ...version, url: "https://example.com/atlas/v2/" }).success).toBe(true);
+    expect(createArtifactVersionInput.safeParse({ ...version, type: "link", url: "https://example.com/atlas/v2/" }).success).toBe(false);
+    expect(createArtifactVersionInput.safeParse(version).success).toBe(false);
+    expect(createArtifactVersionInput.safeParse({
+      ...version,
+      url: "https://example.com/atlas/v2/",
+      files: [{ path: "index.html", content: "<h1>Revision</h1>" }],
+    }).success).toBe(false);
   });
 
   it("keeps artifact version and sharing inputs exact", () => {
