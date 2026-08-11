@@ -52,6 +52,7 @@ export type GalleryArtifactPresentation = {
   description: string | null;
   type: ArtifactType;
   participantDisplayName: string;
+  externalUrl: string | null;
   version: ArtifactVersionSummary;
   updatedAt: number;
 };
@@ -89,6 +90,7 @@ export function presentGalleryArtifact(artifact: GalleryArtifactPresentation) {
     description: artifact.description,
     type: artifact.type,
     participant: { displayName: artifact.participantDisplayName },
+    externalUrl: artifact.externalUrl,
     version: artifact.version,
     updatedAt: artifact.updatedAt,
     url: artifactUrl(artifact.id),

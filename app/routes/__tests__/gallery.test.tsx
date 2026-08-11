@@ -9,6 +9,7 @@ const sharedArtifact = {
   title: "Bird count explorer",
   description: "A shared view of local sightings.",
   type: "html" as const,
+  externalUrl: null,
   participant: { displayName: "Avery" },
   version: { id: "version-shared", number: 2, source: "web" as const, createdAt: 0 },
   updatedAt: 0,
@@ -33,6 +34,17 @@ describe("Gallery", () => {
     expect(screen.getByText(/by avery/i)).toBeInTheDocument();
     expect(screen.getByText("Version 2")).toBeInTheDocument();
     expect(document.querySelector("iframe")).toBeNull();
+  });
+
+  it("opens a shared link card at the saved external URL instead of its artifact detail page", async () => {
+    renderGallery([{
+      ...sharedArtifact,
+      type: "link",
+      externalUrl: "https://example.com/shared-report",
+    }]);
+
+    expect(await screen.findByRole("link", { name: /bird count explorer/i }))
+      .toHaveAttribute("href", "https://example.com/shared-report");
   });
 
   it("keeps the empty state when no exact gallery shares are available", async () => {
