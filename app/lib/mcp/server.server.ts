@@ -47,7 +47,7 @@ import { McpPublicError } from "~/lib/mcp/errors.server";
 import { presentConversationPage, presentConversationSummary, presentProject } from "~/lib/mcp/project-presenter.server";
 import { getThreadPage, listProjectThreadsPage } from "~/lib/threads.server";
 
-const MCP_INSTRUCTIONS = "Vibe Garden stores club-scoped projects, learning content, and HTML artifacts. Use supplied tools only for the connected club. Assemble complete root-index.html packages, use relative assets and exact HTTPS data origins, retry identical input with the same idempotency key, and create versions for revisions. Keep artifacts private unless the user explicitly asks to share. Claude or ChatGPT remains the speaking assistant; this server does not run or select a model.";
+const MCP_INSTRUCTIONS = "Vibe Garden stores club-scoped projects, learning content, and HTML artifacts. Use supplied tools only for the connected club. Assemble complete root-index.html packages, use relative assets and exact HTTPS data origins, retry identical input with the same idempotency key, and create versions for revisions. Keep artifacts private unless the user explicitly asks to share. The connected host remains the speaking assistant; this server does not run or select a model.";
 
 const securitySchemes = (scope: McpScope | McpScope[]) => [{
   type: "oauth2",

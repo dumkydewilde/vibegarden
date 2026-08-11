@@ -37,6 +37,13 @@ echo "==> Setting secrets"
 # Fresh random session secret for production (not the dev one).
 openssl rand -hex 32 | npx wrangler secret put SESSION_SECRET
 
+# The website and isolated renderer must share this dedicated capability key.
+# Keep it distinct from SESSION_SECRET and out of command output.
+renderer_signing_secret=$(openssl rand -hex 32)
+printf '%s' "$renderer_signing_secret" | npx wrangler secret put RENDERER_SIGNING_SECRET
+printf '%s' "$renderer_signing_secret" | npx wrangler secret put RENDERER_SIGNING_SECRET --config wrangler.renderer.jsonc
+unset renderer_signing_secret
+
 # Pull the service keys from .dev.vars so they are typed in exactly once.
 get_var() { grep "^$1=" .dev.vars | head -1 | cut -d= -f2- | tr -d '"'; }
 
@@ -51,6 +58,7 @@ for key in OPENROUTER_API_KEY OPENROUTER_MANAGEMENT_KEY OPENROUTER_CREDENTIAL_KE
 done
 
 echo "==> Deploying"
+npm run deploy:renderer
 npm run deploy
 
 echo ""

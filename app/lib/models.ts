@@ -9,14 +9,20 @@ export type Model = {
 };
 
 /**
- * The Gardener's model menu (OpenRouter ids, verified 2026-07-14).
+ * The Gardener's model menu (OpenRouter ids, verified 2026-08-11).
  * First entry is the default for new users.
  */
 export const models: Model[] = [
   {
+    id: "openai/gpt-5.6-luna",
+    label: "GPT-5.6 Luna",
+    note: "default",
+    tools: true,
+  },
+  {
     id: "minimax/minimax-m3",
     label: "MiniMax M3",
-    note: "default",
+    note: "strong + capable",
     tools: true,
   },
   {
