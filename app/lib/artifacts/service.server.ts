@@ -194,7 +194,7 @@ function parseLinkInput(value: unknown, allowDraft: boolean): LinkBaseInput {
     project: parseProjectSelection(value.project, allowDraft),
     title,
     ...(description === undefined ? {} : { description }),
-    url: normalizeArtifactLink(stringField(value.url, 8_192)!),
+    url: normalizeArtifactLink(stringField(value.url, ARTIFACT_LIMITS.linkChars)!),
     ...(allowedDataOrigins === undefined ? {} : { allowedDataOrigins }),
     idempotencyKey: idempotencyKey(value.idempotencyKey),
   };
@@ -676,6 +676,7 @@ async function createLinkWithDraft(
   env: Env,
   userId: string,
   input: LinkBaseInput,
+  source: "web" | "mcp",
   artifactId: string,
   versionId: string,
   timestamp: number,
@@ -688,7 +689,7 @@ async function createLinkWithDraft(
   const writes = await env.DB.batch([
     env.DB.prepare("INSERT INTO projects (id, user_id, title, one_liner, modules, status, created_at, updated_at) VALUES (?, ?, ?, ?, '[]', 'seed', ?, ?)").bind(projectId, userId, project.projectDraft.title, project.projectDraft.oneLiner ?? null, timestamp, timestamp),
     env.DB.prepare("INSERT INTO artifacts (id, user_id, project_id, type, title, description, visibility, created_at, updated_at) VALUES (?, ?, ?, 'link', ?, ?, 'private', ?, ?)").bind(artifactId, userId, projectId, input.title, input.description ?? null, timestamp, timestamp),
-    env.DB.prepare("INSERT INTO artifact_versions (id, artifact_id, version_number, source, entry_path, external_url, allowed_data_origins, file_count, total_bytes, created_by, created_at) VALUES (?, ?, 1, 'web', NULL, ?, ?, 0, 0, ?, ?)").bind(versionId, artifactId, input.url, JSON.stringify(input.allowedDataOrigins ?? []), userId, timestamp),
+    env.DB.prepare("INSERT INTO artifact_versions (id, artifact_id, version_number, source, entry_path, external_url, allowed_data_origins, file_count, total_bytes, created_by, created_at) VALUES (?, ?, 1, ?, NULL, ?, ?, 0, 0, ?, ?)").bind(versionId, artifactId, source, input.url, JSON.stringify(input.allowedDataOrigins ?? []), userId, timestamp),
     env.DB.prepare("UPDATE artifacts SET current_version_id = ?, updated_at = ? WHERE id = ? AND user_id = ?").bind(versionId, timestamp, artifactId, userId),
     env.DB.prepare("INSERT INTO artifact_idempotency (user_id, operation, target_key, idempotency_key, fingerprint, artifact_id, version_id, created_at) VALUES (?, 'create_link', ?, ?, ?, ?, ?, ?)").bind(userId, targetKey, input.idempotencyKey, fingerprint, artifactId, versionId, timestamp),
   ]);
@@ -699,6 +700,7 @@ async function createLinkWithProject(
   env: Env,
   userId: string,
   input: LinkBaseInput,
+  source: "web" | "mcp",
   projectId: string,
   artifactId: string,
   versionId: string,
@@ -712,17 +714,34 @@ async function createLinkWithProject(
        SELECT ?, ?, p.id, 'link', ?, ?, 'private', ?, ? FROM projects p WHERE p.id = ? AND p.user_id = ?`,
     ).bind(artifactId, userId, input.title, input.description ?? null, timestamp, timestamp, projectId, userId),
     env.DB.prepare(
-      "INSERT INTO artifact_versions (id, artifact_id, version_number, source, entry_path, external_url, allowed_data_origins, file_count, total_bytes, created_by, created_at) SELECT ?, a.id, 1, 'web', NULL, ?, ?, 0, 0, ?, ? FROM artifacts a WHERE a.id = ? AND a.user_id = ? AND a.project_id = ?",
-    ).bind(versionId, input.url, JSON.stringify(input.allowedDataOrigins ?? []), userId, timestamp, artifactId, userId, projectId),
+      "INSERT INTO artifact_versions (id, artifact_id, version_number, source, entry_path, external_url, allowed_data_origins, file_count, total_bytes, created_by, created_at) SELECT ?, a.id, 1, ?, NULL, ?, ?, 0, 0, ?, ? FROM artifacts a WHERE a.id = ? AND a.user_id = ? AND a.project_id = ?",
+    ).bind(versionId, source, input.url, JSON.stringify(input.allowedDataOrigins ?? []), userId, timestamp, artifactId, userId, projectId),
     env.DB.prepare("UPDATE artifacts SET current_version_id = ?, updated_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL").bind(versionId, timestamp, artifactId, userId),
     env.DB.prepare("INSERT INTO artifact_idempotency (user_id, operation, target_key, idempotency_key, fingerprint, artifact_id, version_id, created_at) VALUES (?, 'create_link', ?, ?, ?, ?, ?, ?)").bind(userId, targetKey, input.idempotencyKey, fingerprint, artifactId, versionId, timestamp),
   ]);
   if (writes.some((result) => result.meta.changes !== 1)) artifactError("state_conflict");
 }
 
-export async function createLinkArtifact(env: Env, userId: string, rawInput: LinkBaseInput): Promise<ArtifactMutationResult> {
-  const input = parseLinkInput(rawInput, true);
-  await assertOwnedProjectSelection(env, userId, input.project);
+/** A browser link is user-scoped; an MCP link is confined to the granted club. */
+type LinkScope = { userId: string; clubId?: string };
+
+async function assertOwnedLinkProject(env: Env, scope: LinkScope, project: ProjectSelection): Promise<void> {
+  if (!("projectId" in project)) return;
+  const owned = scope.clubId === undefined
+    ? await findOwnedProject(env, scope.userId, project.projectId)
+    : await findOwnedProjectInClub(env, { userId: scope.userId, clubId: scope.clubId }, project.projectId);
+  if (!owned) artifactError("not_found");
+}
+
+async function linkMutation(
+  env: Env,
+  scope: LinkScope,
+  rawInput: unknown,
+  source: ArtifactPackageSource,
+): Promise<ArtifactMutationResult> {
+  const input = parseLinkInput(rawInput, source === "browser");
+  await assertOwnedLinkProject(env, scope, input.project);
+  const { userId } = scope;
   const targetKey = projectTarget(input.project);
   const fingerprint = await linkFingerprint({ title: input.title, description: input.description, allowedDataOrigins: input.allowedDataOrigins ?? [], url: input.url });
   const replay = await requireIdempotency(env, userId, "create_link", targetKey, input.idempotencyKey, fingerprint);
@@ -732,9 +751,9 @@ export async function createLinkArtifact(env: Env, userId: string, rawInput: Lin
   const timestamp = now();
   try {
     if ("projectDraft" in input.project) {
-      await createLinkWithDraft(env, userId, input, artifactId, versionId, timestamp, targetKey, fingerprint);
+      await createLinkWithDraft(env, userId, input, sourceFor(source), artifactId, versionId, timestamp, targetKey, fingerprint);
     } else {
-      await createLinkWithProject(env, userId, input, input.project.projectId, artifactId, versionId, timestamp, targetKey, fingerprint);
+      await createLinkWithProject(env, userId, input, sourceFor(source), input.project.projectId, artifactId, versionId, timestamp, targetKey, fingerprint);
     }
   } catch (error) {
     if (error instanceof ArtifactError) throw error;
@@ -743,12 +762,29 @@ export async function createLinkArtifact(env: Env, userId: string, rawInput: Lin
   return { artifactId, versionId };
 }
 
-export async function createLinkArtifactVersion(env: Env, userId: string, rawInput: unknown): Promise<ArtifactMutationResult> {
+export async function createLinkArtifact(env: Env, userId: string, rawInput: LinkBaseInput): Promise<ArtifactMutationResult> {
+  return linkMutation(env, { userId }, rawInput, "browser");
+}
+
+/** MCP links stay inside the granted club and cannot plant a project draft. */
+export async function createLinkArtifactForScope(env: Env, scope: ArtifactOwnerScope, rawInput: unknown): Promise<ArtifactMutationResult> {
+  return linkMutation(env, scope, rawInput, "mcp");
+}
+
+async function linkVersionMutation(
+  env: Env,
+  scope: LinkScope,
+  rawInput: unknown,
+  source: ArtifactPackageSource,
+): Promise<ArtifactMutationResult> {
+  const { userId } = scope;
   assertFields(rawInput, ["artifactId", "url", "allowedDataOrigins", "idempotencyKey"]);
   const artifactId = stringField(rawInput.artifactId, 200)!;
-  const artifact = await findOwnedArtifact(env, userId, artifactId);
+  const artifact = scope.clubId === undefined
+    ? await findOwnedArtifact(env, userId, artifactId)
+    : await findOwnedArtifactInClub(env, { userId, clubId: scope.clubId }, artifactId);
   if (!artifact || artifact.type !== "link") artifactError("not_found");
-  const url = normalizeArtifactLink(stringField(rawInput.url, 8_192)!);
+  const url = normalizeArtifactLink(stringField(rawInput.url, ARTIFACT_LIMITS.linkChars)!);
   const origins = rawInput.allowedDataOrigins === undefined ? [] : normalizeArtifactOrigins(rawInput.allowedDataOrigins as string[]);
   const key = idempotencyKey(rawInput.idempotencyKey);
   const fingerprint = await linkFingerprint({ allowedDataOrigins: origins, url });
@@ -761,9 +797,9 @@ export async function createLinkArtifactVersion(env: Env, userId: string, rawInp
     const writes = await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO artifact_versions (id, artifact_id, version_number, source, entry_path, external_url, allowed_data_origins, file_count, total_bytes, created_by, created_at)
-         SELECT ?, a.id, COALESCE((SELECT MAX(version_number) FROM artifact_versions WHERE artifact_id = a.id), 0) + 1, 'web', NULL, ?, ?, 0, 0, ?, ?
+         SELECT ?, a.id, COALESCE((SELECT MAX(version_number) FROM artifact_versions WHERE artifact_id = a.id), 0) + 1, ?, NULL, ?, ?, 0, 0, ?, ?
          FROM artifacts a WHERE a.id = ? AND a.user_id = ? AND a.type = 'link' AND a.deleted_at IS NULL`,
-      ).bind(versionId, url, JSON.stringify(origins), userId, timestamp, artifactId, userId),
+      ).bind(versionId, sourceFor(source), url, JSON.stringify(origins), userId, timestamp, artifactId, userId),
       env.DB.prepare("UPDATE artifacts SET current_version_id = ?, updated_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL").bind(versionId, timestamp, artifactId, userId),
       env.DB.prepare("INSERT INTO artifact_idempotency (user_id, operation, target_key, idempotency_key, fingerprint, artifact_id, version_id, created_at) VALUES (?, 'create_link_version', ?, ?, ?, ?, ?, ?)").bind(userId, targetKey, key, fingerprint, artifactId, versionId, timestamp),
     ]);
@@ -773,6 +809,14 @@ export async function createLinkArtifactVersion(env: Env, userId: string, rawInp
     throw new ArtifactError("internal");
   }
   return { artifactId, versionId };
+}
+
+export async function createLinkArtifactVersion(env: Env, userId: string, rawInput: unknown): Promise<ArtifactMutationResult> {
+  return linkVersionMutation(env, { userId }, rawInput, "browser");
+}
+
+export async function createLinkArtifactVersionForScope(env: Env, scope: ArtifactOwnerScope, rawInput: unknown): Promise<ArtifactMutationResult> {
+  return linkVersionMutation(env, scope, rawInput, "mcp");
 }
 
 function inferredMime(type: Exclude<ArtifactType, "link">, path: string): string {

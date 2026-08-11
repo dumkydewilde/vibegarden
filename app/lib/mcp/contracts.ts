@@ -132,21 +132,45 @@ const artifactTextFileInput = z.object({
   mime_type: z.string().min(1).max(128).optional(),
 }).strict();
 
+const artifactFilesInput = z.array(artifactTextFileInput).min(1).max(ARTIFACT_LIMITS.mcpFiles);
+const artifactUrlInput = z.string().min(1).max(ARTIFACT_LIMITS.linkChars).url().startsWith("https://");
+
+const ARTIFACT_KINDS = ["html", "link"] as const;
+const PAYLOAD_BY_KIND = "Send files for an html artifact or url for a link, never both.";
+
+/** An html artifact carries its own files; a link only points at a page. */
+function payloadMatchesKind(input: {
+  type?: (typeof ARTIFACT_KINDS)[number];
+  files?: unknown;
+  url?: unknown;
+}): boolean {
+  return (input.type ?? "html") === "link"
+    ? input.url !== undefined && input.files === undefined
+    : input.files !== undefined && input.url === undefined;
+}
+
 export const createArtifactInput = z.object({
   project_id: z.string().min(1).max(200),
+  type: z.enum(ARTIFACT_KINDS).optional(),
   title: z.string().min(1).max(ARTIFACT_LIMITS.titleChars),
   description: z.string().max(ARTIFACT_LIMITS.descriptionChars).optional(),
-  files: z.array(artifactTextFileInput).min(1).max(ARTIFACT_LIMITS.mcpFiles),
+  files: artifactFilesInput.optional(),
+  url: artifactUrlInput.optional(),
   allowed_data_origins: z.array(z.string().max(2_048)).max(ARTIFACT_LIMITS.origins).optional(),
   idempotency_key: z.string().min(1).max(256),
-}).strict();
+}).strict().refine(payloadMatchesKind, { message: PAYLOAD_BY_KIND });
 
+/** The stored artifact fixes the kind, so a revision is recognized by its payload. */
 export const createArtifactVersionInput = z.object({
   artifact_id: z.string().min(1).max(200),
-  files: z.array(artifactTextFileInput).min(1).max(ARTIFACT_LIMITS.mcpFiles),
+  files: artifactFilesInput.optional(),
+  url: artifactUrlInput.optional(),
   allowed_data_origins: z.array(z.string().max(2_048)).max(ARTIFACT_LIMITS.origins).optional(),
   idempotency_key: z.string().min(1).max(256),
-}).strict();
+}).strict().refine(
+  (input) => (input.files === undefined) !== (input.url === undefined),
+  { message: PAYLOAD_BY_KIND },
+);
 
 export const shareArtifactInput = z.object({
   artifact_id: z.string().min(1).max(200),
