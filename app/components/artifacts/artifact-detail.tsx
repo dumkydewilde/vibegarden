@@ -80,14 +80,9 @@ export function ArtifactDetail({
         {owner && <ArtifactUploadDialog projects={[artifact.project]} defaultProjectId={artifact.project.id} artifactId={artifact.id} artifactType={artifact.type} defaultTitle={artifact.title} defaultDescription={artifact.description ?? ""} triggerLabel="New version" onRefresh={onRefresh} />}
       </div>
 
-      <section className="mt-6 rounded-lg border p-4" aria-labelledby="origins-heading">
-        <h2 id="origins-heading" className="text-lg">Allowed data origins</h2>
-        {artifact.version.allowedDataOrigins.length > 0 ? <ul className="mt-2 list-disc pl-5 text-sm text-muted-foreground">{artifact.version.allowedDataOrigins.map((origin) => <li key={origin}>{origin}</li>)}</ul> : <p className="mt-2 text-sm text-muted-foreground">This version does not declare external data origins.</p>}
-      </section>
-
       <section className="mt-6 rounded-lg border p-4" aria-labelledby="artifact-content-heading">
-        <h2 id="artifact-content-heading" className="text-lg">Artifact</h2>
-        {artifact.type === "html" ? <div className="mt-3 space-y-3"><ArtifactFrame artifactId={artifact.id} title={artifact.title} /><Link to={`/artifacts/${encodeURIComponent(artifact.id)}/fullscreen`} className="inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline"><Maximize2 className="size-4" /> Open full screen</Link></div> : artifact.version.externalUrl ? <a href={artifact.version.externalUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline"><ExternalLink className="size-4" /> Open external link</a> : <div className="mt-3"><p className="text-sm text-muted-foreground">Files are downloaded separately; they are never rendered inline here.</p><ul className="mt-3 divide-y rounded-md border">{artifact.version.files.map((file) => <li key={file.path} className="flex items-center justify-between gap-3 px-3 py-2"><span className="flex min-w-0 items-center gap-2 text-sm"><File className="size-4 shrink-0" />{file.path}</span><a href={`/artifacts/${encodeURIComponent(artifact.id)}/download?path=${encodeURIComponent(file.path)}`} className="inline-flex shrink-0 items-center gap-1 text-sm text-primary underline-offset-4 hover:underline" aria-label={`Download ${file.path}`}><Download className="size-3" /> Download</a></li>)}</ul></div>}
+        <div className="flex items-center justify-between gap-3"><h2 id="artifact-content-heading" className="text-lg">Artifact</h2>{artifact.type === "html" && <Button asChild size="sm"><Link to={`/artifacts/${encodeURIComponent(artifact.id)}/fullscreen`}><Maximize2 /> Open fullscreen</Link></Button>}</div>
+        {artifact.type === "html" ? <div className="mt-3"><ArtifactFrame artifactId={artifact.id} title={artifact.title} /></div> : artifact.version.externalUrl ? <a href={artifact.version.externalUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline"><ExternalLink className="size-4" /> Open external link</a> : <div className="mt-3"><p className="text-sm text-muted-foreground">Files are downloaded separately; they are never rendered inline here.</p><ul className="mt-3 divide-y rounded-md border">{artifact.version.files.map((file) => <li key={file.path} className="flex items-center justify-between gap-3 px-3 py-2"><span className="flex min-w-0 items-center gap-2 text-sm"><File className="size-4 shrink-0" />{file.path}</span><a href={`/artifacts/${encodeURIComponent(artifact.id)}/download?path=${encodeURIComponent(file.path)}`} className="inline-flex shrink-0 items-center gap-1 text-sm text-primary underline-offset-4 hover:underline" aria-label={`Download ${file.path}`}><Download className="size-3" /> Download</a></li>)}</ul></div>}
         {!owner && <p className="mt-4 text-sm text-muted-foreground">Shared in the gallery. You can view this saved version, but only its owner can edit or replace it.</p>}
       </section>
 
@@ -99,6 +94,10 @@ export function ArtifactDetail({
         <ArtifactVersionHistory versions={versions} currentVersionId={artifact.version.id} onRestore={(version) => void mutate(async () => { if (!confirmation(`Restore version ${version.number}? This changes the current private version.`)) return; await artifactMutation(`/api/artifacts/${encodeURIComponent(artifact.id)}/restore-version`, "POST", { versionId: version.id }); })} />
         <section className="mt-8 border-t pt-6"><Button variant="destructive" onClick={() => void mutate(async () => { if (!confirmation("Delete this artifact? It will be recoverable for 30 days.")) return; await artifactMutation(`/api/artifacts/${encodeURIComponent(artifact.id)}`, "DELETE"); setDeleted(true); onDeleted?.(); })}><Trash2 /> Delete artifact</Button></section>
       </>}
+      {artifact.version.allowedDataOrigins.length > 0 && <section className="mt-8 rounded-lg border p-4" aria-labelledby="origins-heading">
+        <h2 id="origins-heading" className="text-lg">Allowed data origins</h2>
+        <ul className="mt-2 list-disc pl-5 text-sm text-muted-foreground">{artifact.version.allowedDataOrigins.map((origin) => <li key={origin}>{origin}</li>)}</ul>
+      </section>}
       {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
     </article>
   );
