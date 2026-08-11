@@ -22,7 +22,8 @@ export default function Connect() {
         <h2 className="text-xl font-medium">What an app can do</h2>
         <ul className="list-disc space-y-2 pl-5">
           <li><code>projects:read</code> — your projects and their linked conversations.</li>
-          <li><code>content:read</code> — Vibe Garden learning material, modules, and curated reads.</li>
+          <li><code>projects:write</code> — plant a new project and update an existing one: name, one-liner, notes, building blocks, and stage. Never delete one.</li>
+          <li><code>content:read</code> — Vibe Garden learning material, modules, and curated reads, including build guidance that answers a how-to question from the library and the library overview itself.</li>
           <li><code>artifacts:write</code> — create private HTML artifacts and retained versions, up to 100 files and 2 MiB (2,097,152 bytes) per package.</li>
           <li><code>artifacts:publish</code> — share a selected artifact version to the gallery only after your explicit confirmation.</li>
         </ul>

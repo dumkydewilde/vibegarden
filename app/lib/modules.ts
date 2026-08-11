@@ -88,3 +88,15 @@ export const modules: string[] = getModules().map((m) => m.title);
 export function isModuleName(value: string): boolean {
   return modules.includes(value);
 }
+
+/**
+ * Resolves a building block written as a display title or a content slug, in
+ * any casing, to the display title projects store. Tool callers know modules
+ * by either name, so accept both rather than dropping the value.
+ */
+export function resolveModuleName(value: string): string | undefined {
+  const needle = value.trim().toLowerCase();
+  return getModules().find((meta) => (
+    meta.title.toLowerCase() === needle || meta.slug.toLowerCase() === needle
+  ))?.title;
+}

@@ -840,9 +840,16 @@ async function textMutation(
     ...(allowedDataOrigins === undefined ? {} : { allowedDataOrigins }), idempotencyKey: idempotencyKey(rawInput.idempotencyKey), ...(artifactId === undefined ? {} : { artifactId }),
   }, "mcp", files.map(({ body: _body, ...file }) => file));
   if (session.completed.length !== files.length) {
-    for (const file of files) {
-      const { body, ...metadata } = file;
-      await putUploadFile(env, scope.userId, session.uploadId, metadata, body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength));
+    try {
+      for (const file of files) {
+        const { body, ...metadata } = file;
+        await putUploadFile(env, scope.userId, session.uploadId, metadata, body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength));
+      }
+    } catch (error) {
+      // A concurrent identical request owns this shared upload and has already
+      // moved it past `pending`. Hand off to finalize, which re-reads the state
+      // and either returns the twin's completed result or fails accurately.
+      if (!(error instanceof ArtifactError) || error.code !== "state_conflict") throw error;
     }
   }
   return finalizeUpload(env, scope.userId, session.uploadId);

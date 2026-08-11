@@ -137,9 +137,11 @@ user identity.
 | `projects:read` | List and read the participant's projects and conversations |
 | `content:read` | List and read learning content, modules, and curated public reads |
 
-Later scopes are additive and requested through reauthorization:
+Later scopes are additive and requested through reauthorization. All three have
+since shipped: artifact writes with the artifact upload work, and
+`projects:write` on 2026-08-11 (`docs/plans/2026-08-11-mcp-project-writes.md`).
 
-| Future scope | Allows |
+| Additive scope | Allows |
 |---|---|
 | `projects:write` | Create or update projects, but not delete them |
 | `artifacts:write` | Create private project artifacts |

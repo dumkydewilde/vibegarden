@@ -2,8 +2,13 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { z } from "zod";
 import { getArticleRaw, getArticles } from "~/lib/content";
 import gardenerGuide from "../../../content/gardener/mcp-guide.md?raw";
-import { getModules, getModuleRaw } from "~/lib/modules";
-import { getProject, listProjectsPage } from "~/lib/projects.server";
+import { getModules, getModuleRaw, resolveModuleName } from "~/lib/modules";
+import {
+  createProject,
+  getProject,
+  listProjectsPage,
+  updateProject,
+} from "~/lib/projects.server";
 import {
   createTextArtifact,
   createTextArtifactVersion,
@@ -15,6 +20,7 @@ import {
   clampPageSize,
   createArtifactInput,
   createArtifactVersionInput,
+  createProjectInput,
   fetchInput,
   fetchOutput,
   freshReadsInput,
@@ -23,6 +29,8 @@ import {
   getConversationOutput,
   getProjectInput,
   getProjectOutput,
+  guidanceInput,
+  guidanceOutput,
   listLearningContentInput,
   listLearningContentOutput,
   listProjectConversationsInput,
@@ -30,10 +38,13 @@ import {
   listProjectsInput,
   listProjectsOutput,
   moduleOutput,
+  planBuildPromptInput,
+  projectMutationOutput,
   searchInput,
   searchOutput,
   shareArtifactInput,
   slugInput,
+  updateProjectInput,
   type ResolvedMcpPrincipal,
   type McpScope,
 } from "~/lib/mcp/contracts";
@@ -41,13 +52,19 @@ import { runMcpProtocolRequest, runMcpTool } from "~/lib/mcp/auth.server";
 import { toMcpArtifactError } from "~/lib/mcp/artifact-errors.server";
 import { presentArtifactMutation } from "~/lib/mcp/artifact-presenter.server";
 import { fetchKnowledge, searchKnowledge } from "~/lib/mcp/compatibility.server";
-import { listLearningContent, presentArticle, presentModule } from "~/lib/mcp/content-presenter";
+import {
+  listLearningContent,
+  presentArticle,
+  presentGuidance,
+  presentLibraryGuide,
+  presentModule,
+} from "~/lib/mcp/content-presenter";
 import { decodeCursor, encodeCursor, type CursorPayload } from "~/lib/mcp/cursor.server";
 import { McpPublicError } from "~/lib/mcp/errors.server";
 import { presentConversationPage, presentConversationSummary, presentProject } from "~/lib/mcp/project-presenter.server";
 import { getThreadPage, listProjectThreadsPage } from "~/lib/threads.server";
 
-const MCP_INSTRUCTIONS = "Vibe Garden stores club-scoped projects, learning content, and HTML artifacts. Use supplied tools only for the connected club. Assemble complete root-index.html packages, use relative assets and exact HTTPS data origins, retry identical input with the same idempotency key, and create versions for revisions. Keep artifacts private unless the user explicitly asks to share. The connected host remains the speaking assistant; this server does not run or select a model.";
+const MCP_INSTRUCTIONS = "Vibe Garden stores club-scoped projects, learning content, and HTML artifacts. Use supplied tools only for the connected club. For any how-to question about building, hosting data or files, calling APIs, or working with a coding agent, call get_guidance with the user's own question before answering from general recollection, then read_article or read_module for a whole piece. Create or update a project only when the user asks, list first to resolve an unknown project, and keep project notes to what the user would recognize as their own account of the work. Assemble complete root-index.html packages, use relative assets and exact HTTPS data origins, retry identical input with the same idempotency key, and create versions for revisions. Keep artifacts private unless the user explicitly asks to share. The connected host remains the speaking assistant; this server does not run or select a model.";
 
 const securitySchemes = (scope: McpScope | McpScope[]) => [{
   type: "oauth2",
@@ -95,6 +112,26 @@ function shortResult(payload: Record<string, unknown>, summary: string) {
 
 function notFound(): never {
   throw new McpPublicError("not_found", "The requested item was not found.");
+}
+
+/**
+ * Accepts building blocks as module titles or slugs and stores canonical
+ * titles. The web form silently drops unknown names; a tool caller is told.
+ */
+function resolveBuildingBlocks(values: string[] | undefined) {
+  if (values === undefined) return undefined;
+  const resolved: string[] = [];
+  for (const value of values) {
+    const name = resolveModuleName(value);
+    if (!name) {
+      throw new McpPublicError(
+        "invalid_input",
+        `Unknown building block "${value.slice(0, 60)}". Use a module title or slug from list_learning_content.`,
+      );
+    }
+    if (!resolved.includes(name)) resolved.push(name);
+  }
+  return resolved;
 }
 
 async function cursorPosition(
@@ -297,6 +334,22 @@ function registerResources(server: McpServer, env: Env) {
     limiter: "general",
     kind: "resource",
   }, async () => resourceResult(uri, "text/markdown", gardenerGuide)));
+
+  server.registerResource("library-guide", "vibegarden://guide/library", {
+    title: "The Vibe Garden library",
+    mimeType: "text/markdown",
+  }, async (uri, extra) => runMcpProtocolRequest({
+    env,
+    toolName: "read_library_guide_resource",
+    requestId: String(extra.requestId),
+    requiredScope: "content:read",
+    limiter: "general",
+    kind: "resource",
+  }, async (principal) => resourceResult(
+    uri,
+    "text/markdown",
+    presentLibraryGuide({ appOrigin: env.APP_ORIGIN, clubSlug: principal.clubSlug }),
+  )));
 }
 
 function registerPrompts(server: McpServer, env: Env) {
@@ -352,6 +405,86 @@ function registerPrompts(server: McpServer, env: Env) {
           content: {
             type: "text" as const,
             text: "Briefly restate the current project, choose the smallest useful next step, and finish with one question. Do not claim to be the MCP server or The Gardener.",
+          },
+        },
+      ],
+    };
+  }));
+
+  server.registerPrompt("plan_build", {
+    title: "Plan a build",
+    description: "Plan how to build something using Vibe Garden's learning articles and building blocks.",
+    argsSchema: { goal: planBuildPromptInput.shape.goal },
+  }, async ({ goal }, extra) => runMcpProtocolRequest({
+    env,
+    toolName: "plan_build",
+    requestId: String(extra.requestId),
+    requiredScope: "content:read",
+    limiter: "general",
+    kind: "prompt",
+  }, async (principal) => {
+    const guidance = presentGuidance({
+      appOrigin: env.APP_ORIGIN,
+      clubSlug: principal.clubSlug,
+      question: goal,
+    });
+    const uriFor = (item: { kind: string; slug: string }) => (
+      `vibegarden://${item.kind}/${encodeURIComponent(item.slug)}`
+    );
+
+    return {
+      messages: [
+        {
+          role: "user" as const,
+          content: { type: "text" as const, text: `Goal: ${goal}` },
+        },
+        {
+          role: "user" as const,
+          content: {
+            type: "text" as const,
+            text: "The following resources are Vibe Garden's public guidance, chosen for this goal.",
+          },
+        },
+        ...guidance.items.map((item) => ({
+          role: "user" as const,
+          content: {
+            type: "resource" as const,
+            resource: {
+              uri: uriFor(item),
+              mimeType: "text/markdown",
+              text: `# ${item.title}\n\n${item.excerpt}`,
+            },
+          },
+        })),
+        {
+          role: "user" as const,
+          content: {
+            type: "resource" as const,
+            resource: {
+              uri: "vibegarden://guide/library",
+              mimeType: "text/markdown",
+              text: guidance.related
+                .map((item) => `- ${item.title} (${item.kind} \`${item.slug}\`): ${item.description}`)
+                .join("\n"),
+            },
+          },
+        },
+        {
+          role: "user" as const,
+          content: {
+            type: "resource" as const,
+            resource: {
+              uri: "vibegarden://guide/gardener",
+              mimeType: "text/markdown",
+              text: gardenerGuide,
+            },
+          },
+        },
+        {
+          role: "user" as const,
+          content: {
+            type: "text" as const,
+            text: "Name the building blocks this goal needs, choose the smallest useful first step, and finish with one question. Prefer the material above over general recollection, and read a whole article or module when the excerpt is not enough. Do not claim to be the MCP server or The Gardener.",
           },
         },
       ],
@@ -519,6 +652,25 @@ function registerTools(server: McpServer, env: Env) {
     );
   }));
 
+  server.registerTool("get_guidance", {
+    title: "Get build guidance",
+    description: "Answer a build question from Vibe Garden's own learning articles and building blocks: hosting data and files, calling APIs, storing things, automating them, and working with a coding agent. Pass the user's own question. Prefer this over answering from general recollection, then read_article or read_module for a whole piece.",
+    inputSchema: guidanceInput,
+    outputSchema: guidanceOutput,
+    ...metadata("content:read"),
+  }, async (input, extra) => run(env, "get_guidance", "content:read", "general", extra.requestId, async (principal) => {
+    const payload = presentGuidance({
+      appOrigin: env.APP_ORIGIN,
+      clubSlug: principal.clubSlug,
+      question: input.question,
+      ...(input.kind === undefined ? {} : { kind: input.kind }),
+      ...(input.max_items === undefined ? {} : { maxItems: input.max_items }),
+    });
+    return shortResult(payload, payload.items.length
+      ? `Guidance returned: ${payload.items.map((item) => item.slug).join(", ")}.`
+      : "No direct match; related library entries returned.");
+  }));
+
   if (env.MOTHERDUCK_TOKEN) {
     server.registerTool("fresh_reads", {
       title: "List fresh reads",
@@ -571,6 +723,52 @@ function registerTools(server: McpServer, env: Env) {
     ...metadata(["projects:read", "content:read"]),
   }, async (input, extra) => run(env, "fetch", ["projects:read", "content:read"], "general", extra.requestId, async (principal) => {
     return compatibilityResult(await fetchKnowledge(env, principal, input.id));
+  }));
+
+  server.registerTool("create_project", {
+    title: "Create project",
+    description: "Plant a new project in the connected club, only when the person asks for one. Reusing an idempotency key returns the project the first call created rather than a duplicate.",
+    inputSchema: createProjectInput,
+    outputSchema: projectMutationOutput,
+    ...mutationMetadata("projects:write"),
+  }, async (input, extra) => run(env, "create_project", "projects:write", "general", extra.requestId, async (principal) => {
+    const buildingBlocks = resolveBuildingBlocks(input.building_blocks);
+    const project = await createProject(env, principal, {
+      title: input.title,
+      ...(input.one_liner === undefined ? {} : { oneLiner: input.one_liner }),
+      ...(input.notes === undefined ? {} : { notes: input.notes }),
+      ...(buildingBlocks === undefined ? {} : { modules: buildingBlocks }),
+      idempotencyKey: input.idempotency_key,
+    });
+    return shortResult(
+      presentProject(env.APP_ORIGIN, principal.clubSlug, project),
+      "Project created.",
+    );
+  }));
+
+  server.registerTool("update_project", {
+    title: "Update project",
+    description: "Update the fields the person asks to change on one owned project. Omitted fields stay as they are; send an empty string to clear one_liner or notes. Notes hold the longer write-up of what was built, decided, or tried.",
+    inputSchema: updateProjectInput,
+    outputSchema: projectMutationOutput,
+    ...mutationMetadata("projects:write"),
+  }, async (input, extra) => run(env, "update_project", "projects:write", "general", extra.requestId, async (principal) => {
+    const buildingBlocks = resolveBuildingBlocks(input.building_blocks);
+    const existing = await getProject(env, principal, input.project_id);
+    if (!existing) return notFound();
+    await updateProject(env, principal, existing.id, {
+      ...(input.title === undefined ? {} : { title: input.title }),
+      ...(input.one_liner === undefined ? {} : { oneLiner: input.one_liner }),
+      ...(input.notes === undefined ? {} : { notes: input.notes }),
+      ...(buildingBlocks === undefined ? {} : { modules: buildingBlocks }),
+      ...(input.status === undefined ? {} : { status: input.status }),
+    });
+    const updated = await getProject(env, principal, existing.id);
+    if (!updated) return notFound();
+    return shortResult(
+      presentProject(env.APP_ORIGIN, principal.clubSlug, updated),
+      "Project updated.",
+    );
   }));
 
   server.registerTool("create_artifact", {

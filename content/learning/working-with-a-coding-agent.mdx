@@ -1,0 +1,65 @@
+---
+title: "Vibe coding: how to work with a coding agent"
+description: "Describing what you want and letting the machine type it is the easy part. The skill that decides whether you ship something is steering: small steps, real context, and reading what came back."
+category: Building
+level: hands-on
+order: 0
+---
+
+"Vibe coding" started as a joke about building software by describing vibes and accepting whatever comes out. The joke stuck because the first half is real: you can genuinely describe a thing in plain language and get working code. What the joke leaves out is that the people who finish projects this way are doing something specific, and it is learnable in an afternoon.
+
+The shift is this. You are no longer the typist. You are the person who says what "done" looks like, keeps the steps small, and reads what came back. Nothing else about the job matters as much as those three.
+
+## Work in steps you can still check
+
+The single most common way a vibe-coded project dies: someone asks for the whole app, gets 800 lines, cannot tell which part is wrong, and starts over. Then again. Then quits.
+
+So make the steps small enough that you can always tell whether the last one worked. "Show a list of my expenses from this CSV" is a step. "Build me an expense tracker" is a project. Ask for the step, look at the result, run it, then ask for the next one. If a step turns out wrong, you throw away five minutes instead of an evening.
+
+A useful rule of thumb: if you cannot say in one sentence how you will know it worked, the step is still too big.
+
+## Say what done looks like, in your own words
+
+Assistants are bad at guessing and good at following. Before asking for anything, say the finish line in plain language, the way you would to a friend who is about to do the work for you:
+
+> When I open the page I see one row per expense, newest first, with the total at the top. Amounts show two decimals. If the CSV is missing a date, that row shows "unknown" instead of crashing.
+
+That paragraph is worth more than any clever prompt phrasing. It also gives you something to check against, which is the whole point.
+
+## Give it the situation, not just the request
+
+Most disappointing answers are not a dumb model, they are a briefing that never happened. When something breaks, paste the actual error message, not your summary of it. When a library is involved, paste the link to its docs page, because a model will confidently invent a function that does not exist. When the project has conventions, keep them in a file the assistant reads every time, which is exactly the case [Creating the right context](/learning/creating-the-right-context) makes.
+
+Vibe Garden is set up for this: your project notes travel with you, so an assistant in another window can pick up where the last one stopped instead of asking you to explain the project again.
+
+## Let it run what it wrote
+
+There is a real difference between an assistant that only writes code and one that can also run it, run the tests, and look at the page. The second kind finds its own mistakes, and you skip the tedious middleman round of copying errors back and forth. That is the [agent](/learning/what-is-an-agent) part of the story, and it is why tools like Claude Code and Codex feel different from pasting into a chat window.
+
+If your setup can run things, say so and ask it to: "run it and fix what breaks before you show me."
+
+## When it goes in circles
+
+It will. The signs are unmistakable: the same fix twice, an apology followed by the same code, an explanation that keeps growing while nothing works. Do not argue with a stuck assistant, and do not keep patching. Options, roughly in order:
+
+| Symptom | Move |
+| --- | --- |
+| Same wrong fix twice | Stop. Say what you observe, exactly, and ask for the smallest example that reproduces it |
+| Long conversation, drifting quality | Start a fresh conversation with a short summary of the goal and the current state |
+| It invents a function or endpoint | Paste the real docs page and ask it to use only what is there |
+| Changes keep breaking other things | Ask for one change at a time, and check after each |
+| You do not understand the code | Ask it to explain the part you do not understand, in plain language, before accepting it |
+
+That last row is not optional. Code you do not understand at all is code you cannot fix later, and "the AI wrote it" is not a debugging strategy.
+
+## Read the diff, especially the boring parts
+
+Before you accept a change, skim what actually changed. You are looking for three things: something you did not ask for, a secret key sitting in plain code, and a function or service name you have never heard of. Those three account for most of the trouble beginners hit, and all three are obvious once you look. If you keep your work in git, this is one command, and your assistant will happily run it for you.
+
+## Try it
+
+Twenty minutes. Take a small thing you want, a page that turns a CSV into a chart, and do it deliberately in three steps: first write the "done" paragraph, then ask for step one only, then run it before asking for step two. Notice how different it feels from asking for everything. Then break it on purpose, change a column name in the CSV, paste the error, and watch how much better a real error message works than "it broke".
+
+## Where to go next
+
+[Creating the right context](/learning/creating-the-right-context) is the deeper version of the briefing habit, and [Choosing a model](/learning/choosing-a-model) covers when a bigger model actually helps (less often than you would think). When your project starts calling other services, [Calling an API for real](/learning/calling-an-api) covers keys and limits, and [Hosting your app](/learning/hosting-your-app) gets it to a URL you can send someone.

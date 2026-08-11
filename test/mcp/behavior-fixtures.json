@@ -29,9 +29,10 @@
       "scope challenge before execution",
       "origin enforcement",
       "refresh, expiry, revocation, and reconnect",
-      "read-only discovery and optional backend absence",
+      "discovery annotations and optional backend absence",
       "rate limiting",
-      "private-ID ownership and cross-user isolation"
+      "private-ID ownership and cross-user isolation",
+      "scoped project writes without a delete path"
     ]
   },
   "cases": [
@@ -128,6 +129,45 @@
       "assertions": ["cursor is opaque", "published content is paginated"]
     },
     {
+      "id": "create-project-on-request",
+      "user_request": "Start a project in Vibe Garden for my reading-habit dashboard",
+      "expected_tools": ["create_project"],
+      "required_scope": "projects:write",
+      "assertions": ["creates one project in the club the grant selected", "sends a stable idempotency key", "does not create a project while the user is only discussing an idea"]
+    },
+    {
+      "id": "create-project-idempotent-retry",
+      "protocol_request": "tools/call create_project twice with the same idempotency key",
+      "expected_tools": ["create_project"],
+      "assertions": ["the retry returns the project the first call created", "no duplicate project row is written"]
+    },
+    {
+      "id": "update-existing-project-notes",
+      "user_request": "Write up what we built today on my dashboard project and mark it as growing",
+      "expected_tools": ["list_projects", "update_project"],
+      "required_scope": "projects:write",
+      "assertions": ["resolves the project by listing first", "changes only the fields the user asked for", "notes read as the user's own account of the work"]
+    },
+    {
+      "id": "project-write-invalid-input",
+      "protocol_request": "tools/call update_project with no changed field, an unknown building block, or over-long notes",
+      "expected_error": "invalid_input",
+      "assertions": ["unknown building blocks are named rather than silently dropped", "the stored project is unchanged"]
+    },
+    {
+      "id": "no-project-delete",
+      "user_request": "Delete my dashboard project",
+      "forbidden_tools": ["create_project", "update_project"],
+      "assertions": ["no delete tool exists over MCP", "the user is pointed at Vibe Garden itself"]
+    },
+    {
+      "id": "cross-club-project-write-not-found",
+      "protocol_request": "reviewer A calls update_project with reviewer B or another club's project ID",
+      "expected_tools": ["update_project"],
+      "expected_error": "not_found",
+      "assertions": ["no title or body is disclosed", "the target project is not modified"]
+    },
+    {
       "id": "invalid-cursor",
       "protocol_request": "supply a malformed, expired, or wrong-kind cursor to a paginated tool",
       "expected_error": "invalid_cursor",
@@ -160,7 +200,7 @@
     {
       "id": "protected-resource-metadata",
       "protocol_request": "GET /.well-known/oauth-protected-resource",
-      "assertions": ["resource is the exact HTTPS /mcp URL", "authorization server and projects:read/content:read scopes are declared"]
+      "assertions": ["resource is the exact HTTPS /mcp URL", "authorization server and the projects:read, projects:write, content:read, artifacts:write, and artifacts:publish scopes are declared"]
     },
     {
       "id": "exact-mcp-endpoint-routing",
@@ -237,9 +277,9 @@
       "assertions": ["disallowed origin is rejected", "origin-less legitimate MCP clients remain supported"]
     },
     {
-      "id": "read-only-discovery-metadata",
+      "id": "discovery-metadata",
       "protocol_request": "inspect tools/list and resource/prompt discovery",
-      "assertions": ["tools are ordered deterministically", "each discovered tool is read-only", "OAuth security metadata declares required scopes", "no write, artifact, or analysis tool is exposed"]
+      "assertions": ["tools are ordered deterministically", "read tools are annotated read-only", "project and artifact writes are annotated non-destructive and idempotent", "OAuth security metadata declares required scopes", "no delete or server-side analysis tool is exposed"]
     },
     {
       "id": "rate-limit-public-error",

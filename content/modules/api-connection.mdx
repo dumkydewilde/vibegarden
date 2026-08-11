@@ -1,0 +1,32 @@
+---
+title: API connection
+description: "Pulling data in from another service, or pushing yours out. One key, one small piece of code that holds it, and a plan for when the answer is not the happy one."
+category: Getting things in
+order: 5
+---
+
+## What it is
+
+An API connection is your project talking to somebody else's service: fetching the weather, reading your calendar, posting to a channel, asking a model for a summary. You send a request with your key in a header, you get JSON back, and your project does something with it. Your assistant writes that code in a minute; the parts worth your attention are where the key lives and what happens when the service says no.
+
+## When to use it
+
+- **The data you need already exists somewhere with an API**: a bank export, a calendar, a shop, a weather service.
+- **You want to push results out** to Slack, email, a sheet, or a channel where people already look.
+- **You need something you cannot build**, which for most workshop projects means a model provider, a maps service, or transcription.
+
+If the service has no API, do not force it: an export you download by hand, or a [CSV file](/garden/modules/csv-file), is a perfectly respectable start. If the thing you want to call is an AI assistant rather than a program, the modern equivalent is MCP, covered in [What is an API? What is MCP?](/learning/what-is-an-api-what-is-mcp).
+
+## Setup steps
+
+1. Find the docs page with a complete example request, and get a key from the service's dashboard. Give the key the narrowest permissions on offer.
+2. Put the key in an environment variable or your host's secret store. Never in the page, never in git.
+3. Make one real call on its own, from a terminal or a five-line script, and look at the response before writing anything else. The actual shape is often not what the docs implied.
+4. Paste that docs example into your assistant along with what you want, and let it write the real call. Without the example it will invent an endpoint that sounds right.
+5. Decide what happens when it fails: retry with a growing pause on `429` and `5xx`, show a clear message otherwise, and cache anything you would otherwise ask twice.
+
+## Options and costs
+
+The connection itself is free. What costs money is what you call: model providers bill per request, most other services have a free tier that comfortably covers a workshop project, and rate limits rather than price are usually what you hit first.
+
+One structural cost worth knowing: a key means your project needs somewhere to keep it, so a purely static site grows one small dynamic function. That is a fifteen-minute change, described in [Hosting your app](/learning/hosting-your-app), and [Calling an API for real](/learning/calling-an-api) covers the keys, status codes, and rate limits in full.

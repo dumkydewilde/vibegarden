@@ -35,3 +35,5 @@ MCP does not replace APIs. Under the hood, an MCP server usually calls a plain o
 Say you want an agent that answers "am I free Saturday afternoon?" With only an API, you would write code that calls the calendar API, parses the response, and feeds it to the model: doable, but you are the plumbing. With MCP, you point your agent at a calendar MCP server. The agent sees a `list_events` tool, calls it with Saturday's date, reads the result, and answers. Same calendar, same data, but the model handled the plumbing.
 
 That is why [What is an agent?](/learning/what-is-an-agent) makes such a fuss about tools: every tool is an API or MCP connection wearing a friendly name. And once your agent can reach things, the next question is usually when it should run, which is what [Automate and schedule things](/learning/automate-and-schedule) is about.
+
+When you are ready to make a real call, with a real key, [Calling an API for real](/learning/calling-an-api) covers where the key lives, what the status codes are telling you, and what to do when the service asks you to slow down.

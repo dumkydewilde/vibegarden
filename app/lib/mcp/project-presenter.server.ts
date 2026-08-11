@@ -6,6 +6,7 @@ type ProjectInput = {
   id: string;
   title: string;
   oneLiner: string | null;
+  notes: string | null;
   status: string;
   moduleList: string[];
   updatedAt: number;
@@ -62,6 +63,7 @@ export function presentProject(
     id: project.id,
     title: project.title,
     one_liner: project.oneLiner,
+    notes: project.notes ? project.notes.slice(0, BODY_MAX_CHARS) : null,
     status: project.status,
     building_blocks: project.moduleList,
     updated_at: project.updatedAt,

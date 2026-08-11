@@ -1,6 +1,7 @@
 import { and, desc, eq, like, lt, or, sql } from "drizzle-orm";
 import { getDb } from "./db.server";
 import { isModuleName } from "./modules";
+import { PROJECT_LIMITS } from "./project-limits";
 import { chatThreads, projects, type Project } from "~/db/schema";
 
 export type ClubUserScope = { clubId: string; userId: string };
@@ -111,7 +112,11 @@ export async function searchOwnedProjects(
       and(
         eq(projects.clubId, scope.clubId),
         eq(projects.userId, scope.userId),
-        or(ownedLike(projects.title, term), ownedLike(projects.oneLiner, term)),
+        or(
+          ownedLike(projects.title, term),
+          ownedLike(projects.oneLiner, term),
+          ownedLike(projects.notes, term),
+        ),
       ),
     )
     .orderBy(desc(projects.updatedAt), desc(projects.id))
@@ -136,18 +141,50 @@ export async function getProject(env: Env, scope: ClubUserScope, id: string) {
     : null;
 }
 
+export type OwnedProject = Project & { moduleList: string[] };
+
+function withModuleList(project: Project): OwnedProject {
+  return { ...project, moduleList: parseModules(project.modules) };
+}
+
+async function projectByIdempotencyKey(
+  env: Env,
+  scope: ClubUserScope,
+  key: string,
+) {
+  const rows = await getDb(env)
+    .select()
+    .from(projects)
+    .where(
+      and(
+        eq(projects.clubId, scope.clubId),
+        eq(projects.userId, scope.userId),
+        eq(projects.mcpIdempotencyKey, key),
+      ),
+    )
+    .limit(1);
+  return rows[0] ? withModuleList(rows[0]) : null;
+}
+
 export async function createProject(
   env: Env,
   scope: ClubUserScope,
   input: {
     title: string;
     oneLiner?: string;
+    notes?: string;
     modules?: string[];
     threadId?: string;
+    /** Set by MCP only: replays the first create instead of duplicating it. */
+    idempotencyKey?: string;
   },
-): Promise<Project> {
+): Promise<OwnedProject> {
   const now = Date.now();
   const db = getDb(env);
+  if (input.idempotencyKey) {
+    const replay = await projectByIdempotencyKey(env, scope, input.idempotencyKey);
+    if (replay) return replay;
+  }
   const threadId = input.threadId
     ? (
         await db
@@ -167,16 +204,27 @@ export async function createProject(
     id: crypto.randomUUID(),
     userId: scope.userId,
     clubId: scope.clubId,
-    title: input.title.trim().slice(0, 120) || "Untitled idea",
-    oneLiner: input.oneLiner?.trim().slice(0, 300) || null,
+    title: input.title.trim().slice(0, PROJECT_LIMITS.titleChars) || "Untitled idea",
+    oneLiner: input.oneLiner?.trim().slice(0, PROJECT_LIMITS.oneLinerChars) || null,
+    notes: input.notes?.trim().slice(0, PROJECT_LIMITS.notesChars) || null,
     modules: JSON.stringify((input.modules ?? []).filter(isModuleName)),
     status: "seed",
     threadId,
+    mcpIdempotencyKey: input.idempotencyKey ?? null,
     createdAt: now,
     updatedAt: now,
   };
-  await db.insert(projects).values(project);
-  return project;
+  try {
+    await db.insert(projects).values(project);
+  } catch (error) {
+    // A concurrent identical create won the unique index: replay its project.
+    const replay = input.idempotencyKey
+      ? await projectByIdempotencyKey(env, scope, input.idempotencyKey)
+      : null;
+    if (!replay) throw error;
+    return replay;
+  }
+  return withModuleList(project);
 }
 
 export async function updateProject(
@@ -186,6 +234,7 @@ export async function updateProject(
   input: {
     title?: string;
     oneLiner?: string;
+    notes?: string;
     modules?: string[];
     status?: string;
   },
@@ -197,10 +246,16 @@ export async function updateProject(
     .update(projects)
     .set({
       ...(input.title !== undefined
-        ? { title: input.title.trim().slice(0, 120) || "Untitled idea" }
+        ? {
+            title: input.title.trim().slice(0, PROJECT_LIMITS.titleChars)
+              || "Untitled idea",
+          }
         : {}),
       ...(input.oneLiner !== undefined
-        ? { oneLiner: input.oneLiner.trim().slice(0, 300) || null }
+        ? { oneLiner: input.oneLiner.trim().slice(0, PROJECT_LIMITS.oneLinerChars) || null }
+        : {}),
+      ...(input.notes !== undefined
+        ? { notes: input.notes.trim().slice(0, PROJECT_LIMITS.notesChars) || null }
         : {}),
       ...(input.modules !== undefined
         ? { modules: JSON.stringify(input.modules.filter(isModuleName)) }

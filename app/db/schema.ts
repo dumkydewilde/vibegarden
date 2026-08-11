@@ -319,6 +319,8 @@ export const projects = sqliteTable(
     clubId: text("club_id").references(() => clubs.id),
     title: text("title").notNull(),
     oneLiner: text("one_liner"),
+    /** Long-form write-up of what was built, decided, or tried. */
+    notes: text("notes"),
     /** JSON array of module names from app/lib/modules.ts */
     modules: text("modules"),
     status: text("status", { enum: ["seed", "growing", "bloomed"] })
@@ -327,10 +329,23 @@ export const projects = sqliteTable(
     threadId: text("thread_id").references(() => chatThreads.id, {
       onDelete: "set null",
     }),
+    /**
+     * Set only by `create_project` over MCP, so a retried tool call replays the
+     * original project instead of planting a duplicate. Web-created rows stay
+     * NULL, and SQLite treats NULLs as distinct in a unique index.
+     */
+    mcpIdempotencyKey: text("mcp_idempotency_key"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
-  (table) => [index("projects_club_id_idx").on(table.clubId)],
+  (table) => [
+    index("projects_club_id_idx").on(table.clubId),
+    uniqueIndex("projects_mcp_idempotency_unique").on(
+      table.userId,
+      table.clubId,
+      table.mcpIdempotencyKey,
+    ),
+  ],
 );
 
 /**
