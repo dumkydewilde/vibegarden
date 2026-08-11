@@ -14,7 +14,6 @@ import {
   findOwnedArtifactInClub,
   findOwnedRecoverableArtifact,
   findOwnedIdempotency,
-  findOwnedProject,
   findOwnedProjectInClub,
   findOwnedUpload,
   findOwnedVersion,
@@ -99,6 +98,7 @@ type StoredUpload = {
   id: string;
   artifact_id: string;
   version_id: string;
+  club_id: string | null;
   project_id: string | null;
   project_draft_title: string | null;
   project_draft_one_liner: string | null;
@@ -287,20 +287,31 @@ async function linkFingerprint(input: { title?: string; description?: string; al
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function assertOwnedProjectSelection(env: Env, userId: string, project: ProjectSelection): Promise<void> {
-  if ("projectId" in project && !await findOwnedProject(env, userId, project.projectId)) artifactError("not_found");
+async function assertArtifactOwnerScope(env: Env, scope: ArtifactOwnerScope): Promise<void> {
+  const membership = await env.DB.prepare(
+    `SELECT 1 FROM club_memberships m
+     INNER JOIN clubs c ON c.id = m.club_id AND c.status = 'active'
+     WHERE m.club_id = ? AND m.user_id = ? LIMIT 1`,
+  ).bind(scope.clubId, scope.userId).first();
+  if (!membership) artifactError("not_found");
+}
+
+async function assertOwnedProjectSelection(env: Env, scope: ArtifactOwnerScope, project: ProjectSelection): Promise<void> {
+  if ("projectId" in project && !await findOwnedProjectInClub(env, scope, project.projectId)) artifactError("not_found");
 }
 
 async function createUploadSessionInternal(
   env: Env,
-  userId: string,
+  scope: ArtifactOwnerScope,
   rawInput: unknown,
   source: ArtifactPackageSource,
   fingerprintFiles?: UploadFileInput[],
 ): Promise<UploadSessionResult> {
+  const { userId } = scope;
   const input = parseUploadInput(rawInput, source === "browser");
   if (source === "mcp" && "projectDraft" in input.project) artifactError("invalid_input");
-  await assertOwnedProjectSelection(env, userId, input.project);
+  if (source === "browser") await assertArtifactOwnerScope(env, scope);
+  await assertOwnedProjectSelection(env, scope, input.project);
 
   let targetKey = projectTarget(input.project);
   let type = input.type;
@@ -332,6 +343,7 @@ async function createUploadSessionInternal(
     id: crypto.randomUUID(),
     artifactId: input.artifactId ?? crypto.randomUUID(),
     versionId: crypto.randomUUID(),
+    clubId: scope.clubId,
     projectId: "projectId" in project ? project.projectId : null,
     projectDraftTitle: "projectDraft" in project ? project.projectDraft.title : null,
     projectDraftOneLiner: "projectDraft" in project ? project.projectDraft.oneLiner ?? null : null,
@@ -347,9 +359,9 @@ async function createUploadSessionInternal(
     const writes = await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO artifact_uploads
-         (id, user_id, artifact_id, version_id, project_id, project_draft_title, project_draft_one_liner, type, title, description, allowed_data_origins, source, status, idempotency_key, expires_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
-      ).bind(row.id, userId, row.artifactId, row.versionId, row.projectId, row.projectDraftTitle, row.projectDraftOneLiner, row.type, row.title, row.description, row.allowedDataOrigins, row.source, databaseIdempotencyKey(operation, targetKey, input.idempotencyKey), row.expiresAt, timestamp, timestamp),
+         (id, user_id, artifact_id, version_id, club_id, project_id, project_draft_title, project_draft_one_liner, type, title, description, allowed_data_origins, source, status, idempotency_key, expires_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
+      ).bind(row.id, userId, row.artifactId, row.versionId, row.clubId, row.projectId, row.projectDraftTitle, row.projectDraftOneLiner, row.type, row.title, row.description, row.allowedDataOrigins, row.source, databaseIdempotencyKey(operation, targetKey, input.idempotencyKey), row.expiresAt, timestamp, timestamp),
       env.DB.prepare(
         "INSERT INTO artifact_idempotency (user_id, operation, target_key, idempotency_key, fingerprint, artifact_id, version_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       ).bind(userId, operation, targetKey, input.idempotencyKey, fingerprint, row.artifactId, row.versionId, timestamp),
@@ -371,8 +383,8 @@ async function createUploadSessionInternal(
 }
 
 /** Starts a browser upload. R2 object keys, artifact IDs, and source are always server composed. */
-export async function createUploadSession(env: Env, userId: string, input: UploadBaseInput): Promise<UploadSessionResult> {
-  return createUploadSessionInternal(env, userId, input, "browser");
+export async function createUploadSession(env: Env, scope: ArtifactOwnerScope, input: UploadBaseInput): Promise<UploadSessionResult> {
+  return createUploadSessionInternal(env, scope, input, "browser");
 }
 
 function parseUploadFile(value: unknown): UploadFileInput {
@@ -559,9 +571,9 @@ async function finalizeDraftArtifact(env: Env, userId: string, upload: StoredUpl
   try {
     const writes = await env.DB.batch([
       env.DB.prepare(
-        `INSERT INTO projects (id, user_id, title, one_liner, modules, status, created_at, updated_at)
-         SELECT ?, u.user_id, u.project_draft_title, u.project_draft_one_liner, '[]', 'seed', ?, ?
-         FROM artifact_uploads u WHERE u.id = ? AND u.user_id = ? AND u.status = 'finalizing' AND u.project_id IS NULL`,
+        `INSERT INTO projects (id, user_id, club_id, title, one_liner, modules, status, created_at, updated_at)
+         SELECT ?, u.user_id, u.club_id, u.project_draft_title, u.project_draft_one_liner, '[]', 'seed', ?, ?
+         FROM artifact_uploads u WHERE u.id = ? AND u.user_id = ? AND u.status = 'finalizing' AND u.project_id IS NULL AND u.club_id IS NOT NULL`,
       ).bind(projectId, timestamp, timestamp, upload.id, userId),
       env.DB.prepare(
         `INSERT INTO artifacts (id, user_id, project_id, type, title, description, visibility, current_version_id, created_at, updated_at)
@@ -674,7 +686,7 @@ export async function abortUpload(env: Env, userId: string, uploadId: string): P
 
 async function createLinkWithDraft(
   env: Env,
-  userId: string,
+  scope: ArtifactOwnerScope,
   input: LinkBaseInput,
   source: "web" | "mcp",
   artifactId: string,
@@ -683,11 +695,12 @@ async function createLinkWithDraft(
   targetKey: string,
   fingerprint: string,
 ): Promise<void> {
+  const { userId } = scope;
   const projectId = crypto.randomUUID();
   const project = input.project;
   if (!("projectDraft" in project)) artifactError("internal");
   const writes = await env.DB.batch([
-    env.DB.prepare("INSERT INTO projects (id, user_id, title, one_liner, modules, status, created_at, updated_at) VALUES (?, ?, ?, ?, '[]', 'seed', ?, ?)").bind(projectId, userId, project.projectDraft.title, project.projectDraft.oneLiner ?? null, timestamp, timestamp),
+    env.DB.prepare("INSERT INTO projects (id, user_id, club_id, title, one_liner, modules, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '[]', 'seed', ?, ?)").bind(projectId, userId, scope.clubId, project.projectDraft.title, project.projectDraft.oneLiner ?? null, timestamp, timestamp),
     env.DB.prepare("INSERT INTO artifacts (id, user_id, project_id, type, title, description, visibility, created_at, updated_at) VALUES (?, ?, ?, 'link', ?, ?, 'private', ?, ?)").bind(artifactId, userId, projectId, input.title, input.description ?? null, timestamp, timestamp),
     env.DB.prepare("INSERT INTO artifact_versions (id, artifact_id, version_number, source, entry_path, external_url, allowed_data_origins, file_count, total_bytes, created_by, created_at) VALUES (?, ?, 1, ?, NULL, ?, ?, 0, 0, ?, ?)").bind(versionId, artifactId, source, input.url, JSON.stringify(input.allowedDataOrigins ?? []), userId, timestamp),
     env.DB.prepare("UPDATE artifacts SET current_version_id = ?, updated_at = ? WHERE id = ? AND user_id = ?").bind(versionId, timestamp, artifactId, userId),
@@ -722,14 +735,12 @@ async function createLinkWithProject(
   if (writes.some((result) => result.meta.changes !== 1)) artifactError("state_conflict");
 }
 
-/** A browser link is user-scoped; an MCP link is confined to the granted club. */
 type LinkScope = { userId: string; clubId?: string };
 
 async function assertOwnedLinkProject(env: Env, scope: LinkScope, project: ProjectSelection): Promise<void> {
   if (!("projectId" in project)) return;
-  const owned = scope.clubId === undefined
-    ? await findOwnedProject(env, scope.userId, project.projectId)
-    : await findOwnedProjectInClub(env, { userId: scope.userId, clubId: scope.clubId }, project.projectId);
+  if (!scope.clubId) artifactError("not_found");
+  const owned = await findOwnedProjectInClub(env, { userId: scope.userId, clubId: scope.clubId }, project.projectId);
   if (!owned) artifactError("not_found");
 }
 
@@ -740,6 +751,7 @@ async function linkMutation(
   source: ArtifactPackageSource,
 ): Promise<ArtifactMutationResult> {
   const input = parseLinkInput(rawInput, source === "browser");
+  if (source === "browser") await assertArtifactOwnerScope(env, scope);
   await assertOwnedLinkProject(env, scope, input.project);
   const { userId } = scope;
   const targetKey = projectTarget(input.project);
@@ -751,7 +763,7 @@ async function linkMutation(
   const timestamp = now();
   try {
     if ("projectDraft" in input.project) {
-      await createLinkWithDraft(env, userId, input, sourceFor(source), artifactId, versionId, timestamp, targetKey, fingerprint);
+      await createLinkWithDraft(env, scope, input, sourceFor(source), artifactId, versionId, timestamp, targetKey, fingerprint);
     } else {
       await createLinkWithProject(env, userId, input, sourceFor(source), input.project.projectId, artifactId, versionId, timestamp, targetKey, fingerprint);
     }
@@ -762,8 +774,8 @@ async function linkMutation(
   return { artifactId, versionId };
 }
 
-export async function createLinkArtifact(env: Env, userId: string, rawInput: LinkBaseInput): Promise<ArtifactMutationResult> {
-  return linkMutation(env, { userId }, rawInput, "browser");
+export async function createLinkArtifact(env: Env, scope: ArtifactOwnerScope, rawInput: LinkBaseInput): Promise<ArtifactMutationResult> {
+  return linkMutation(env, scope, rawInput, "browser");
 }
 
 /** MCP links stay inside the granted club and cannot plant a project draft. */
@@ -879,7 +891,7 @@ async function textMutation(
   const allowedDataOrigins = rawInput.allowedDataOrigins === undefined ? undefined : normalizeArtifactOrigins(rawInput.allowedDataOrigins as string[]);
   const files = parseTextFiles(rawInput.files, type);
   for (const file of files) file.sha256 = await checksum(file.body);
-  const session = await createUploadSessionInternal(env, scope.userId, {
+  const session = await createUploadSessionInternal(env, scope, {
     project: { projectId }, type, title, ...(description === undefined ? {} : { description }),
     ...(allowedDataOrigins === undefined ? {} : { allowedDataOrigins }), idempotencyKey: idempotencyKey(rawInput.idempotencyKey), ...(artifactId === undefined ? {} : { artifactId }),
   }, "mcp", files.map(({ body: _body, ...file }) => file));

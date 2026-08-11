@@ -25,13 +25,14 @@ describe("uploadPreparedPackage", () => {
     const progress = vi.fn();
 
     const result = await uploadPreparedPackage(prepared, {
-      project: { projectId: "project-1" }, title: "Demo", allowedDataOrigins: [], idempotencyKey: "key-1", fetch: fetcher, onProgress: progress,
+      clubId: "club-1", project: { projectId: "project-1" }, title: "Demo", allowedDataOrigins: [], idempotencyKey: "key-1", fetch: fetcher, onProgress: progress,
     });
 
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
       "/api/artifact-uploads", "/api/artifact-uploads/upload-1/files", "/api/artifact-uploads/upload-1/files", "/api/artifact-uploads/upload-1/finalize",
     ]);
     expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ project: { projectId: "project-1" }, type: "html", title: "Demo", allowedDataOrigins: [], idempotencyKey: "key-1" });
+    expect(new Headers(fetcher.mock.calls[0][1].headers).get("X-Vibe-Garden-Club")).toBe("club-1");
     for (const call of fetcher.mock.calls.slice(1, 3)) {
       expect([...new Headers(call[1].headers).keys()].sort()).toEqual(["x-artifact-bytes", "x-artifact-mime", "x-artifact-path", "x-artifact-sha256"]);
     }
@@ -46,7 +47,7 @@ describe("uploadPreparedPackage", () => {
       .mockResolvedValueOnce(response({ message: "temporary failure" }, 503));
 
     const failure = await uploadPreparedPackage(prepared, {
-      project: { projectId: "project-1" }, title: "Demo", allowedDataOrigins: [], idempotencyKey: "key-1", fetch: firstAttempt,
+      clubId: "club-1", project: { projectId: "project-1" }, title: "Demo", allowedDataOrigins: [], idempotencyKey: "key-1", fetch: firstAttempt,
     }).catch((error: unknown) => error as Error & { resume?: unknown });
 
     expect(failure.resume).toEqual({
@@ -65,7 +66,7 @@ describe("uploadPreparedPackage", () => {
       .mockResolvedValueOnce(response({ artifactId: "artifact-1", versionId: "version-1" }));
 
     await uploadPreparedPackage(prepared, {
-      project: { projectId: "project-1" }, title: "Demo", allowedDataOrigins: [], idempotencyKey: "key-1", fetch: retry,
+      clubId: "club-1", project: { projectId: "project-1" }, title: "Demo", allowedDataOrigins: [], idempotencyKey: "key-1", fetch: retry,
       resume: failure.resume as never,
     });
 
@@ -83,7 +84,7 @@ describe("uploadPreparedPackage", () => {
       .mockResolvedValueOnce(response({ artifactId: "artifact-2", versionId: "version-2" }));
 
     await uploadPreparedPackage(prepared, {
-      project: { projectId: "project-1" }, title: "Demo", allowedDataOrigins: [], idempotencyKey: "key-1", fetch: fetcher,
+      clubId: "club-1", project: { projectId: "project-1" }, title: "Demo", allowedDataOrigins: [], idempotencyKey: "key-1", fetch: fetcher,
       resume: { uploadId: "upload-1", artifactId: "artifact-1", versionId: "version-1", completed: [{ path: "index.html", byteSize: 2, sha256: "a".repeat(64) }] },
     });
 
@@ -103,7 +104,7 @@ describe("uploadPreparedPackage", () => {
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
 
     await expect(uploadPreparedPackage(prepared, {
-      project: { projectId: "project-1" }, title: "Demo", allowedDataOrigins: [], idempotencyKey: "key-1", fetch: fetcher, signal: controller.signal,
+      clubId: "club-1", project: { projectId: "project-1" }, title: "Demo", allowedDataOrigins: [], idempotencyKey: "key-1", fetch: fetcher, signal: controller.signal,
     })).rejects.toMatchObject({ name: "AbortError" });
 
     expect(fetcher.mock.calls.map(([url]) => url)).toContain("/api/artifact-uploads/upload-1/abort");

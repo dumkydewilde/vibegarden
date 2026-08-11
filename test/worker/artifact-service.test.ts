@@ -89,6 +89,7 @@ async function seed(): Promise<void> {
     env.DB.prepare("INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)").bind("user-b", "b@example.com", now),
     env.DB.prepare("INSERT INTO clubs (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").bind("club-a", "Club A", "club-a", now, now),
     env.DB.prepare("INSERT INTO clubs (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").bind("club-other", "Other Club", "club-other", now, now),
+    env.DB.prepare("INSERT INTO club_memberships (club_id, user_id, role, onboarding_stage, joined_at, updated_at) VALUES (?, ?, 'member', 'active', ?, ?)").bind("club-a", "user-a", now, now),
     env.DB.prepare("INSERT INTO projects (id, user_id, club_id, title, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'seed', ?, ?)").bind("project-a", "user-a", "club-a", "Project A", now, now),
     env.DB.prepare("INSERT INTO projects (id, user_id, club_id, title, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'seed', ?, ?)").bind("project-other-club", "user-a", "club-other", "Other Club Project", now, now),
     env.DB.prepare("INSERT INTO projects (id, user_id, title, status, created_at, updated_at) VALUES (?, ?, ?, 'seed', ?, ?)").bind("project-b", "user-b", "Project B", now, now),
@@ -110,6 +111,7 @@ beforeEach(async () => {
     env.DB.prepare("DELETE FROM artifact_versions"),
     env.DB.prepare("DELETE FROM artifacts"),
     env.DB.prepare("DELETE FROM projects"),
+    env.DB.prepare("DELETE FROM club_memberships"),
     env.DB.prepare("DELETE FROM clubs"),
     env.DB.prepare("DELETE FROM users"),
   ]);
@@ -117,9 +119,31 @@ beforeEach(async () => {
 });
 
 describe("artifact upload service", () => {
+  it("pins a draft browser upload's project to the supplied club", async () => {
+    const body = text.encode("<h1>Club draft</h1>");
+    const session = await createUploadSession(env, { userId: "user-a", clubId: "club-a" }, {
+      project: { projectDraft: { title: "Club draft" } },
+      type: "html",
+      title: "Club draft artifact",
+      idempotencyKey: "club-draft-upload",
+    });
+
+    await putUploadFile(env, "user-a", session.uploadId, {
+      path: "index.html",
+      mimeType: "text/html",
+      byteSize: body.byteLength,
+      sha256: await sha256(body),
+    }, body.buffer);
+    await finalizeUpload(env, "user-a", session.uploadId);
+
+    await expect(env.DB.prepare(
+      "SELECT p.club_id FROM projects p INNER JOIN artifacts a ON a.project_id = p.id WHERE a.id = ?",
+    ).bind(session.artifactId).first()).resolves.toEqual({ club_id: "club-a" });
+  });
+
   it("writes R2 before manifest rows then finalizes a private artifact from recorded state", async () => {
     const body = text.encode("<h1>Hello</h1>");
-    const session = await createUploadSession(env, "user-a", {
+    const session = await createUploadSession(env, { userId: "user-a", clubId: "club-a" }, {
       project: { projectId: "project-a" },
       type: "html",
       title: "Hello",
@@ -142,7 +166,7 @@ describe("artifact upload service", () => {
   });
 
   it("rejects incomplete manifests without creating an artifact and retains the cleanup lease", async () => {
-    const session = await createUploadSession(env, "user-a", {
+    const session = await createUploadSession(env, { userId: "user-a", clubId: "club-a" }, {
       project: { projectId: "project-a" },
       type: "html",
       title: "Incomplete",
@@ -156,7 +180,7 @@ describe("artifact upload service", () => {
 
   it("removes an inspection-rejected R2 object before D1 manifest recording and makes the failed upload unreadable", async () => {
     const body = text.encode("not a PNG");
-    const session = await createUploadSession(env, "user-a", {
+    const session = await createUploadSession(env, { userId: "user-a", clubId: "club-a" }, {
       project: { projectId: "project-a" },
       type: "file",
       title: "Bad image",
@@ -179,7 +203,7 @@ describe("artifact upload service", () => {
   });
 
   it("does not make a failed inline seed project visible", async () => {
-    const session = await createUploadSession(env, "user-a", {
+    const session = await createUploadSession(env, { userId: "user-a", clubId: "club-a" }, {
       project: { projectDraft: { title: "Invisible draft" } },
       type: "html",
       title: "Incomplete draft artifact",
@@ -240,7 +264,7 @@ describe("artifact upload service", () => {
 
   it("completes both callers when a loser observes the winner's finalizing transition", async () => {
     const body = text.encode("<h1>Concurrent</h1>");
-    const session = await createUploadSession(env, "user-a", {
+    const session = await createUploadSession(env, { userId: "user-a", clubId: "club-a" }, {
       project: { projectId: "project-a" }, type: "html", title: "Concurrent", idempotencyKey: "concurrent-transition",
     });
     await putUploadFile(env, "user-a", session.uploadId, {
@@ -306,15 +330,15 @@ describe("artifact upload service", () => {
       url: "https://example.com/reference",
       idempotencyKey: "reference-link",
     };
-    await createLinkArtifact(env, "user-a", input);
+    await createLinkArtifact(env, { userId: "user-a", clubId: "club-a" }, input);
 
-    await expect(createLinkArtifact(env, "user-a", { ...input, url: "https://example.com/other" })).rejects.toMatchObject({
+    await expect(createLinkArtifact(env, { userId: "user-a", clubId: "club-a" }, { ...input, url: "https://example.com/other" })).rejects.toMatchObject({
       code: "idempotency_conflict",
     } satisfies Partial<ArtifactError>);
   });
 
   it("retains explicitly confirmed origins on a replacement link version", async () => {
-    const created = await createLinkArtifact(env, "user-a", {
+    const created = await createLinkArtifact(env, { userId: "user-a", clubId: "club-a" }, {
       project: { projectId: "project-a" },
       title: "Reference",
       url: "https://example.com/reference",
@@ -336,7 +360,7 @@ describe("artifact upload service", () => {
 
   it("rejects a declared byte size that differs from R2 before recording the manifest and retains its lease", async () => {
     const body = text.encode("<h1>Size mismatch</h1>");
-    const session = await createUploadSession(env, "user-a", {
+    const session = await createUploadSession(env, { userId: "user-a", clubId: "club-a" }, {
       project: { projectId: "project-a" },
       type: "html",
       title: "Size mismatch",
@@ -357,7 +381,7 @@ describe("artifact upload service", () => {
   it("recovers a same-checksum object left after the R2 write, while changed retry bytes still conflict", async () => {
     const body = text.encode("<h1>Recover</h1>");
     const checksum = await sha256(body);
-    const session = await createUploadSession(env, "user-a", {
+    const session = await createUploadSession(env, { userId: "user-a", clubId: "club-a" }, {
       project: { projectId: "project-a" },
       type: "html",
       title: "Recovery",
@@ -384,7 +408,7 @@ describe("artifact upload service", () => {
     const retryBody = text.encode("<h1>Other</h1>");
     expect(retryBody.byteLength).toBe(storedBody.byteLength);
     const storedChecksum = await sha256(storedBody);
-    const session = await createUploadSession(env, "user-a", {
+    const session = await createUploadSession(env, { userId: "user-a", clubId: "club-a" }, {
       project: { projectId: "project-a" },
       type: "html",
       title: "Recovery body validation",
@@ -408,7 +432,7 @@ describe("artifact upload service", () => {
   it("finalizes a multi-file inline seed HTML draft", async () => {
     const index = text.encode("<script src=\"app.js\"></script>");
     const script = text.encode("console.log('hello');");
-    const session = await createUploadSession(env, "user-a", {
+    const session = await createUploadSession(env, { userId: "user-a", clubId: "club-a" }, {
       project: { projectDraft: { title: "Multi-file draft" } },
       type: "html",
       title: "Seeded app",
@@ -427,7 +451,7 @@ describe("artifact upload service", () => {
 
   it("retains an unmanifested cleanup lease when finalizing an inline seed draft", async () => {
     const body = text.encode("<h1>Finalized</h1>");
-    const session = await createUploadSession(env, "user-a", {
+    const session = await createUploadSession(env, { userId: "user-a", clubId: "club-a" }, {
       project: { projectDraft: { title: "Draft with retained cleanup" } },
       type: "html",
       title: "Finalized draft",

@@ -9,6 +9,7 @@ export type UploadResumeState = {
 };
 
 export type UploadPreparedPackageOptions = {
+  clubId: string;
   project: { projectId: string } | { projectDraft: { title: string; oneLiner: string } };
   title: string;
   description?: string;
@@ -111,7 +112,7 @@ export async function uploadPreparedPackage(
     session = await json<UploadSession>(await fetcher("/api/artifact-uploads", {
       method: "POST",
       credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Vibe-Garden-Club": options.clubId },
       body: JSON.stringify(createBody),
       signal: options.signal,
     }));

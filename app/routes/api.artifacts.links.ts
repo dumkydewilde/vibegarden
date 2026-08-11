@@ -1,4 +1,5 @@
 import type { Route } from "./+types/api.artifacts.links";
+import { ArtifactError } from "~/lib/artifacts/contracts";
 import { artifactJson, artifactJsonAction, artifactRejectMethod, artifactRequireMethod, readArtifactJson } from "~/lib/artifacts/http.server";
 import { createLinkArtifact } from "~/lib/artifacts/service.server";
 import { requireArtifactUser } from "~/lib/artifacts/auth.server";
@@ -14,8 +15,12 @@ export async function action({ request, context }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
   const user = await requireArtifactUser(env, request);
   if (user instanceof Response) return user;
-  return artifactJsonAction(async () => artifactJson(
-    await createLinkArtifact(env, user.id, await readArtifactJson(request)),
-    { status: 201 },
-  ));
+  return artifactJsonAction(async () => {
+    const clubId = request.headers.get("X-Vibe-Garden-Club");
+    if (!clubId) throw new ArtifactError("invalid_input");
+    return artifactJson(
+      await createLinkArtifact(env, { userId: user.id, clubId }, await readArtifactJson(request)),
+      { status: 201 },
+    );
+  });
 }

@@ -23,8 +23,9 @@ const artifacts = projects.map((project, index) => ({
 }));
 
 const mcpUrl = "https://vibegarden.club/mcp";
+const clubId = "club-1";
 
-function renderArtifacts(data = { artifacts, projects, mcpUrl }) {
+function renderArtifacts(data = { artifacts, projects, mcpUrl, clubId }) {
   const Stub = createRoutesStub([
     { path: "/artifacts", Component: Artifacts, loader: () => data },
   ]);
@@ -46,7 +47,7 @@ describe("Artifacts", () => {
   });
 
   it("enables upload from the empty state", async () => {
-    renderArtifacts({ artifacts: [], projects: [], mcpUrl });
+    renderArtifacts({ artifacts: [], projects: [], mcpUrl, clubId });
     expect((await screen.findAllByRole("button", { name: /upload artifact/i }))[0]).toBeEnabled();
   });
 
@@ -56,14 +57,14 @@ describe("Artifacts", () => {
     expect(screen.getByRole("link", { name: /full setup for claude, chatgpt, and gemini/i }))
       .toHaveAttribute("href", "/connect");
 
-    renderArtifacts({ artifacts: [], projects: [], mcpUrl });
+    renderArtifacts({ artifacts: [], projects: [], mcpUrl, clubId });
     expect((await screen.findAllByText(mcpUrl)).length).toBeGreaterThan(0);
   });
 });
 
 describe("ArtifactUploadDialog", () => {
   it("moves from kind through project and metadata with owner-confirmed origins", async () => {
-    render(<ArtifactUploadDialog projects={projects.slice(0, 1)} />);
+    render(<ArtifactUploadDialog clubId={clubId} projects={projects.slice(0, 1)} />);
 
     fireEvent.click(screen.getByRole("button", { name: /upload artifact/i }));
     fireEvent.click(await screen.findByRole("button", { name: /a link/i }));
