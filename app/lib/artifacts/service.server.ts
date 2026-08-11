@@ -1109,6 +1109,7 @@ export async function listGalleryArtifacts(
       visibility: "gallery",
       updatedAt: row.updated_at,
       participantDisplayName: row.participant_name?.trim() || "Participant",
+      externalUrl: row.external_url,
       version: versionSummary(version)!,
     };
   });

@@ -22,10 +22,15 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   const club = await requireClubContext(env, request, params.clubSlug ?? "");
   return {
     mcpUrl: mcpServerUrl(env.APP_ORIGIN),
-    artifacts: (await listGalleryArtifacts(env, club.club.id)).map((artifact) => ({
-      ...presentGalleryArtifact(artifact),
-      url: clubPath(club.club.slug, `artifacts/${encodeURIComponent(artifact.id)}`),
-    })),
+    artifacts: (await listGalleryArtifacts(env, club.club.id)).map((artifact) => {
+      const presented = presentGalleryArtifact(artifact);
+      return {
+        ...presented,
+        url: artifact.type === "link" && artifact.externalUrl
+          ? artifact.externalUrl
+          : clubPath(club.club.slug, `artifacts/${encodeURIComponent(artifact.id)}`),
+      };
+    }),
   };
 }
 
