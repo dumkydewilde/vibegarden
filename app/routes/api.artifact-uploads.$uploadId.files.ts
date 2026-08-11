@@ -14,21 +14,33 @@ function inputError(): never {
 
 /**
  * Leaves the request body streaming while making an underdeclared upload fail
- * as soon as it crosses its declared size. The route never materializes the
- * body, and the service still performs the stored-size/checksum verification.
+ * as soon as it crosses its declared size. R2 requires a known-length stream,
+ * so the route copies into a FixedLengthStream without materializing the body.
  */
 function boundedBody(body: ReadableStream<Uint8Array>, maxBytes: number): ReadableStream<Uint8Array> {
-  let bytes = 0;
-  return body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
-    transform(chunk, controller) {
-      bytes += chunk.byteLength;
-      if (bytes > maxBytes) {
-        controller.error(new ArtifactError("invalid_input"));
-        return;
+  const fixed = new FixedLengthStream(maxBytes);
+  const writer = fixed.writable.getWriter();
+  const reader = body.getReader();
+  void (async () => {
+    let bytes = 0;
+    try {
+      while (true) {
+        const next = await reader.read();
+        if (next.done) break;
+        bytes += next.value.byteLength;
+        if (bytes > maxBytes) inputError();
+        await writer.write(next.value);
       }
-      controller.enqueue(chunk);
-    },
-  }));
+      if (bytes !== maxBytes) inputError();
+      await writer.close();
+    } catch (error) {
+      await writer.abort(error).catch(() => undefined);
+      await reader.cancel(error).catch(() => undefined);
+    } finally {
+      reader.releaseLock();
+    }
+  })();
+  return fixed.readable;
 }
 
 function uploadHeaders(request: Request) {
