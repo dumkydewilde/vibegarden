@@ -98,6 +98,11 @@ describe("artifact browser routes", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    vi.stubGlobal("FixedLengthStream", class extends TransformStream<Uint8Array, Uint8Array> {
+      constructor(_length: number) {
+        super();
+      }
+    });
     requireUser.mockResolvedValue({ id: "session-user" });
   });
 
@@ -220,6 +225,36 @@ describe("artifact browser routes", () => {
     expect(putUploadFile).toHaveBeenCalledWith(expect.anything(), "session-user", "upload-1", expect.objectContaining({ byteSize: 5 }), expect.anything());
     expect(response.status).toBe(400);
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+  });
+
+  it("preserves the declared length when streaming an upload to R2", async () => {
+    const fixedLengthStream = vi.fn(function FixedLengthStream(_length: number) {
+      return new TransformStream<Uint8Array, Uint8Array>();
+    });
+    vi.stubGlobal("FixedLengthStream", fixedLengthStream);
+    try {
+      putUploadFile.mockImplementationOnce(async (...args: unknown[]) => {
+        expect(await new Response(args[4] as ReadableStream<Uint8Array>).text()).toBe("hello");
+        return { path: "note.txt", mimeType: "text/plain", byteSize: 5, sha256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824" };
+      });
+      const { action } = await import("../api.artifact-uploads.$uploadId.files");
+
+      const response = await action(actionArgs(new Request("https://vibegarden.club/api/artifact-uploads/upload-1/files", {
+        method: "PUT",
+        headers: {
+          "X-Artifact-Path": "note.txt",
+          "X-Artifact-Mime": "text/plain",
+          "X-Artifact-Bytes": "5",
+          "X-Artifact-SHA256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+        },
+        body: "hello",
+      }), { uploadId: "upload-1" }));
+
+      expect(response.status).toBe(200);
+      expect(fixedLengthStream).toHaveBeenCalledWith(5);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("passes the session identity to upload file storage and returns no sensitive fields", async () => {
