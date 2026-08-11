@@ -15,9 +15,11 @@ const sharedArtifact = {
   url: "/artifacts/artifact-1",
 };
 
+const mcpUrl = "https://vibegarden.club/mcp";
+
 function renderGallery(artifacts = [sharedArtifact]) {
   const Stub = createRoutesStub([
-    { path: "/gallery", Component: Gallery, loader: () => ({ artifacts }) },
+    { path: "/gallery", Component: Gallery, loader: () => ({ artifacts, mcpUrl }) },
   ]);
   render(<Stub initialEntries={["/gallery"]} />);
 }
@@ -37,5 +39,12 @@ describe("Gallery", () => {
     renderGallery([]);
     expect(await screen.findByText(/gallery is still empty/i)).toBeInTheDocument();
     expect(document.querySelector("iframe")).toBeNull();
+  });
+
+  it("shows how to connect the MCP server and publish from a chat app", async () => {
+    renderGallery();
+    expect(await screen.findByText(mcpUrl)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /full setup for claude, chatgpt, and gemini/i }))
+      .toHaveAttribute("href", "/connect");
   });
 });

@@ -157,6 +157,10 @@ Core landed 2026-07-14, see `docs/plans/2026-07-14-gardener-tools.md`.
       The full dataset catalog is injected into the system prompt via a new
       `{{DATASETS}}` placeholder, so the Gardener can suggest a fitting source
       during any brainstorm.
+- [x] MCP setup is discoverable in the app (2026-08-11): a connect card on
+      /artifacts and /gallery shows the server URL with a copy button, three
+      setup steps, and links to the existing /connect page, which was
+      previously unlinked from the site.
 - [ ] Inspiration: move curated cards to content files (content-managed)
 
 ## Gardener MCP server

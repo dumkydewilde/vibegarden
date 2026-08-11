@@ -4,6 +4,7 @@ import { useNavigate, useParams, useRevalidator, useSearchParams } from "react-r
 import type { Route } from "./+types/artifacts";
 import { ArtifactCard } from "~/components/artifacts/artifact-card";
 import { ArtifactUploadDialog } from "~/components/artifacts/artifact-upload-dialog";
+import { McpConnectCard } from "~/components/mcp/mcp-connect-card";
 import { EmptyState } from "~/components/empty-state";
 import { PageHeader } from "~/components/shell/page-header";
 import { Button } from "~/components/ui/button";
@@ -14,6 +15,7 @@ import { listOwnedArtifacts } from "~/lib/artifacts/service.server";
 import { presentOwnedArtifact } from "~/lib/artifacts/presenters.server";
 import { listProjects } from "~/lib/projects.server";
 import { clubPath } from "~/lib/club-path";
+import { mcpServerUrl } from "~/lib/mcp/public-url";
 
 export function meta({}: Route.MetaArgs) {
   return [{ title: "Artifacts · Vibe Garden" }];
@@ -30,6 +32,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   ]);
   const projectIds = new Set(ownedProjects.map((project) => project.id));
   return {
+    mcpUrl: mcpServerUrl(env.APP_ORIGIN),
     artifacts: ownedArtifacts
       .filter((artifact) => projectIds.has(artifact.projectId))
       .map((artifact) => ({
@@ -41,7 +44,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
 }
 
 export default function Artifacts({ loaderData }: Route.ComponentProps) {
-  const { artifacts, projects } = loaderData;
+  const { artifacts, projects, mcpUrl } = loaderData;
   const [showAll, setShowAll] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -68,6 +71,14 @@ export default function Artifacts({ loaderData }: Route.ComponentProps) {
       >
         <ArtifactUploadDialog projects={projects} defaultProjectId={defaultProjectId} defaultOpen={searchParams.get("upload") === "1"} onCreated={(id) => navigate(artifactPath(id))} onRefresh={() => revalidator.revalidate()} />
       </PageHeader>
+
+      <McpConnectCard
+        className="mb-8"
+        serverUrl={mcpUrl}
+        title="Build artifacts from Claude, ChatGPT, or Gemini"
+        description="Connect Vibe Garden as an MCP server and your chat app can write artifacts straight into your projects here, no copy and paste."
+        lastStep="Turn Vibe Garden on in a chat and ask it to build something. New artifacts land on this page as private versions."
+      />
 
       {groups.length === 0 ? <EmptyState icon={Apple} title="No artifacts yet" description="When you build something in a project, or upload a file, it lands here. You decide what stays private and what goes to the gallery.">
         <ArtifactUploadDialog projects={projects} defaultProjectId={defaultProjectId} defaultOpen={searchParams.get("upload") === "1"} onCreated={(id) => navigate(artifactPath(id))} onRefresh={() => revalidator.revalidate()} />
